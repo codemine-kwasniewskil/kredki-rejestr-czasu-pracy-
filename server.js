@@ -1,5 +1,5 @@
 const express = require('express');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
 const path = require('path');
@@ -15,11 +15,12 @@ app.use(express.json());
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(session({
+app.use(cookieSession({
+  name: 'session',
   secret: process.env.SESSION_SECRET || 'kredki-cafe-secret-2024',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, secure: process.env.VERCEL ? true : false, sameSite: 'lax' }
+  maxAge: 24 * 60 * 60 * 1000,
+  secure: process.env.VERCEL ? true : false,
+  sameSite: 'lax',
 }));
 
 app.use(flash());
