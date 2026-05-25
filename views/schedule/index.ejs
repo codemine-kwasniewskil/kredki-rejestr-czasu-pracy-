@@ -51,16 +51,6 @@
           </form>
         <% } %>
 
-        <% if (isEditable) { %>
-        <div class="flex items-center gap-1.5 border-l border-slate-200 pl-2 ml-1">
-          <select id="proposeStrategy" class="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
-            <option value="min_cost">💰 Minimalne koszty</option>
-            <option value="fill_min_hours">📋 Uzupełnij min. godzin</option>
-            <option value="fair_share">⚖ Równy podział</option>
-          </select>
-          <button onclick="proposeShifts(event)" class="btn btn-secondary text-xs whitespace-nowrap">✨ Zaproponuj</button>
-        </div>
-        <% } %>
       </div>
     </div>
   </div>
@@ -356,27 +346,5 @@
   </div>
 </div>
 
-<!-- Propose Modal -->
-<div id="proposeModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col" style="max-height:82vh">
-    <div class="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
-      <div>
-        <h3 class="font-semibold text-slate-800">Propozycje zmian</h3>
-        <p id="proposeSubtitle" class="text-xs text-slate-500 mt-0.5"></p>
-      </div>
-      <button onclick="closeProposeModal()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
-    </div>
-    <div id="proposeContent" class="flex-1 overflow-y-auto p-5 space-y-4 text-sm"></div>
-    <div class="p-5 border-t border-slate-200 flex gap-3 flex-shrink-0">
-      <button onclick="closeProposeModal()" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
-      <button id="applyProposalsBtn" onclick="applyProposals()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">Zastosuj wszystkie</button>
-    </div>
-  </div>
-</div>
-
-<script>
-const _scheduleWeekStart = '<%= weekStart %>';
-const _scheduleDbId = <%= schedule ? schedule.id : 'null' %>;
-</script>
 <script src="/js/schedule.js"></script>
 <%- include('../partials/footer') %>
