@@ -1,8 +1,9 @@
 const express = require('express');
-const cookieSession = require('cookie-session');
+const session = require('express-session');
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
 const path = require('path');
+const MySQLStore = require('express-mysql-session')(session);
 const db = require('./database/db');
 
 const app = express();
@@ -15,12 +16,14 @@ app.use(express.json());
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(cookieSession({
-  name: 'session',
+const sessionStore = new MySQLStore({ createDatabaseTable: true }, db.pool);
+
+app.use(session({
   secret: process.env.SESSION_SECRET || 'kredki-cafe-secret-2024',
-  maxAge: 24 * 60 * 60 * 1000,
-  secure: process.env.VERCEL ? true : false,
-  sameSite: 'lax',
+  store: sessionStore,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 },
 }));
 
 app.use(flash());

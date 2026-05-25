@@ -166,8 +166,7 @@ router.post('/login', async (req, res) => {
 
 router.get('/logout', (req, res) => {
   if (res.locals.user) log(res.locals.user, 'Wylogowanie');
-  req.session = null;
-  res.redirect('/login');
+  req.session.destroy(() => res.redirect('/login'));
 });
 
 module.exports = router;
