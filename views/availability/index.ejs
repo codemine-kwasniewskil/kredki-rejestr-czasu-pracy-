@@ -2,7 +2,7 @@
 <%- include('../partials/head', { title: 'Dostępność' }) %>
 <%- include('../partials/nav') %>
 
-<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+<main class="md:ml-60 min-h-screen pt-14 md:pt-0">
 <%
 const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
 let lockFirstEditableLabel = '';
@@ -15,7 +15,10 @@ if (lockBeforeStr) {
 }
 %>
   <div class="max-w-4xl mx-auto">
-    <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+
+    <!-- Sticky header -->
+    <div class="sticky top-14 md:top-0 z-10 bg-slate-50 px-6 pt-4 pb-3 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)]">
+    <div class="mb-3 flex items-center justify-between flex-wrap gap-3">
       <div>
         <h1 class="text-xl font-bold text-slate-800">Dostępność</h1>
         <% if (user.role !== 'worker') { %>
@@ -53,7 +56,7 @@ if (lockBeforeStr) {
       </div>
     </div>
 
-    <div class="flex items-center flex-wrap gap-4 mb-4 p-3 bg-white rounded-xl border border-slate-200 text-xs">
+    <div class="flex items-center flex-wrap gap-4 p-3 bg-white rounded-xl border border-slate-200 text-xs">
       <div class="flex items-center gap-1.5">
         <span class="w-4 h-4 rounded bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center text-emerald-700 text-[10px]">✓</span>
         <span class="text-slate-600">Dostępny/a</span>
@@ -73,8 +76,9 @@ if (lockBeforeStr) {
       </div>
       <% } %>
     </div>
+    </div><!-- end sticky header -->
 
-    <div class="space-y-2">
+    <div class="space-y-2 px-6 pb-6 pt-4">
       <% const dayNames = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd']; %>
       <% let lastMonthKey = null; %>
       <% weeks.forEach((weekDays, wi) => {
