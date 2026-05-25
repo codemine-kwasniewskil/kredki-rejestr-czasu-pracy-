@@ -1,0 +1,177 @@
+<% locals.currentPath = '/contracts'; %>
+<%- include('../partials/head', { title: 'Umowy' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-xl font-bold text-slate-800">Umowy pracownicze</h1>
+      <button onclick="document.getElementById('addModal').classList.remove('hidden')" class="btn btn-primary">
+        + Nowa umowa
+      </button>
+    </div>
+
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <% if (contracts.length === 0) { %>
+        <div class="p-12 text-center text-slate-400">Brak umów. Dodaj umowę by śledzić godziny pracowników.</div>
+      <% } else { %>
+      <table class="w-full min-w-[560px]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Pracownik</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Min. godz./mies.</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Stawka/h</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Od</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Do</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Akcje</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <% contracts.forEach(c => { %>
+          <tr class="hover:bg-slate-50 <%= !c.active ? 'opacity-50' : '' %>">
+            <td class="px-4 py-3 text-sm font-medium text-slate-800"><%= c.user_name %></td>
+            <td class="px-4 py-3 text-sm text-slate-700 font-semibold"><%= c.min_hours_per_month %>h</td>
+            <td class="px-4 py-3 text-sm text-slate-700"><%= c.hourly_rate != null ? c.hourly_rate.toFixed(2) + ' zł' : '—' %></td>
+            <td class="px-4 py-3 text-sm text-slate-500"><%= c.start_date %></td>
+            <td class="px-4 py-3 text-sm text-slate-500"><%= c.end_date || '—' %></td>
+            <td class="px-4 py-3">
+              <span class="text-xs px-2 py-1 rounded-full <%= c.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500' %>">
+                <%= c.active ? 'Aktywna' : 'Nieaktywna' %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+              <button onclick="openEdit(<%= JSON.stringify(c) %>)" class="btn btn-secondary text-xs">Edytuj</button>
+              <% if (user.role === 'admin') { %>
+              <form action="/contracts/<%= c.id %>?_method=DELETE" method="POST" onsubmit="return confirm('Usunąć tę umowę?')">
+                <button type="submit" class="btn btn-danger text-xs">Usuń</button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% } %>
+    </div>
+  </div>
+</main>
+
+<!-- Add Modal -->
+<div id="addModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Nowa umowa</h3>
+      <button onclick="document.getElementById('addModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+    </div>
+    <form action="/contracts" method="POST" class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Pracownik</label>
+        <select name="user_id" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">— Wybierz pracownika —</option>
+          <% workers.forEach(w => { %>
+          <option value="<%= w.id %>"><%= w.name %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Minimalne godziny miesięcznie</label>
+          <input type="number" name="min_hours_per_month" required min="0" max="744" step="0.5" placeholder="np. 160"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Stawka za godzinę (zł)</label>
+          <input type="number" name="hourly_rate" min="0" step="0.01" placeholder="np. 28.00"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Data rozpoczęcia</label>
+          <input type="date" name="start_date" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Data zakończenia</label>
+          <input type="date" name="end_date" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Notatki</label>
+        <input type="text" name="notes" placeholder="Opcjonalnie" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
+        <button type="submit" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Dodaj</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Edytuj umowę</h3>
+      <button onclick="document.getElementById('editModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+    </div>
+    <form id="editForm" method="POST" class="p-5 space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Min. godziny miesięcznie</label>
+          <input type="number" name="min_hours_per_month" id="editHours" required min="0" max="744" step="0.5"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Stawka za godzinę (zł)</label>
+          <input type="number" name="hourly_rate" id="editRate" min="0" step="0.01" placeholder="np. 28.00"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Data od</label>
+          <input type="date" name="start_date" id="editStart" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Data do</label>
+          <input type="date" name="end_date" id="editEnd" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Notatki</label>
+        <input type="text" name="notes" id="editNotes" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="active" id="editActive" value="1" class="rounded">
+        <label for="editActive" class="text-sm font-medium text-slate-700">Umowa aktywna</label>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="document.getElementById('editModal').classList.add('hidden')" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
+        <button type="submit" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Zapisz</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEdit(c) {
+  document.getElementById('editForm').action = `/contracts/${c.id}?_method=PUT`;
+  document.getElementById('editHours').value = c.min_hours_per_month;
+  document.getElementById('editRate').value = c.hourly_rate != null ? c.hourly_rate : '';
+  document.getElementById('editStart').value = c.start_date;
+  document.getElementById('editEnd').value = c.end_date || '';
+  document.getElementById('editNotes').value = c.notes || '';
+  document.getElementById('editActive').checked = !!c.active;
+  document.getElementById('editModal').classList.remove('hidden');
+}
+</script>
+
+<%- include('../partials/footer') %>

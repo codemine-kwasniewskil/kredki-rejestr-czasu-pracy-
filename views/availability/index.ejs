@@ -1,0 +1,235 @@
+<% locals.currentPath = '/availability'; %>
+<%- include('../partials/head', { title: 'Dostępność' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+<%
+const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+let lockFirstEditableLabel = '';
+let lockLastLockedLabel = '';
+if (lockBeforeStr) {
+  const [_lby, _lbm] = lockBeforeStr.split('-').map(Number);
+  lockFirstEditableLabel = MONTHS_PL[_lbm - 1] + ' ' + _lby;
+  const _lli = ((_lbm - 2) + 12) % 12;
+  lockLastLockedLabel = MONTHS_PL[_lli] + ' ' + (_lbm === 1 ? _lby - 1 : _lby);
+}
+%>
+  <div class="max-w-4xl mx-auto">
+    <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Dostępność</h1>
+        <% if (user.role !== 'worker') { %>
+          <% if (targetUserLocked) { %>
+            <p class="text-xs text-amber-600 mt-0.5 font-medium">🔒 Dostępność tego pracownika jest zablokowana przez administratora. Użyj przycisku <strong>Odblokuj wszystkich</strong> lub zmień w <a href="/users" class="underline">Użytkownicy</a>.</p>
+          <% } else if (lockFirstEditableLabel) { %>
+            <p class="text-xs text-slate-500 mt-0.5">Edytuj dostępność pracownika. Edytowalna od: <strong class="text-slate-700"><%= lockFirstEditableLabel %></strong>.</p>
+          <% } else { %>
+            <p class="text-xs text-slate-500 mt-0.5">Edytuj dostępność pracownika.</p>
+          <% } %>
+        <% } else { %>
+          <% if (lockFirstEditableLabel) { %>
+            <p class="text-xs text-slate-500 mt-0.5">Edytujesz swoją dostępność od: <strong class="text-blue-600"><%= lockFirstEditableLabel %></strong>.</p>
+          <% } else { %>
+            <p class="text-xs text-slate-500 mt-0.5">Edytuj swoją dostępność na przyszłe miesiące.</p>
+          <% } %>
+        <% } %>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <% if (user.role !== 'worker' && allUsers.length > 0) { %>
+        <form method="GET" action="/availability" class="flex items-center gap-2">
+          <label class="text-sm text-slate-600 font-medium">Pracownik:</label>
+          <select name="userId" onchange="this.form.submit()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+            <% allUsers.forEach(u => { %>
+            <option value="<%= u.id %>" <%= u.id === targetUserId ? 'selected' : '' %>><%= u.name %></option>
+            <% }) %>
+          </select>
+        </form>
+        <% } %>
+        <% if (user.role === 'admin') { %>
+          <button onclick="lockAllAvailability(true)" class="px-3 py-2 text-xs font-medium rounded-lg border bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors">🔒 Zablokuj wszystkich</button>
+          <button onclick="lockAllAvailability(false)" class="px-3 py-2 text-xs font-medium rounded-lg border bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 transition-colors">🔓 Odblokuj wszystkich</button>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="flex items-center flex-wrap gap-4 mb-4 p-3 bg-white rounded-xl border border-slate-200 text-xs">
+      <div class="flex items-center gap-1.5">
+        <span class="w-4 h-4 rounded bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center text-emerald-700 text-[10px]">✓</span>
+        <span class="text-slate-600">Dostępny/a</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-4 h-4 rounded bg-red-100 border-2 border-red-400 flex items-center justify-center text-red-700 text-[10px]">✕</span>
+        <span class="text-slate-600">Niedostępny/a</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-4 h-4 rounded bg-white border-2 border-slate-300"></span>
+        <span class="text-slate-600">Brak info</span>
+      </div>
+      <% if (lockLastLockedLabel) { %>
+      <div class="flex items-center gap-1.5 ml-auto">
+        <span class="w-4 h-4 rounded bg-slate-100 border border-slate-300"></span>
+        <span class="text-slate-400">🔒 Zablokowane (do końca <%= lockLastLockedLabel %>)</span>
+      </div>
+      <% } %>
+    </div>
+
+    <div class="space-y-2">
+      <% const dayNames = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd']; %>
+      <% let lastMonthKey = null; %>
+      <% weeks.forEach((weekDays, wi) => {
+        const firstDay = weekDays[0];
+        const monthKey = firstDay.getMonth() + '-' + firstDay.getFullYear();
+        const monthLabel = MONTHS_PL[firstDay.getMonth()] + ' ' + firstDay.getFullYear();
+        const monthStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-01`;
+        const monthLocked = lockBeforeStr && monthStr < lockBeforeStr;
+      %>
+        <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey; %>
+        <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3">
+          <h2 class="text-sm font-semibold <%= monthLocked ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
+            <%= monthLabel %>
+            <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span><% } %>
+          </h2>
+          <div class="flex-1 h-px bg-slate-200"></div>
+        </div>
+        <% } %>
+
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+          <span class="text-xs text-slate-500">
+            <%= weekDays[0].getDate() %>.<%= String(weekDays[0].getMonth()+1).padStart(2,'0') %> –
+            <%= weekDays[6].getDate() %>.<%= String(weekDays[6].getMonth()+1).padStart(2,'0') %>.<%= weekDays[6].getFullYear() %>
+          </span>
+        </div>
+        <div class="grid grid-cols-7">
+          <% weekDays.forEach((day, di) => {
+            const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+            const avail = availMap[dateStr] || null;
+            const status = avail ? avail.status : null;
+            const startTime = avail ? avail.startTime : null;
+            const endTime = avail ? avail.endTime : null;
+            const isPast = dateStr < todayStr;
+            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role !== 'admin' && targetUserLocked);
+            const canEdit = !isLocked;
+            const isToday = dateStr === todayStr;
+          %>
+          <div
+            class="relative group/day <%= canEdit ? 'cursor-pointer hover:brightness-95' : (!isPast ? 'opacity-50 cursor-not-allowed' : 'cursor-default') %> transition-all p-1 flex flex-col items-center justify-between border-r border-slate-100 last:border-0 min-h-16 select-none availability-day
+              <%= status === 'available' ? 'bg-emerald-50' : status === 'unavailable' ? 'bg-red-50' : 'bg-white' %>
+              <%= isToday ? 'ring-2 ring-blue-400 ring-inset' : '' %>
+              <%= isPast ? 'opacity-40' : '' %>"
+            data-date="<%= dateStr %>"
+            data-status="<%= status || '' %>"
+            data-start-time="<%= startTime || '' %>"
+            data-end-time="<%= endTime || '' %>"
+            onclick="<%= canEdit ? `toggleAvailability('${dateStr}', this)` : '' %>"
+          >
+            <div class="text-[9px] font-semibold text-slate-400 uppercase"><%= dayNames[di] %></div>
+            <div class="text-sm font-bold <%= isToday ? 'text-blue-700' : 'text-slate-700' %>"><%= day.getDate() %></div>
+            <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold
+              <%= status === 'available' ? 'bg-emerald-200 text-emerald-700 border-2 border-emerald-400' : status === 'unavailable' ? 'bg-red-200 text-red-700 border-2 border-red-400' : 'bg-slate-100 text-transparent border-2 border-slate-200' %>">
+              <%= status === 'available' ? '✓' : status === 'unavailable' ? '✕' : '·' %>
+            </div>
+            <div class="time-range text-[8px] leading-tight text-center w-full min-h-[12px] <%= startTime && endTime ? 'text-emerald-700 font-semibold' : 'text-transparent' %>">
+              <%= startTime && endTime ? startTime + '–' + endTime : '·' %>
+            </div>
+            <% if (canEdit && status === 'available') { %>
+              <button
+                class="tp-btn text-[10px] text-slate-400 hover:text-blue-600 leading-none transition-colors"
+                title="Ustaw godziny"
+                onclick="openTimePicker('<%= dateStr %>', '<%= startTime || '' %>', '<%= endTime || '' %>', event)"
+              >⏱</button>
+            <% } else { %>
+              <div class="h-[14px]"></div>
+            <% } %>
+          </div>
+          <% }) %>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+  </div>
+</main>
+
+<!-- Time Picker Modal -->
+<div id="timePickerModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800 text-sm">Godziny dostępności</h3>
+      <button onclick="closeTimePicker()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <input type="hidden" id="tpDate">
+      <p class="text-xs text-slate-500">Zostaw puste = cały dzień</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Od</label>
+          <div id="tpStartPicker" class="time-picker flex items-center gap-1">
+            <select class="tp-hour flex-1 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">--</option>
+              <% for(let h=0;h<24;h++){const hh=String(h).padStart(2,'0'); %><option value="<%= hh %>"><%= hh %></option><% } %>
+            </select>
+            <span class="text-slate-400 text-sm">:</span>
+            <select class="tp-min w-14 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">--</option>
+              <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
+            </select>
+            <input type="hidden" id="tpStart">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Do</label>
+          <div id="tpEndPicker" class="time-picker flex items-center gap-1">
+            <select class="tp-hour flex-1 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">--</option>
+              <% for(let h=0;h<24;h++){const hh=String(h).padStart(2,'0'); %><option value="<%= hh %>"><%= hh %></option><% } %>
+            </select>
+            <span class="text-slate-400 text-sm">:</span>
+            <select class="tp-min w-14 px-2 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">--</option>
+              <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
+            </select>
+            <input type="hidden" id="tpEnd">
+          </div>
+        </div>
+      </div>
+      <div id="tpError" class="hidden text-xs text-red-600 p-2 bg-red-50 rounded-lg"></div>
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="clearTimeRange()" class="flex-1 py-2.5 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">Usuń godziny</button>
+        <button type="button" onclick="saveTimeRange()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Zapisz</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none"></div>
+
+<script>
+const availabilityTargetUserId = <%= targetUserId %>;
+function showToast(msg, type) {
+  const tc = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium pointer-events-auto mb-2 ' + (type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white');
+  t.textContent = msg;
+  tc.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+async function lockAllAvailability(lock) {
+  try {
+    const res = await fetch('/api/users/availability-lock-all', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locked: lock })
+    });
+    if (res.ok) {
+      showToast(lock ? 'Dostępność zablokowana dla wszystkich pracowników.' : 'Dostępność odblokowana dla wszystkich pracowników.');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      showToast('Wystąpił błąd.', 'error');
+    }
+  } catch(e) {
+    showToast('Błąd połączenia.', 'error');
+  }
+}
+</script>
+<script src="/js/availability.js"></script>
+<%- include('../partials/footer') %>

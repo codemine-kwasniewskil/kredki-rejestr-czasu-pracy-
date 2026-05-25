@@ -1,0 +1,174 @@
+<% locals.currentPath = '/users'; %>
+<%- include('../partials/head', { title: 'Użytkownicy' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+  <div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <h1 class="text-xl font-bold text-slate-800">Użytkownicy</h1>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button onclick="document.getElementById('addUserModal').classList.remove('hidden')" class="btn btn-primary">
+          + Dodaj użytkownika
+        </button>
+      </div>
+    </div>
+
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <table class="w-full min-w-[640px]">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Imię i nazwisko</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">E-mail</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Rola</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Min. godz.</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Akcje</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <% users.forEach(u => { %>
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-3 text-sm font-medium text-slate-800"><%= u.name %></td>
+            <td class="px-4 py-3 text-sm text-slate-500"><%= u.email %></td>
+            <td class="px-4 py-3">
+              <span class="text-xs px-2 py-1 rounded-full font-medium
+                <%= u.role === 'admin' ? 'bg-purple-100 text-purple-700' : u.role === 'location_manager' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600' %>">
+                <%= u.role === 'admin' ? 'Administrator' : u.role === 'location_manager' ? 'Kierownik' : 'Pracownik' %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-sm text-slate-500">
+              <%= u.min_hours_per_month != null ? u.min_hours_per_month + 'h/mies.' : '—' %>
+            </td>
+            <td class="px-4 py-3">
+              <span class="text-xs px-2 py-1 rounded-full <%= u.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600' %>">
+                <%= u.active ? 'Aktywny' : 'Nieaktywny' %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-right flex items-center justify-end gap-2 flex-wrap">
+              <% if (u.role !== 'admin') { %>
+              <button
+                id="lockBtn_<%= u.id %>"
+                onclick="toggleLock(<%= u.id %>, this)"
+                data-locked="<%= u.availability_locked ? '1' : '0' %>"
+                class="text-xs px-2 py-1 rounded-lg border transition-colors <%= u.availability_locked ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-500' %>"
+                title="<%= u.availability_locked ? 'Zablokowana dostępność – kliknij by odblokować' : 'Dostępność odblokowana – kliknij by zablokować' %>"
+              ><%= u.availability_locked ? '🔒' : '🔓' %></button>
+              <% } %>
+              <a href="/users/<%= u.id %>/edit" class="btn btn-secondary text-xs">Edytuj</a>
+              <% if (u.id !== user.id) { %>
+              <form action="/users/<%= u.id %>?_method=DELETE" method="POST" onsubmit="return confirm('Dezaktywować użytkownika?')">
+                <button type="submit" class="btn btn-danger text-xs">Dezaktywuj</button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Add User Modal -->
+<div id="addUserModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Dodaj użytkownika</h3>
+      <button onclick="document.getElementById('addUserModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+    </div>
+    <form action="/users" method="POST" class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko</label>
+        <input type="text" name="name" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Adres e-mail</label>
+        <input type="email" name="email" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Hasło</label>
+        <input type="password" name="password" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Rola</label>
+        <select name="role" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="worker">Pracownik</option>
+          <option value="location_manager">Kierownik</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="document.getElementById('addUserModal').classList.add('hidden')" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
+        <button type="submit" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Dodaj</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit User Modal (shown when editUser is set) -->
+<% if (editUser) { %>
+<div id="editUserModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Edytuj użytkownika</h3>
+      <a href="/users" class="text-slate-400 hover:text-slate-600 text-xl">✕</a>
+    </div>
+    <form action="/users/<%= editUser.id %>?_method=PUT" method="POST" class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko</label>
+        <input type="text" name="name" value="<%= editUser.name %>" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Adres e-mail</label>
+        <input type="email" name="email" value="<%= editUser.email %>" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Nowe hasło (puste = bez zmian)</label>
+        <input type="password" name="password" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Pozostaw puste by nie zmieniać">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Rola</label>
+        <select name="role" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="worker" <%= editUser.role === 'worker' ? 'selected' : '' %>>Pracownik</option>
+          <option value="location_manager" <%= editUser.role === 'location_manager' ? 'selected' : '' %>>Kierownik</option>
+          <option value="admin" <%= editUser.role === 'admin' ? 'selected' : '' %>>Administrator</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="active" id="activeCheck" value="1" <%= editUser.active ? 'checked' : '' %> class="rounded">
+        <label for="activeCheck" class="text-sm font-medium text-slate-700">Konto aktywne</label>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <a href="/users" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 text-center">Anuluj</a>
+        <button type="submit" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Zapisz</button>
+      </div>
+    </form>
+  </div>
+</div>
+<% } %>
+
+<script>
+async function toggleLock(userId, btn) {
+  const locked = btn.dataset.locked === '1' ? 0 : 1;
+  try {
+    const res = await fetch(`/api/users/${userId}/availability-lock`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locked })
+    });
+    if (res.ok) {
+      btn.dataset.locked = locked ? '1' : '0';
+      btn.textContent = locked ? '🔒' : '🔓';
+      btn.className = `text-xs px-2 py-1 rounded-lg border transition-colors ${locked ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-500'}`;
+      btn.title = locked ? 'Zablokowana dostępność – kliknij by odblokować' : 'Dostępność odblokowana – kliknij by zablokować';
+    }
+  } catch(e) {}
+}
+</script>
+<%- include('../partials/footer') %>

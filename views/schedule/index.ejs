@@ -1,0 +1,349 @@
+<% locals.currentPath = '/schedule'; %>
+<%- include('../partials/head', { title: 'Grafik' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen flex flex-col pt-14 md:pt-0">
+  <!-- Header bar -->
+  <div class="bg-white border-b border-slate-200 px-4 py-3 sticky top-14 md:top-0 z-10">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+      <div class="flex items-center gap-2">
+        <a href="/schedule/week/<%= prevWeek %>" class="btn btn-secondary">←</a>
+        <h2 class="text-sm sm:text-base font-semibold text-slate-700 flex-1 text-center">
+          <%= formatWeekRange(weekStart) %>
+        </h2>
+        <a href="/schedule/week/<%= nextWeek %>" class="btn btn-secondary">→</a>
+        <a href="/schedule" class="btn btn-secondary text-xs">Dziś</a>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap sm:ml-auto">
+        <% if (user.role === 'admin' || user.role === 'location_manager') { %>
+          <a href="/shifts" class="btn btn-secondary text-xs">⚙ Szablony zmian</a>
+        <% } %>
+        <% if (schedule) { %>
+          <span class="text-xs px-2.5 py-1 rounded-full font-medium badge-<%= schedule.status %>">
+            <%= schedule.status === 'draft' ? '● Szkic' : schedule.status === 'submitted' ? '⏳ Oczekuje na akceptację' : schedule.status === 'approved' ? '✓ Zatwierdzony' : '✗ Odrzucony' %>
+          </span>
+          <% if (schedule.status === 'rejected' && schedule.rejection_notes) { %>
+            <span class="text-xs text-red-600 max-w-48 truncate" title="<%= schedule.rejection_notes %>">
+              Powód: <%= schedule.rejection_notes %>
+            </span>
+          <% } %>
+        <% } %>
+
+        <% if (user.role === 'location_manager' && schedule && schedule.status === 'draft') { %>
+          <form action="/schedule/week/<%= weekStart %>/submit" method="POST">
+            <button class="btn btn-warning">📤 Wyślij do akceptacji</button>
+          </form>
+        <% } %>
+
+        <% if (user.role === 'admin' && schedule && schedule.status !== 'approved') { %>
+          <form action="/schedule/week/<%= weekStart %>/approve" method="POST" class="inline">
+            <button class="btn btn-success">✓ Zatwierdź</button>
+          </form>
+          <% if (schedule.status === 'submitted') { %>
+          <button onclick="document.getElementById('rejectModal').classList.remove('hidden')" class="btn btn-danger">✗ Odrzuć</button>
+          <% } %>
+        <% } %>
+
+        <% if (schedule && (schedule.status === 'rejected' || (schedule.status === 'submitted' && user.role === 'location_manager'))) { %>
+          <form action="/schedule/week/<%= weekStart %>/reopen" method="POST">
+            <button class="btn btn-secondary">↩ Przywróć do szkicu</button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flash messages -->
+  <% if (success && success.length) { %>
+    <div class="mx-3 sm:mx-6 mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm"><%= success[0] %></div>
+  <% } %>
+  <% if (error && error.length) { %>
+    <div class="mx-3 sm:mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
+  <% } %>
+
+  <!-- Legend -->
+  <div class="px-4 py-2 flex items-center flex-wrap gap-3 text-xs text-slate-500 border-b border-slate-100">
+    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span> Dostępny</span>
+    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-100 border border-red-300"></span> Niedostępny</span>
+    <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-white border border-slate-200"></span> Brak info</span>
+    <% if (isEditable) { %><span class="text-slate-400 ml-auto">+ dodaj | przeciągnij by przenieść</span><% } %>
+    <% if (schedule && schedule.status === 'approved') { %><span class="text-emerald-600 font-medium ml-auto">Grafik zatwierdzony – tylko do odczytu</span><% } %>
+  </div>
+
+  <!-- Schedule grid -->
+  <div class="flex-1 overflow-x-auto px-3 sm:px-6 pb-6">
+    <% if (workers.length === 0) { %>
+      <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+        <div class="text-4xl mb-3">👥</div>
+        <p class="text-slate-500">Brak pracowników. <a href="/users" class="text-blue-600 hover:underline">Dodaj pracowników</a>, by tworzyć grafik.</p>
+      </div>
+    <% } else if (user.role === 'worker' && !schedule) { %>
+      <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+        <div class="text-4xl mb-3">📅</div>
+        <p class="text-slate-500">Grafik na ten tydzień nie jest jeszcze zatwierdzony.</p>
+      </div>
+    <% } else { %>
+    <table class="w-full border-collapse bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200" id="scheduleTable" data-editable="<%= isEditable ? 'true' : 'false' %>">
+      <thead>
+        <tr class="bg-slate-50 border-b border-slate-200">
+          <th class="w-44 p-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10 border-r border-slate-200">
+            Pracownik
+          </th>
+          <% weekDates.forEach(date => { %>
+            <% const isToday = date.toDateString() === new Date().toDateString(); %>
+            <th class="min-w-32 p-2 text-center border-r border-slate-100 <%= isToday ? 'bg-blue-50' : '' %>">
+              <div class="text-xs font-semibold text-slate-600 <%= isToday ? 'text-blue-700' : '' %>">
+                <%= formatDayHeader(date) %>
+              </div>
+            </th>
+          <% }) %>
+          <% if (user.role !== 'worker') { %>
+          <th class="w-28 p-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider border-l border-slate-200">
+            Godz. (<%= monthLabel %>)
+          </th>
+          <% } %>
+        </tr>
+      </thead>
+      <tbody>
+        <% workers.forEach((worker, wi) => {
+          const scheduled = workerMonthlyHours[worker.id] || 0;
+          const weekScheduled = workerWeekHours[worker.id] || 0;
+          const otherMonthHours = Math.max(0, scheduled - weekScheduled);
+          const contracted = worker.min_hours_per_month || 0;
+          const pct = contracted > 0 ? Math.min(100, (scheduled / contracted) * 100) : 0;
+        %>
+        <tr class="border-b border-slate-100 hover:bg-slate-50/50 group">
+          <td class="p-3 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-200 transition-colors">
+            <div class="font-medium text-sm text-slate-800"><%= worker.name %></div>
+            <% if (contracted > 0 && user.role !== 'worker') { %>
+              <div class="text-xs text-slate-400 mt-0.5">min. <%= contracted %>h/mies.</div>
+            <% } %>
+          </td>
+
+          <% weekDates.forEach(date => {
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+            const entry = entriesMap[worker.id + '_' + dateStr];
+            const avail = availMap[worker.id + '_' + dateStr];
+            const availStatus = avail ? avail.status : null;
+            const availStart = avail ? avail.startTime : null;
+            const availEnd = avail ? avail.endTime : null;
+            const isToday = date.toDateString() === new Date().toDateString();
+            let cellBg = isToday ? 'bg-blue-50/40' : 'bg-white';
+            if (availStatus === 'available') cellBg = 'bg-emerald-50';
+            else if (availStatus === 'unavailable') cellBg = 'bg-red-50';
+          %>
+          <td
+            class="p-1 border-r border-slate-100 align-top schedule-cell relative min-h-14 <%= cellBg %> transition-colors"
+            data-date="<%= dateStr %>"
+            data-user-id="<%= worker.id %>"
+            data-schedule-id="<%= schedule ? schedule.id : '' %>"
+          >
+            <% if (entry) { %>
+              <div
+                class="shift-block rounded-md px-2 py-1.5 text-white text-xs flex flex-col gap-0.5 shadow-sm relative group/block"
+                style="background-color:<%= entry.color %>"
+                <% if (isEditable) { %>
+                draggable="true"
+                ondragstart="handleDragStart(event, this)"
+                ondragend="handleDragEnd(event, this)"
+                data-entry-id="<%= entry.id %>"
+                <% } %>
+              >
+                <% if (entry.modified_by_admin) { %>
+                  <span class="absolute top-0.5 left-1 text-yellow-300 text-xs leading-none" title="Zmienione przez administratora">★</span>
+                <% } %>
+                <span class="font-semibold leading-tight <%= entry.modified_by_admin ? 'pl-3' : '' %>"><%= entry.shift_name %></span>
+                <span class="opacity-90"><%= entry.start_time %> – <%= entry.end_time %><% if (user.role === 'admin') { const _c = entryCostMap[worker.id + '_' + dateStr]; if (_c > 0) { %> · <%= _c.toFixed(0) %> zł<% } } %></span>
+                <% if (entry.notes) { %>
+                  <span class="opacity-75 text-xs italic truncate" title="<%= entry.notes %>"><%= entry.notes %></span>
+                <% } %>
+                <% if (isEditable) { %>
+                  <button
+                    onclick="deleteEntry(<%= entry.id %>, event)"
+                    class="absolute top-1 right-1 opacity-0 group-hover/block:opacity-100 text-white/80 hover:text-white leading-none text-xs w-4 h-4 flex items-center justify-center bg-black/20 rounded transition-opacity"
+                    title="Usuń zmianę"
+                  >✕</button>
+                <% } %>
+              </div>
+            <% } else if (isEditable && schedule) { %>
+              <button
+                onclick="openAddShift('<%= dateStr %>', '<%= worker.id %>', <%= schedule.id %>)"
+                class="w-full h-12 text-slate-300 hover:text-blue-400 hover:bg-blue-50 rounded-md flex items-center justify-center text-lg transition-colors border-2 border-transparent hover:border-blue-200 border-dashed"
+                title="Dodaj zmianę"
+              >+</button>
+            <% } %>
+            <% if (availStart && availEnd) { %>
+              <div class="text-[9px] text-emerald-700 font-medium text-center mt-0.5 leading-tight"><%= availStart %>–<%= availEnd %></div>
+            <% } %>
+          </td>
+          <% }) %>
+
+          <% if (user.role !== 'worker') { %>
+          <% const showContracted = contracted > 0; %>
+          <td class="p-3 text-center border-l border-slate-200 bg-white"
+              data-other-month-hours="<%= otherMonthHours.toFixed(2) %>"
+              data-contracted="<%= showContracted ? contracted : 0 %>">
+            <div class="text-sm font-semibold <%= showContracted && scheduled >= contracted ? 'text-emerald-600' : 'text-slate-700' %>">
+              <%= formatHours(scheduled) %>
+            </div>
+            <% if (showContracted) { %>
+              <div class="text-xs text-slate-400">/ <%= contracted %>h</div>
+              <div class="mt-1.5 w-full bg-slate-100 rounded-full h-1.5">
+                <div class="progress-bar h-1.5 rounded-full <%= scheduled >= contracted ? 'bg-emerald-500' : 'bg-blue-500' %>"
+                     style="width:<%= pct %>%"></div>
+              </div>
+            <% } %>
+          </td>
+          <% } %>
+        </tr>
+        <% }) %>
+        <% if (user.role === 'admin') { %>
+        <% const _totalWeekCost = Object.values(dailyCostMap).reduce((s, v) => s + v, 0); %>
+        <tr class="border-t-2 border-slate-200 bg-amber-50/60">
+          <td class="p-3 sticky left-0 bg-amber-50/60 z-10 border-r border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+            Koszt dzienny
+          </td>
+          <% weekDates.forEach(date => {
+            const _ds = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+            const _dc = dailyCostMap[_ds] || 0;
+          %>
+          <td class="p-2 border-r border-slate-100 text-center">
+            <% if (_dc > 0) { %>
+              <span class="text-xs font-semibold text-amber-700"><%= _dc.toFixed(2) %> zł</span>
+            <% } else { %>
+              <span class="text-xs text-slate-300">—</span>
+            <% } %>
+          </td>
+          <% }) %>
+          <td class="p-2 border-l border-slate-200 text-center">
+            <% if (_totalWeekCost > 0) { %>
+              <span class="text-xs font-bold text-amber-700"><%= _totalWeekCost.toFixed(2) %> zł</span>
+            <% } else { %>
+              <span class="text-xs text-slate-300">—</span>
+            <% } %>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+
+    <% if (user.role === 'location_manager' && adminChanges && adminChanges.length > 0) { %>
+    <% const adminName = adminChanges[0].admin_name || 'Administrator'; %>
+    <div class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-base">★</span>
+        <h3 class="font-semibold text-slate-800 text-sm">Zmiany wprowadzone przez <span class="text-amber-700"><%= adminName %></span> (<%= adminChanges.length %>)</h3>
+      </div>
+      <div class="space-y-1">
+        <% adminChanges.forEach(ch => { %>
+          <div class="flex items-center gap-2 text-xs text-slate-700 py-1 border-b border-yellow-100 last:border-0">
+            <span class="font-medium w-28 truncate"><%= ch.user_name %></span>
+            <span class="text-slate-400"><%= ch.date %></span>
+            <span class="font-medium text-blue-700"><%= ch.shift_name %></span>
+            <span class="text-slate-500"><%= ch.start_time %> – <%= ch.end_time %></span>
+            <% if (ch.admin_name && ch.admin_name !== adminName) { %><span class="text-slate-400 ml-auto">(<%=ch.admin_name%>)</span><% } %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+    <% } %>
+
+    <% } %>
+  </div>
+</main>
+
+
+<!-- Add Shift Modal -->
+<div id="addShiftModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Dodaj zmianę</h3>
+      <button onclick="closeAddShift()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+    </div>
+    <form id="addShiftForm" class="p-5 space-y-4">
+      <input type="hidden" id="modalDate" name="date">
+      <input type="hidden" id="modalUserId" name="userId">
+      <input type="hidden" id="modalScheduleId" name="scheduleId">
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Szablon zmiany</label>
+        <select id="modalTemplate" name="shiftTemplateId" onchange="applyTemplate()" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">— Własne godziny —</option>
+          <% shiftTemplates.forEach(t => { %>
+          <option value="<%= t.id %>" data-start="<%= t.start_time %>" data-end="<%= t.end_time %>" data-color="<%= t.color %>">
+            <%= t.name %> (<%= t.start_time %> – <%= t.end_time %>)
+          </option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div id="customTimeFields" class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Początek</label>
+          <div id="modalStartPicker" class="time-picker flex items-center gap-1">
+            <select class="tp-hour flex-1 px-2 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">hh</option>
+              <% for(let h=0;h<24;h++){const hh=String(h).padStart(2,'0'); %><option value="<%= hh %>"><%= hh %></option><% } %>
+            </select>
+            <span class="text-slate-400 font-semibold">:</span>
+            <select class="tp-min w-16 px-2 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">mm</option>
+              <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
+            </select>
+            <input type="hidden" id="modalStart" name="customStart">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Koniec</label>
+          <div id="modalEndPicker" class="time-picker flex items-center gap-1">
+            <select class="tp-hour flex-1 px-2 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">hh</option>
+              <% for(let h=0;h<24;h++){const hh=String(h).padStart(2,'0'); %><option value="<%= hh %>"><%= hh %></option><% } %>
+            </select>
+            <span class="text-slate-400 font-semibold">:</span>
+            <select class="tp-min w-16 px-2 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="syncTimePicker(this.closest('.time-picker'))">
+              <option value="">mm</option>
+              <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
+            </select>
+            <input type="hidden" id="modalEnd" name="customEnd">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Notatka (opcjonalnie)</label>
+        <input type="text" name="notes" placeholder="np. zastępstwo" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <div id="modalError" class="hidden p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"></div>
+
+      <div class="flex gap-3 pt-1">
+        <button type="button" onclick="closeAddShift()" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
+        <button type="submit" class="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Dodaj zmianę</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div class="p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800">Odrzuć grafik</h3>
+    </div>
+    <form action="/schedule/week/<%= weekStart %>/reject" method="POST" class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Powód odrzucenia</label>
+        <textarea name="notes" rows="3" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="Opisz powód..."></textarea>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" onclick="document.getElementById('rejectModal').classList.add('hidden')" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Anuluj</button>
+        <button type="submit" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">Odrzuć grafik</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/schedule.js"></script>
+<%- include('../partials/footer') %>
