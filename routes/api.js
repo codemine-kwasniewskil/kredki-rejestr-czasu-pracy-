@@ -275,4 +275,130 @@ router.get('/schedule/week-hours/:weekStart', requireRole('admin', 'location_man
   }
 });
 
+router.post('/schedule/propose', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const { weekStart, scheduleId, strategy } = req.body;
+    if (!weekStart || !scheduleId || !strategy) {
+      return res.status(400).json({ error: 'Brakujące parametry.' });
+    }
+    if (!['min_cost', 'fill_min_hours', 'fair_share'].includes(strategy)) {
+      return res.status(400).json({ error: 'Nieznana strategia.' });
+    }
+
+    const { getWeekDates, toDateString } = require('../utils/helpers');
+
+    const workers = await db.all(`
+      SELECT u.id, u.name, c.min_hours_per_month, c.hourly_rate
+      FROM users u
+      LEFT JOIN contracts c ON c.user_id = u.id AND c.active = 1
+      WHERE u.active = 1 AND u.role IN ('worker', 'location_manager')
+      ORDER BY u.name
+    `);
+    if (!workers.length) return res.json({ proposals: [] });
+
+    const weekDates = getWeekDates(weekStart);
+    const dateStrings = weekDates.map(toDateString);
+    const workerIds = workers.map(w => w.id);
+
+    const availRows = await db.all(
+      `SELECT user_id, date, start_time, end_time FROM availability WHERE user_id IN (?) AND date IN (?) AND status = 'available'`,
+      [workerIds, dateStrings]
+    );
+    const availMap = {};
+    for (const a of availRows) availMap[`${a.user_id}_${a.date}`] = { startTime: a.start_time, endTime: a.end_time };
+
+    const existingEntries = await db.all(
+      `SELECT user_id, date FROM schedule_entries WHERE schedule_id = ?`,
+      [scheduleId]
+    );
+    const existingSet = new Set(existingEntries.map(e => `${e.user_id}_${e.date}`));
+
+    const monthPrefix = weekStart.substring(0, 7);
+    const monthEntries = await db.all(`
+      SELECT se.user_id,
+             COALESCE(se.custom_start, st.start_time) as start_time,
+             COALESCE(se.custom_end, st.end_time) as end_time
+      FROM schedule_entries se
+      LEFT JOIN shift_templates st ON st.id = se.shift_template_id
+      WHERE se.date LIKE ?
+    `, [monthPrefix + '%']);
+    const monthHours = {};
+    for (const e of monthEntries) {
+      monthHours[e.user_id] = (monthHours[e.user_id] || 0) + calcHours(e.start_time, e.end_time);
+    }
+
+    const templates = await db.all(`SELECT * FROM shift_templates WHERE active = 1 ORDER BY start_time`);
+    if (!templates.length) return res.status(400).json({ error: 'Brak aktywnych szablonów zmian.' });
+
+    const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+
+    const findBestTemplate = (availStart, availEnd) => {
+      if (!availStart || !availEnd) {
+        return templates.reduce((best, t) =>
+          calcHours(t.start_time, t.end_time) > calcHours(best.start_time, best.end_time) ? t : best
+        , templates[0]);
+      }
+      const avs = toMin(availStart);
+      const ave = toMin(availEnd);
+      const fitting = templates.filter(t => toMin(t.start_time) >= avs && toMin(t.end_time) <= ave);
+      if (fitting.length) {
+        return fitting.reduce((best, t) =>
+          calcHours(t.start_time, t.end_time) > calcHours(best.start_time, best.end_time) ? t : best
+        , fitting[0]);
+      }
+      const withOverlap = templates
+        .map(t => ({ t, overlap: Math.max(0, Math.min(toMin(t.end_time), ave) - Math.max(toMin(t.start_time), avs)) }))
+        .filter(x => x.overlap > 0);
+      return withOverlap.length ? withOverlap.sort((a, b) => b.overlap - a.overlap)[0].t : null;
+    };
+
+    const propCount = {};
+    const propHours = {};
+    const proposals = [];
+
+    for (const dateStr of dateStrings) {
+      const available = workers.filter(w =>
+        availMap[`${w.id}_${dateStr}`] && !existingSet.has(`${w.id}_${dateStr}`)
+      );
+
+      let sorted;
+      if (strategy === 'min_cost') {
+        sorted = [...available].sort((a, b) => (a.hourly_rate ?? 99999) - (b.hourly_rate ?? 99999));
+      } else if (strategy === 'fill_min_hours') {
+        sorted = [...available].sort((a, b) => {
+          const remA = (a.min_hours_per_month || 0) - (monthHours[a.id] || 0) - (propHours[a.id] || 0);
+          const remB = (b.min_hours_per_month || 0) - (monthHours[b.id] || 0) - (propHours[b.id] || 0);
+          return remB - remA;
+        });
+      } else {
+        sorted = [...available].sort((a, b) => (propCount[a.id] || 0) - (propCount[b.id] || 0));
+      }
+
+      for (const worker of sorted) {
+        const avail = availMap[`${worker.id}_${dateStr}`];
+        const template = findBestTemplate(avail?.startTime, avail?.endTime);
+        if (!template) continue;
+
+        proposals.push({
+          userId: worker.id,
+          userName: worker.name,
+          date: dateStr,
+          shiftTemplateId: template.id,
+          shiftName: template.name,
+          startTime: template.start_time,
+          endTime: template.end_time,
+          color: template.color,
+        });
+        propCount[worker.id] = (propCount[worker.id] || 0) + 1;
+        propHours[worker.id] = (propHours[worker.id] || 0) + calcHours(template.start_time, template.end_time);
+      }
+    }
+
+    res.json({ proposals });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 module.exports = router;
