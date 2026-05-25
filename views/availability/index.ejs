@@ -83,10 +83,16 @@ if (lockBeforeStr) {
         const monthLabel = MONTHS_PL[firstDay.getMonth()] + ' ' + firstDay.getFullYear();
         const monthStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-01`;
         const monthLocked = lockBeforeStr && monthStr < lockBeforeStr;
+        const weekStartStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-${String(firstDay.getDate()).padStart(2,'0')}`;
+        const isCurrentWeek = weekStartStr === currentWeekStart;
+        const isEntireWeekPast = weekDays.every(d => {
+          const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          return ds < todayStr;
+        });
       %>
         <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey; %>
         <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3">
-          <h2 class="text-sm font-semibold <%= monthLocked ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
+          <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : monthLocked ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
             <%= monthLabel %>
             <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span><% } %>
           </h2>
@@ -94,7 +100,7 @@ if (lockBeforeStr) {
         </div>
         <% } %>
 
-      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div id="<%= isCurrentWeek ? 'current-week' : '' %>" class="bg-white rounded-xl border <%= isCurrentWeek ? 'border-blue-400 ring-2 ring-blue-200' : 'border-slate-200' %> overflow-hidden <%= isEntireWeekPast ? 'opacity-60' : '' %>">
         <div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200">
           <span class="text-xs text-slate-500">
             <%= weekDays[0].getDate() %>.<%= String(weekDays[0].getMonth()+1).padStart(2,'0') %> –
@@ -116,8 +122,7 @@ if (lockBeforeStr) {
           <div
             class="relative group/day <%= canEdit ? 'cursor-pointer hover:brightness-95' : (!isPast ? 'opacity-50 cursor-not-allowed' : 'cursor-default') %> transition-all p-1 flex flex-col items-center justify-between border-r border-slate-100 last:border-0 min-h-16 select-none availability-day
               <%= status === 'available' ? 'bg-emerald-50' : status === 'unavailable' ? 'bg-red-50' : 'bg-white' %>
-              <%= isToday ? 'ring-2 ring-blue-400 ring-inset' : '' %>
-              <%= isPast ? 'opacity-40' : '' %>"
+              <%= isToday ? 'ring-2 ring-blue-400 ring-inset' : '' %>"
             data-date="<%= dateStr %>"
             data-status="<%= status || '' %>"
             data-start-time="<%= startTime || '' %>"
@@ -206,6 +211,12 @@ if (lockBeforeStr) {
 
 <script>
 const availabilityTargetUserId = <%= targetUserId %>;
+
+// Scroll to current week on load
+window.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('current-week');
+  if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+});
 function showToast(msg, type) {
   const tc = document.getElementById('toastContainer');
   const t = document.createElement('div');

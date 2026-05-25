@@ -26,10 +26,15 @@ router.get('/', requireAuth, async (req, res) => {
       ? res.locals.user
       : (allUsers.find(u => u.id === targetUserId) || res.locals.user);
 
+    const isManager = role === 'admin' || role === 'location_manager';
+    const pastWeeks = isManager ? 12 : 0;
+    const rangeStart = new Date(start);
+    rangeStart.setDate(start.getDate() - pastWeeks * 7);
+
     const weeks = [];
-    for (let w = 0; w < 26; w++) {
-      const weekStart = new Date(start);
-      weekStart.setDate(start.getDate() + w * 7);
+    for (let w = 0; w < 26 + pastWeeks; w++) {
+      const weekStart = new Date(rangeStart);
+      weekStart.setDate(rangeStart.getDate() + w * 7);
       weeks.push(getWeekDates(toDateString(weekStart)));
     }
 
@@ -63,8 +68,10 @@ router.get('/', requireAuth, async (req, res) => {
       (targetUser && targetUser.availability_locked)
     );
 
+    const currentWeekStart = toDateString(start);
+
     res.render('availability/index', {
-      weeks, availMap, todayStr, allUsers, targetUserId, targetUser, lockBeforeStr, targetUserLocked
+      weeks, availMap, todayStr, allUsers, targetUserId, targetUser, lockBeforeStr, targetUserLocked, currentWeekStart
     });
   } catch (err) {
     console.error(err);
