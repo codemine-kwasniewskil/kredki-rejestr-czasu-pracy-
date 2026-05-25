@@ -7,34 +7,18 @@ const { log } = require('../utils/logger');
 
 router.get('/', requireAuth, (req, res) => res.redirect('/dashboard'));
 
-router.get('/dashboard', requireAuth, (req, res) => {
-  const { id, role } = res.locals.user;
-  const workers = db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE role='worker' AND active=1`).get();
-  const pending = db.prepare(`SELECT COUNT(*) as cnt FROM schedules WHERE status='submitted'`).get();
+router.get('/dashboard', requireAuth, async (req, res) => {
+  try {
+    const { id, role } = res.locals.user;
+    const workers = await db.get(`SELECT COUNT(*) as cnt FROM users WHERE role='worker' AND active=1`);
+    const pending = await db.get(`SELECT COUNT(*) as cnt FROM schedules WHERE status='submitted'`);
 
-  let myShifts = [];
-  let mySchedule = null;
-  if (role === 'worker') {
-    const { toDateString } = require('../utils/helpers');
-    const todayStr = toDateString(new Date());
-    myShifts = db.prepare(`
-      SELECT se.date,
-             COALESCE(st.name,'Własna') as shift_name,
-             COALESCE(se.custom_start, st.start_time) as start_time,
-             COALESCE(se.custom_end, st.end_time) as end_time,
-             COALESCE(st.color,'#6B7280') as color
-      FROM schedule_entries se
-      LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-      JOIN schedules s ON s.id = se.schedule_id
-      WHERE s.status='approved' AND se.user_id=? AND se.date>=?
-      ORDER BY se.date ASC
-    `).all(id, todayStr);
-  } else if (role === 'location_manager') {
-    const { getMonday, toDateString } = require('../utils/helpers');
-    const weekStart = toDateString(getMonday(new Date()));
-    const schedule = db.prepare(`SELECT * FROM schedules WHERE week_start=?`).get(weekStart);
-    if (schedule) {
-      myShifts = db.prepare(`
+    let myShifts = [];
+    let mySchedule = null;
+    if (role === 'worker') {
+      const { toDateString } = require('../utils/helpers');
+      const todayStr = toDateString(new Date());
+      myShifts = await db.all(`
         SELECT se.date,
                COALESCE(st.name,'Własna') as shift_name,
                COALESCE(se.custom_start, st.start_time) as start_time,
@@ -42,98 +26,117 @@ router.get('/dashboard', requireAuth, (req, res) => {
                COALESCE(st.color,'#6B7280') as color
         FROM schedule_entries se
         LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-        WHERE se.schedule_id=? AND se.user_id=?
-        ORDER BY se.date
-      `).all(schedule.id, id);
-      mySchedule = schedule;
+        JOIN schedules s ON s.id = se.schedule_id
+        WHERE s.status='approved' AND se.user_id=? AND se.date>=?
+        ORDER BY se.date ASC
+      `, [id, todayStr]);
+    } else if (role === 'location_manager') {
+      const { getMonday, toDateString } = require('../utils/helpers');
+      const weekStart = toDateString(getMonday(new Date()));
+      const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [weekStart]);
+      if (schedule) {
+        myShifts = await db.all(`
+          SELECT se.date,
+                 COALESCE(st.name,'Własna') as shift_name,
+                 COALESCE(se.custom_start, st.start_time) as start_time,
+                 COALESCE(se.custom_end, st.end_time) as end_time,
+                 COALESCE(st.color,'#6B7280') as color
+          FROM schedule_entries se
+          LEFT JOIN shift_templates st ON st.id = se.shift_template_id
+          WHERE se.schedule_id=? AND se.user_id=?
+          ORDER BY se.date
+        `, [schedule.id, id]);
+        mySchedule = schedule;
+      }
     }
-  }
 
-  let workerHours = [];
-  if (role === 'location_manager' || role === 'admin') {
+    let workerHours = [];
+    if (role === 'location_manager' || role === 'admin') {
+      const { calcHours } = require('../utils/helpers');
+      const today = new Date();
+      const monthPrefix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      const allWorkers = await db.all(`
+        SELECT u.id, u.name, c.min_hours_per_month
+        FROM users u
+        LEFT JOIN contracts c ON c.user_id=u.id AND c.active=1
+        WHERE u.role='worker' AND u.active=1
+        ORDER BY u.name
+      `);
+      const monthEntries = await db.all(`
+        SELECT se.user_id,
+               COALESCE(se.custom_start, st.start_time) as start_time,
+               COALESCE(se.custom_end, st.end_time) as end_time
+        FROM schedule_entries se
+        LEFT JOIN shift_templates st ON st.id = se.shift_template_id
+        WHERE se.date LIKE ?
+      `, [monthPrefix + '%']);
+      workerHours = allWorkers.map(w => {
+        const total = monthEntries
+          .filter(e => e.user_id === w.id)
+          .reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
+        return { ...w, scheduledHours: total };
+      });
+    }
+
+    const pendingSchedules = role === 'admin'
+      ? await db.all(`SELECT * FROM schedules WHERE status='submitted' ORDER BY week_start`)
+      : [];
+
+    const approvedSchedules = role === 'admin'
+      ? await db.all(`SELECT * FROM schedules WHERE status='approved' ORDER BY week_start DESC LIMIT 20`)
+      : [];
+
     const { calcHours } = require('../utils/helpers');
-    const today = new Date();
-    const monthPrefix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const allWorkers = db.prepare(`
-      SELECT u.id, u.name, c.min_hours_per_month
-      FROM users u
-      LEFT JOIN contracts c ON c.user_id=u.id AND c.active=1
-      WHERE u.role='worker' AND u.active=1
-      ORDER BY u.name
-    `).all();
-    const monthEntries = db.prepare(`
-      SELECT se.user_id,
-             COALESCE(se.custom_start, st.start_time) as start_time,
-             COALESCE(se.custom_end, st.end_time) as end_time
-      FROM schedule_entries se
-      LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-      WHERE se.date LIKE ?
-    `).all(monthPrefix + '%');
-    workerHours = allWorkers.map(w => {
-      const total = monthEntries
-        .filter(e => e.user_id === w.id)
-        .reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
-      return { ...w, scheduledHours: total };
-    });
-  }
+    const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+    const monthlyHoursHistory = [];
+    const today2 = new Date();
+    const currentPrefix = `${today2.getFullYear()}-${String(today2.getMonth() + 1).padStart(2, '0')}`;
 
-  const pendingSchedules = role === 'admin'
-    ? db.prepare(`SELECT * FROM schedules WHERE status='submitted' ORDER BY week_start`).all()
-    : [];
-
-  const approvedSchedules = role === 'admin'
-    ? db.prepare(`SELECT * FROM schedules WHERE status='approved' ORDER BY week_start DESC LIMIT 20`).all()
-    : [];
-
-  const { calcHours } = require('../utils/helpers');
-  const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
-  const monthlyHoursHistory = [];
-  const today2 = new Date();
-  const currentPrefix = `${today2.getFullYear()}-${String(today2.getMonth() + 1).padStart(2, '0')}`;
-
-  if (role === 'worker') {
-    // All months where worker has approved hours
-    const workedMonths = db.prepare(`
-      SELECT DISTINCT substr(se.date,1,7) as prefix
-      FROM schedule_entries se
-      JOIN schedules s ON s.id=se.schedule_id
-      WHERE se.user_id=? AND s.status='approved'
-      ORDER BY prefix DESC
-    `).all(id).map(m => m.prefix);
-    const prefixes = [...new Set([currentPrefix, ...workedMonths])].sort().reverse();
-    for (const prefix of prefixes) {
-      const [y, mo] = prefix.split('-').map(Number);
-      const label = MONTHS_PL[mo - 1] + ' ' + y;
-      const entries = db.prepare(`
-        SELECT COALESCE(se.custom_start, st.start_time) as start_time,
-               COALESCE(se.custom_end, st.end_time) as end_time
+    if (role === 'worker') {
+      const workedMonths = (await db.all(`
+        SELECT DISTINCT SUBSTRING(se.date, 1, 7) as prefix
         FROM schedule_entries se
-        LEFT JOIN shift_templates st ON st.id=se.shift_template_id
         JOIN schedules s ON s.id=se.schedule_id
-        WHERE se.date LIKE ? AND se.user_id=? AND s.status='approved'
-      `).all(prefix + '%', id);
-      const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
-      monthlyHoursHistory.push({ prefix, label, hours });
+        WHERE se.user_id=? AND s.status='approved'
+        ORDER BY prefix DESC
+      `, [id])).map(m => m.prefix);
+      const prefixes = [...new Set([currentPrefix, ...workedMonths])].sort().reverse();
+      for (const prefix of prefixes) {
+        const [y, mo] = prefix.split('-').map(Number);
+        const label = MONTHS_PL[mo - 1] + ' ' + y;
+        const entries = await db.all(`
+          SELECT COALESCE(se.custom_start, st.start_time) as start_time,
+                 COALESCE(se.custom_end, st.end_time) as end_time
+          FROM schedule_entries se
+          LEFT JOIN shift_templates st ON st.id=se.shift_template_id
+          JOIN schedules s ON s.id=se.schedule_id
+          WHERE se.date LIKE ? AND se.user_id=? AND s.status='approved'
+        `, [prefix + '%', id]);
+        const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
+        monthlyHoursHistory.push({ prefix, label, hours });
+      }
+    } else {
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(today2.getFullYear(), today2.getMonth() - i, 1);
+        const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = MONTHS_PL[d.getMonth()] + ' ' + d.getFullYear();
+        const entries = await db.all(`
+          SELECT COALESCE(se.custom_start, st.start_time) as start_time,
+                 COALESCE(se.custom_end, st.end_time) as end_time
+          FROM schedule_entries se
+          LEFT JOIN shift_templates st ON st.id=se.shift_template_id
+          WHERE se.date LIKE ? AND se.user_id=?
+        `, [prefix + '%', id]);
+        const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
+        if (i === 0 || hours > 0) monthlyHoursHistory.push({ prefix, label, hours });
+      }
     }
-  } else {
-    // Admin/manager: last 6 months
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(today2.getFullYear(), today2.getMonth() - i, 1);
-      const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = MONTHS_PL[d.getMonth()] + ' ' + d.getFullYear();
-      const entries = db.prepare(`
-        SELECT COALESCE(se.custom_start, st.start_time) as start_time,
-               COALESCE(se.custom_end, st.end_time) as end_time
-        FROM schedule_entries se
-        LEFT JOIN shift_templates st ON st.id=se.shift_template_id
-        WHERE se.date LIKE ? AND se.user_id=?
-      `).all(prefix + '%', id);
-      const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
-      if (i === 0 || hours > 0) monthlyHoursHistory.push({ prefix, label, hours });
-    }
-  }
 
-  res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory });
+    res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory });
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
 });
 
 router.get('/login', (req, res) => {
@@ -141,19 +144,24 @@ router.get('/login', (req, res) => {
   res.render('auth/login');
 });
 
-router.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE email=? AND active=1').get(email);
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    log({ id: null, name: email || '?', role: '?' }, 'Nieudana próba logowania', email || '');
-    req.flash('error', 'Nieprawidłowy e-mail lub hasło.');
-    return res.redirect('/login');
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await db.get('SELECT * FROM users WHERE email=? AND active=1', [email]);
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      log({ id: null, name: email || '?', role: '?' }, 'Nieudana próba logowania', email || '');
+      req.flash('error', 'Nieprawidłowy e-mail lub hasło.');
+      return res.redirect('/login');
+    }
+    req.session.userId = user.id;
+    req.session.userName = user.name;
+    req.session.userRole = user.role;
+    log(user, 'Logowanie', user.email);
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
   }
-  req.session.userId = user.id;
-  req.session.userName = user.name;
-  req.session.userRole = user.role;
-  log(user, 'Logowanie', user.email);
-  res.redirect('/dashboard');
 });
 
 router.get('/logout', (req, res) => {
