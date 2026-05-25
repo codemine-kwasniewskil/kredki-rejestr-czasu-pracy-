@@ -352,6 +352,12 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
       return withOverlap.length ? withOverlap.sort((a, b) => b.overlap - a.overlap)[0].t : null;
     };
 
+    // Workers available on fewer days get priority (scarcity = fewer options = schedule them first)
+    const weekAvailCount = {};
+    for (const w of workers) {
+      weekAvailCount[w.id] = dateStrings.filter(d => availMap[`${w.id}_${d}`]).length;
+    }
+
     const propCount = {};
     const propHours = {};
     const proposals = [];
@@ -361,18 +367,22 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
         availMap[`${w.id}_${dateStr}`] && !existingSet.has(`${w.id}_${dateStr}`)
       );
 
-      let sorted;
-      if (strategy === 'min_cost') {
-        sorted = [...available].sort((a, b) => (a.hourly_rate ?? 99999) - (b.hourly_rate ?? 99999));
-      } else if (strategy === 'fill_min_hours') {
-        sorted = [...available].sort((a, b) => {
+      const strategyCmp = (a, b) => {
+        if (strategy === 'min_cost') return (a.hourly_rate ?? 99999) - (b.hourly_rate ?? 99999);
+        if (strategy === 'fill_min_hours') {
           const remA = (a.min_hours_per_month || 0) - (monthHours[a.id] || 0) - (propHours[a.id] || 0);
           const remB = (b.min_hours_per_month || 0) - (monthHours[b.id] || 0) - (propHours[b.id] || 0);
           return remB - remA;
-        });
-      } else {
-        sorted = [...available].sort((a, b) => (propCount[a.id] || 0) - (propCount[b.id] || 0));
-      }
+        }
+        return (propCount[a.id] || 0) - (propCount[b.id] || 0); // fair_share
+      };
+
+      // Primary: availability scarcity (fewer available days in week = higher priority)
+      // Tiebreaker: selected strategy
+      const sorted = [...available].sort((a, b) => {
+        const scarcity = (weekAvailCount[a.id] || 0) - (weekAvailCount[b.id] || 0);
+        return scarcity !== 0 ? scarcity : strategyCmp(a, b);
+      });
 
       for (const worker of sorted) {
         const avail = availMap[`${worker.id}_${dateStr}`];
