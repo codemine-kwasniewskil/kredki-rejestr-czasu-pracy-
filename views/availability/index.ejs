@@ -7,7 +7,9 @@
 const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
 let lockFirstEditableLabel = '';
 let lockLastLockedLabel = '';
-if (lockBeforeStr) {
+const _todayMonthStr = todayStr.substring(0, 7) + '-01';
+const lockIsForFutureMonths = !!(lockBeforeStr && lockBeforeStr > _todayMonthStr);
+if (lockBeforeStr && lockIsForFutureMonths) {
   const [_lby, _lbm] = lockBeforeStr.split('-').map(Number);
   lockFirstEditableLabel = MONTHS_PL[_lbm - 1] + ' ' + _lby;
   const _lli = ((_lbm - 2) + 12) % 12;

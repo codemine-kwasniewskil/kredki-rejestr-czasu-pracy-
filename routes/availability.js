@@ -49,24 +49,28 @@ router.get('/', requireAuth, async (req, res) => {
 
     const todayStr = toDateString(today);
 
-    let lockBeforeStr = null;
-    if (role !== 'admin') {
-      const cutoff = 10;
-      const firstEditable = today.getDate() <= cutoff
-        ? new Date(today.getFullYear(), today.getMonth() + 1, 1)
-        : new Date(today.getFullYear(), today.getMonth() + 2, 1);
-      const fy = firstEditable.getFullYear();
-      const fm = String(firstEditable.getMonth() + 1).padStart(2, '0');
-      lockBeforeStr = `${fy}-${fm}-01`;
-    }
-
     const targetUserDbRow = role === 'worker'
       ? await db.get('SELECT availability_locked FROM users WHERE id=?', [loggedInUserId])
       : null;
-    const targetUserLocked = !!(
-      (targetUserDbRow && targetUserDbRow.availability_locked) ||
-      (targetUser && targetUser.availability_locked)
-    );
+    // Use only fresh DB data for worker's locked status — session data may be stale after admin unlock
+    const targetUserLocked = role === 'worker'
+      ? !!(targetUserDbRow && targetUserDbRow.availability_locked)
+      : !!(targetUser && targetUser.availability_locked);
+
+    let lockBeforeStr = null;
+    if (role !== 'admin') {
+      if (targetUserLocked) {
+        // Admin-locked: use the automatic deadline cutoff (irrelevant since all dates are blocked anyway)
+        const cutoff = 10;
+        const firstEditable = today.getDate() <= cutoff
+          ? new Date(today.getFullYear(), today.getMonth() + 1, 1)
+          : new Date(today.getFullYear(), today.getMonth() + 2, 1);
+        lockBeforeStr = `${firstEditable.getFullYear()}-${String(firstEditable.getMonth() + 1).padStart(2, '0')}-01`;
+      } else {
+        // Not admin-locked: allow editing from the start of the current month
+        lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+      }
+    }
 
     const currentWeekStart = toDateString(start);
 

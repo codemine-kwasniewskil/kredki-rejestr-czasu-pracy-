@@ -133,13 +133,9 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
 
     if (role !== 'admin') {
       const today = new Date();
-      const cutoff = 10;
-      const firstEditable = today.getDate() <= cutoff
-        ? new Date(today.getFullYear(), today.getMonth() + 1, 1)
-        : new Date(today.getFullYear(), today.getMonth() + 2, 1);
-      const lockBeforeStr = `${firstEditable.getFullYear()}-${String(firstEditable.getMonth() + 1).padStart(2, '0')}-01`;
+      const lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
       if (date < lockBeforeStr) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji (po 10-ym poprzedniego miesiąca).' });
+        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
     }
 
@@ -190,11 +186,7 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
 
     if (role !== 'admin') {
       const today = new Date();
-      const cutoff = 10;
-      const firstEditable = today.getDate() <= cutoff
-        ? new Date(today.getFullYear(), today.getMonth() + 1, 1)
-        : new Date(today.getFullYear(), today.getMonth() + 2, 1);
-      const lockBeforeStr = `${firstEditable.getFullYear()}-${String(firstEditable.getMonth() + 1).padStart(2, '0')}-01`;
+      const lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
       if (date < lockBeforeStr) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
