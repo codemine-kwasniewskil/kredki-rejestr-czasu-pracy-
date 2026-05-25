@@ -45,6 +45,7 @@ app.use('/availability', require('./routes/availability'));
 app.use('/contracts', require('./routes/contracts'));
 app.use('/api', require('./routes/api'));
 app.use('/logs', require('./routes/logs'));
+app.use('/reports', require('./routes/reports'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));
 

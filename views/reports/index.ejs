@@ -1,0 +1,205 @@
+<% locals.currentPath = '/reports'; %>
+<%- include('../partials/head', { title: 'Raport dostępności' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+  <div class="max-w-6xl mx-auto">
+
+    <div class="mb-5 flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Raport: dostępność vs przepracowane godziny</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Porównanie zadeklarowanej dostępności z zaplanowanymi godzinami pracy — <strong class="text-slate-700"><%= monthLabel %></strong>.</p>
+      </div>
+      <form method="GET" action="/reports" class="flex items-center gap-2">
+        <label class="text-sm text-slate-600 font-medium">Miesiąc:</label>
+        <select name="month" onchange="this.form.submit()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+          <% monthOptions.forEach(o => { %>
+          <option value="<%= o.val %>" <%= o.val === month ? 'selected' : '' %>><%= o.label %></option>
+          <% }) %>
+        </select>
+      </form>
+    </div>
+
+    <!-- Legend -->
+    <div class="flex flex-wrap gap-4 mb-4 p-3 bg-white rounded-xl border border-slate-200 text-xs">
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span><span class="text-slate-600">OK – brak konfliktów</span></div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span><span class="text-slate-600">Poza zadeklarowanymi godzinami</span></div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span><span class="text-slate-600">Zaplanowany/a mimo niedostępności lub braku deklaracji</span></div>
+    </div>
+
+    <!-- Summary table -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200">
+              <th class="text-left px-4 py-3 font-semibold text-slate-600">Pracownik</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Dni dostępny</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Zadeklarowane godz.</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Zaplanowane dni</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Zaplanowane godz.</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Min. godz. / mies.</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap">Konflikty</th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <% if (workerStats.length === 0) { %>
+            <tr><td colspan="8" class="px-4 py-8 text-center text-slate-400">Brak pracowników.</td></tr>
+            <% } %>
+            <% workerStats.forEach(w => {
+              const hasHardConflict = w.conflicts.some(c => c.type === 'unavailable' || c.type === 'no_availability');
+              const hasSoftConflict = !hasHardConflict && w.conflicts.some(c => c.type === 'outside_hours');
+              const isOk = w.conflicts.length === 0;
+              const dotClass = hasHardConflict ? 'bg-red-500' : hasSoftConflict ? 'bg-amber-400' : 'bg-emerald-500';
+            %>
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full flex-shrink-0 <%= dotClass %>"></span>
+                  <span class="font-medium text-slate-800"><%= w.name %></span>
+                </div>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <span class="<%= w.availDays > 0 ? 'text-emerald-700 font-semibold' : 'text-slate-400' %>"><%= w.availDays %></span>
+                <% if (w.unavailDays > 0) { %>
+                  <span class="text-slate-400 text-xs ml-1">(+<%= w.unavailDays %> nd.)</span>
+                <% } %>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <% if (w.availHoursWithTime > 0) { %>
+                  <span class="font-semibold text-slate-800"><%= formatHours(w.availHoursWithTime) %></span>
+                <% } else { %>
+                  <span class="text-slate-400">—</span>
+                <% } %>
+                <% if (w.availDaysNoTime > 0) { %>
+                  <div class="text-xs text-slate-400 leading-tight"><%= w.availDaysNoTime %> dni bez godz.</div>
+                <% } %>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <span class="<%= w.scheduledDays > 0 ? 'text-slate-800 font-semibold' : 'text-slate-400' %>"><%= w.scheduledDays %></span>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <% if (w.scheduledHours > 0) { %>
+                  <span class="font-semibold text-slate-800"><%= formatHours(w.scheduledHours) %></span>
+                  <% if (w.availHoursWithTime > 0) {
+                    const diff = w.scheduledHours - w.availHoursWithTime;
+                  %>
+                    <div class="text-xs <%= diff > 0 ? 'text-amber-600' : 'text-emerald-600' %> leading-tight">
+                      <%= diff > 0 ? '+' : '' %><%= formatHours(Math.abs(diff)) %> <%= diff > 0 ? 'więcej' : 'mniej' %>
+                    </div>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-slate-400">—</span>
+                <% } %>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <% if (w.min_hours_per_month) { %>
+                  <div class="flex flex-col items-center gap-1">
+                    <span class="text-xs <%= w.scheduledHours >= w.min_hours_per_month ? 'text-emerald-700 font-semibold' : 'text-red-600' %>">
+                      <%= formatHours(w.scheduledHours) %> / <%= w.min_hours_per_month %>h
+                    </span>
+                    <div class="w-20 bg-slate-100 rounded-full h-1.5">
+                      <div class="h-1.5 rounded-full <%= w.scheduledHours >= w.min_hours_per_month ? 'bg-emerald-500' : 'bg-blue-500' %>"
+                           style="width:<%= Math.min(100, (w.scheduledHours / w.min_hours_per_month) * 100).toFixed(1) %>%"></div>
+                    </div>
+                  </div>
+                <% } else { %>
+                  <span class="text-slate-400 text-xs">brak umowy</span>
+                <% } %>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <% if (w.conflicts.length === 0) { %>
+                  <span class="text-emerald-600 font-medium text-xs">brak</span>
+                <% } else { %>
+                  <button onclick="toggleConflicts(<%= w.id %>)"
+                    class="text-xs font-semibold px-2 py-1 rounded-full <%= hasHardConflict ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200' %> transition-colors">
+                    <%= w.conflicts.length %> <%= w.conflicts.length === 1 ? 'konflikt' : w.conflicts.length < 5 ? 'konflikty' : 'konfliktów' %>
+                  </button>
+                <% } %>
+              </td>
+              <td class="px-3 py-3 text-center">
+                <% if (hasHardConflict) { %>
+                  <span class="text-xs font-semibold text-red-600">Konflikt</span>
+                <% } else if (hasSoftConflict) { %>
+                  <span class="text-xs font-semibold text-amber-600">Ostrzeżenie</span>
+                <% } else if (w.scheduledDays === 0 && w.availDays === 0) { %>
+                  <span class="text-xs text-slate-400">Brak danych</span>
+                <% } else { %>
+                  <span class="text-xs font-semibold text-emerald-600">OK</span>
+                <% } %>
+              </td>
+            </tr>
+
+            <!-- Conflict details row (hidden by default) -->
+            <% if (w.conflicts.length > 0) { %>
+            <tr id="conflicts-<%= w.id %>" class="hidden bg-red-50 border-t-0">
+              <td colspan="8" class="px-6 py-3">
+                <div class="text-xs font-semibold text-slate-600 mb-2">Szczegóły konfliktów — <%= w.name %>:</div>
+                <div class="space-y-1.5">
+                  <% w.conflicts.forEach(c => { %>
+                  <div class="flex items-start gap-3 p-2 rounded-lg <%= c.type === 'unavailable' ? 'bg-red-100 border border-red-200' : c.type === 'no_availability' ? 'bg-orange-100 border border-orange-200' : 'bg-amber-100 border border-amber-200' %>">
+                    <div class="w-4 h-4 rounded-full flex-shrink-0 mt-0.5
+                      <%= c.type === 'unavailable' ? 'bg-red-500' : c.type === 'no_availability' ? 'bg-orange-400' : 'bg-amber-400' %>">
+                    </div>
+                    <div>
+                      <span class="font-semibold text-slate-800"><%= c.date %></span>
+                      <span class="ml-2 text-slate-600">Zmiana: <%= c.shiftStart %> – <%= c.shiftEnd %></span>
+                      <% if (c.type === 'unavailable') { %>
+                        <span class="ml-2 text-red-700 font-medium">— pracownik zadeklarował NIEDOSTĘPNOŚĆ</span>
+                      <% } else if (c.type === 'no_availability') { %>
+                        <span class="ml-2 text-orange-700 font-medium">— brak deklaracji dostępności</span>
+                      <% } else { %>
+                        <span class="ml-2 text-amber-700 font-medium">— poza zadeklarowanymi godz. (<%= c.availStart %> – <%= c.availEnd %>)</span>
+                      <% } %>
+                    </div>
+                  </div>
+                  <% }) %>
+                </div>
+              </td>
+            </tr>
+            <% } %>
+
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <%
+      const totalWorkers = workerStats.length;
+      const conflictWorkers = workerStats.filter(w => w.conflicts.length > 0).length;
+      const totalScheduledHours = workerStats.reduce((s, w) => s + w.scheduledHours, 0);
+      const totalAvailHours = workerStats.reduce((s, w) => s + w.availHoursWithTime, 0);
+    %>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800"><%= totalWorkers %></div>
+        <div class="text-xs text-slate-500 mt-1">Pracownicy</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800"><%= formatHours(totalScheduledHours) %></div>
+        <div class="text-xs text-slate-500 mt-1">Łączne godz. zaplanowane</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-slate-800"><%= formatHours(totalAvailHours) %></div>
+        <div class="text-xs text-slate-500 mt-1">Łączne godz. zadeklarowane</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold <%= conflictWorkers > 0 ? 'text-red-600' : 'text-emerald-600' %>"><%= conflictWorkers %></div>
+        <div class="text-xs text-slate-500 mt-1">Pracownicy z konfliktami</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+function toggleConflicts(workerId) {
+  const row = document.getElementById('conflicts-' + workerId);
+  if (row) row.classList.toggle('hidden');
+}
+</script>
+
+<%- include('../partials/footer') %>
