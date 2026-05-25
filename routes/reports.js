@@ -18,7 +18,7 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
     );
 
     const workers = await db.all(`
-      SELECT u.id, u.name, c.min_hours_per_month
+      SELECT u.id, u.name, c.min_hours_per_month, c.hourly_rate
       FROM users u
       LEFT JOIN contracts c ON c.user_id = u.id AND c.active = 1
       WHERE u.active = 1 AND u.role IN ('worker', 'location_manager')
@@ -91,6 +91,9 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
         }
       }
 
+      const hourlyRate = w.hourly_rate || 0;
+      const totalCost = scheduledHours * hourlyRate;
+
       return {
         ...w,
         availDays,
@@ -100,6 +103,8 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
         scheduledHours,
         scheduledDays,
         conflicts,
+        hourlyRate,
+        totalCost,
       };
     });
 
@@ -115,8 +120,10 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
 
     const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
 
+    const tab = req.query.tab === 'costs' ? 'costs' : 'availability';
+
     res.render('reports/index', {
-      month, monthLabel, monthOptions, workerStats, formatHours,
+      month, monthLabel, monthOptions, workerStats, formatHours, tab,
     });
   } catch (err) {
     console.error(err);
