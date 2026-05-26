@@ -178,22 +178,15 @@
 
       <!-- Signature section -->
       <div class="px-8 pb-8 pt-2 print-sig-section">
-        <div class="grid grid-cols-2 gap-16 mt-4 pt-6 border-t border-slate-300">
+        <div class="grid grid-cols-2 gap-16 mt-6">
           <div>
-            <div class="text-xs text-slate-400 mb-10">Data i podpis pracownika</div>
+            <div class="text-xs text-slate-400 mb-10">Podpis pracownika</div>
             <div class="border-b border-slate-400"></div>
-            <div class="mt-1.5 text-xs text-slate-500"><%= employee.name %></div>
           </div>
           <div>
-            <div class="text-xs text-slate-400 mb-10">Podpis pracodawcy / kierownika</div>
+            <div class="text-xs text-slate-400 mb-10">Podpis pracodawcy</div>
             <div class="border-b border-slate-400"></div>
-            <div class="mt-1.5 text-xs text-slate-500">Kredki Cafe</div>
           </div>
-        </div>
-
-        <div class="mt-5 flex items-center justify-between">
-          <div class="text-xs text-slate-300">Kredki Cafe — Rejestr czasu pracy</div>
-          <div class="text-xs text-slate-300">Wygenerowano: <%= new Date().toLocaleDateString('pl-PL') %></div>
         </div>
       </div>
 
@@ -214,7 +207,7 @@
 .doc-table thead th { padding: 6px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; }
 .doc-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .doc-table tbody td { padding: 5px 8px; font-size: 12px; color: #374151; }
-.doc-table tfoot .total-row { border-top: 2px solid #1e293b; background: #f8fafc; }
+.doc-table tfoot .total-row { border-top: 2px solid #1e293b; background: #f8fafc; border-bottom: none; }
 .doc-table tfoot td { padding: 8px; font-size: 13px; }
 .weekend-row { background: #f8fafc; }
 .empty-row td { color: #cbd5e1 !important; }
@@ -275,10 +268,10 @@
   table { page-break-inside: auto; }
 
   /* Signature */
-  .print-sig-section { padding: 0 !important; margin-top: 8pt !important; }
+  .print-sig-section { padding: 0 !important; margin-top: 10pt !important; }
   .print-sig-section .text-xs { font-size: 7.5pt !important; }
-  .print-sig-section .mb-10 { margin-bottom: 16pt !important; }
-  .print-sig-section .mt-5 { margin-top: 5pt !important; }
+  .print-sig-section .mb-10 { margin-bottom: 18pt !important; }
+  .print-sig-section .mt-6 { margin-top: 0 !important; }
 }
 .print-only { display: none; }
 </style>
