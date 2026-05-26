@@ -267,8 +267,14 @@
   tr { break-inside: avoid; }
   table { page-break-inside: auto; }
 
-  /* Signature */
-  .print-sig-section { padding: 0 !important; margin-top: 10pt !important; }
+  /* Signature — fixed to bottom of page */
+  .print-sig-section {
+    position: fixed;
+    bottom: 1cm;
+    left: 1.2cm;
+    right: 1.2cm;
+    padding: 0 !important;
+  }
   .print-sig-section .text-xs { font-size: 7.5pt !important; }
   .print-sig-section .mb-10 { margin-bottom: 18pt !important; }
   .print-sig-section .mt-6 { margin-top: 0 !important; }
