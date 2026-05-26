@@ -411,6 +411,17 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
   }
 });
 
+router.put('/schedule/entry/:id/notes', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const { notes } = req.body;
+    await db.run('UPDATE schedule_entries SET notes=? WHERE id=?', [notes || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 router.post('/schedule/entry/:id/confirm', requireAuth, async (req, res) => {
   try {
     const entry = await db.get(

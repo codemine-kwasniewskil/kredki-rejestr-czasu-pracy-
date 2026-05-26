@@ -1,0 +1,187 @@
+<% locals.currentPath = '/reports/employee'; %>
+<%- include('../partials/head', { title: 'Raport godzin – ' + employee.name }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-4 sm:p-6 pt-20 md:pt-6">
+  <div class="max-w-4xl mx-auto">
+
+    <!-- Toolbar (hidden on print) -->
+    <div class="no-print flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800">Raport godzin pracy</h1>
+      <div class="flex gap-2 flex-wrap">
+        <a href="/reports/employee/<%= employee.id %>/<%= month %>/csv"
+           class="btn btn-secondary text-xs">⬇ Pobierz CSV (Excel)</a>
+        <button onclick="window.print()" class="btn btn-primary text-xs">🖨 Drukuj / PDF</button>
+      </div>
+    </div>
+
+    <!-- Selector (hidden on print) -->
+    <div class="no-print bg-white rounded-xl border border-slate-200 p-4 mb-6">
+      <form method="GET" class="flex gap-3 flex-wrap items-end">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Pracownik</label>
+          <select name="redirect" onchange="this.form.submit()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <% employees.forEach(e => { %>
+            <option value="/reports/employee/<%= e.id %>/<%= month %>" <%= e.id === employee.id ? 'selected' : '' %>><%= e.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Miesiąc</label>
+          <select name="monthRedirect" onchange="this.form.submit()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <% monthOptions.forEach(o => { %>
+            <option value="/reports/employee/<%= employee.id %>/<%= o.val %>" <%= o.val === month ? 'selected' : '' %>><%= o.label %></option>
+            <% }) %>
+          </select>
+        </div>
+      </form>
+    </div>
+
+    <!-- ── PRINTABLE REPORT ── -->
+    <div id="reportContent" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8">
+
+      <!-- Report header -->
+      <div class="flex items-start justify-between mb-6 pb-4 border-b border-slate-200">
+        <div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Kredki Cafe — Rejestr czasu pracy</div>
+          <div class="text-2xl font-bold text-slate-800"><%= employee.name %></div>
+          <div class="text-slate-500 mt-0.5 capitalize"><%= monthLabel %></div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-slate-400 mb-1">Przepracowane godziny</div>
+          <div class="text-3xl font-bold text-blue-600"><%= formatHours(totalHours) %></div>
+          <div class="text-xs text-slate-400 mt-0.5"><%= workedDays %> dni roboczych</div>
+          <% if (employee.min_hours_per_month) { %>
+          <div class="text-xs mt-1 <%= totalHours >= employee.min_hours_per_month ? 'text-emerald-600' : 'text-amber-600' %> font-medium">
+            min. <%= employee.min_hours_per_month %>h / mies.
+          </div>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Day table -->
+      <table class="w-full text-sm mb-8">
+        <thead>
+          <tr class="border-b-2 border-slate-200">
+            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-8">#</th>
+            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-10">Dzień</th>
+            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase">Zmiana</th>
+            <th class="text-center py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Od</th>
+            <th class="text-center py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Do</th>
+            <th class="text-right py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Godz.</th>
+            <th class="text-left py-2 text-xs font-semibold text-slate-500 uppercase">Uwagi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% days.forEach(d => { %>
+          <tr class="border-b border-slate-100 <%= d.isWeekend ? 'bg-slate-50' : '' %> hover:bg-blue-50/30 group">
+            <td class="py-2 pr-3 text-slate-400 text-xs"><%= d.day %></td>
+            <td class="py-2 pr-3 text-xs font-medium <%= d.isWeekend ? 'text-slate-400' : 'text-slate-600' %>"><%= d.dayLabel %></td>
+            <td class="py-2 pr-3 text-slate-700">
+              <% if (d.entry) { %><%= d.entry.shift_name %><% } else { %><span class="text-slate-300">—</span><% } %>
+            </td>
+            <td class="py-2 pr-3 text-center font-mono text-slate-600">
+              <% if (d.entry) { %><%= d.entry.start_time %><% } %>
+            </td>
+            <td class="py-2 pr-3 text-center font-mono text-slate-600">
+              <% if (d.entry) { %><%= d.entry.end_time %><% } %>
+            </td>
+            <td class="py-2 pr-3 text-right font-semibold <%= d.hours > 0 ? 'text-slate-800' : 'text-slate-200' %>">
+              <%= d.hours > 0 ? formatHours(d.hours) : '—' %>
+            </td>
+            <td class="py-2">
+              <% if (d.entry) { %>
+              <span
+                class="note-display no-print text-xs text-slate-500 cursor-pointer hover:text-blue-600 <%= d.entry.notes ? '' : 'italic text-slate-300' %>"
+                data-entry-id="<%= d.entry.id %>"
+                onclick="editNote(this)"
+                title="Kliknij by edytować"
+              ><%= d.entry.notes || 'dodaj uwagę…' %></span>
+              <span class="print-only text-xs text-slate-500"><%= d.entry.notes || '' %></span>
+              <div class="note-edit hidden no-print flex gap-1 items-center">
+                <input type="text" class="note-input flex-1 text-xs px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" value="<%= d.entry.notes || '' %>">
+                <button onclick="saveNote(this)" class="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">✓</button>
+                <button onclick="cancelNote(this)" class="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200">✕</button>
+              </div>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-slate-300 bg-slate-50">
+            <td colspan="5" class="py-3 pr-3 text-sm font-semibold text-slate-700 text-right">RAZEM</td>
+            <td class="py-3 pr-3 text-right text-base font-bold text-slate-900"><%= formatHours(totalHours) %></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Signature area -->
+      <div class="mt-10 pt-6 border-t border-slate-200 grid grid-cols-2 gap-16">
+        <div>
+          <div class="text-xs text-slate-400 mb-8">Data i podpis pracownika</div>
+          <div class="border-b border-slate-300 pb-1 text-xs text-slate-400">.........................................................................</div>
+          <div class="mt-1 text-xs text-slate-400"><%= employee.name %></div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400 mb-8">Podpis pracodawcy / kierownika</div>
+          <div class="border-b border-slate-300 pb-1 text-xs text-slate-400">.........................................................................</div>
+          <div class="mt-1 text-xs text-slate-400">Kredki Cafe</div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-xs text-slate-300 text-right">Wygenerowano: <%= new Date().toLocaleDateString('pl-PL') %></div>
+    </div>
+  </div>
+</main>
+
+<style>
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: inline !important; }
+  body { background: white !important; }
+  main { margin: 0 !important; padding: 0 !important; }
+  #reportContent { border: none !important; box-shadow: none !important; padding: 1.5cm !important; }
+  tr { break-inside: avoid; }
+}
+.print-only { display: none; }
+</style>
+
+<script>
+// Redirect selects
+document.querySelectorAll('select[name="redirect"], select[name="monthRedirect"]').forEach(sel => {
+  sel.addEventListener('change', () => { window.location.href = sel.value; });
+});
+
+function editNote(span) {
+  const row = span.closest('td');
+  span.classList.add('hidden');
+  row.querySelector('.note-edit').classList.remove('hidden');
+  row.querySelector('.note-input').focus();
+}
+function cancelNote(btn) {
+  const row = btn.closest('td');
+  row.querySelector('.note-edit').classList.add('hidden');
+  row.querySelector('.note-display').classList.remove('hidden');
+}
+async function saveNote(btn) {
+  const row = btn.closest('td');
+  const span = row.querySelector('.note-display');
+  const input = row.querySelector('.note-input');
+  const entryId = span.dataset.entryId;
+  const notes = input.value.trim();
+  await fetch(`/api/schedule/entry/${entryId}/notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  span.textContent = notes || 'dodaj uwagę…';
+  span.className = span.className.replace('italic text-slate-300', '');
+  if (!notes) span.classList.add('italic', 'text-slate-300');
+  row.querySelector('.note-edit').classList.add('hidden');
+  span.classList.remove('hidden');
+}
+</script>
+
+<%- include('../partials/footer') %>
