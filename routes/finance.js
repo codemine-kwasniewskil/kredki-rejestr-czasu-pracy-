@@ -59,6 +59,11 @@ const MONTHS_PL_RE = [
   [/\bgrudni/i, 12],
 ];
 
+function prevMonthKey(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /**
  * Try to extract a billing month from a bank transfer title.
  * Only re-dates to a month that is 1–3 months BEFORE the booking month,
@@ -177,10 +182,12 @@ async function generateFinancialEvents(importFileId) {
     const eventType = tx.direction === 'income' ? 'income'
                     : (cat && cat.event_type === 'cost' ? 'cost' : 'cost');
 
-    // For cost events: attribute to the billing month found in the title (e.g. "03/2024")
-    // so that March invoices paid in April appear in the March P&L, not April.
+    // For cost events: employee wages are always for the previous month;
+    // other costs use the billing month found in the title (e.g. "03/2024").
     const billingMonthKey = eventType === 'cost'
-      ? extractBillingMonth(tx.title, tx.month_key)
+      ? (cat && cat.slug === 'employee_cost'
+          ? prevMonthKey(tx.month_key)
+          : extractBillingMonth(tx.title, tx.month_key))
       : tx.month_key;
 
     await db.run(`
