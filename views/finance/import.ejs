@@ -185,11 +185,16 @@
                   <td class="py-2 pr-4 text-slate-500 whitespace-nowrap text-xs">
                     <%= imp.imported_at ? imp.imported_at.toString().substring(0,16) : '—' %>
                   </td>
-                  <td class="py-2">
+                  <td class="py-2 whitespace-nowrap flex items-center gap-3">
                     <% if (imp.statement_period_start) { %>
                     <a href="/finance/monthly/<%= imp.statement_period_start.substring(0,7) %>"
                        class="text-blue-600 hover:underline text-xs">Raport →</a>
                     <% } %>
+                    <button onclick="recategorizeImport(<%= imp.id %>, this)"
+                            title="Przelicz zdarzenia finansowe (poprawia przypisanie miesięcy)"
+                            class="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-400 rounded px-2 py-0.5 transition-colors">
+                      Przelicz
+                    </button>
                   </td>
                 </tr>
                 <% }) %>
@@ -207,4 +212,23 @@
     </div>
   </main>
 </div>
+<script>
+async function recategorizeImport(id, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await fetch(`/finance/api/imports/${id}/recategorize`, { method: 'POST' });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Błąd');
+    btn.textContent = '✓ Gotowe';
+    btn.classList.remove('text-amber-600', 'border-amber-200');
+    btn.classList.add('text-green-600', 'border-green-200');
+  } catch (e) {
+    btn.textContent = 'Błąd';
+    btn.disabled = false;
+    btn.classList.add('text-red-600');
+    alert('Błąd: ' + e.message);
+  }
+}
+</script>
 </body></html>
