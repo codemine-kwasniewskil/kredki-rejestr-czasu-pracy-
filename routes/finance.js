@@ -35,6 +35,73 @@ function currentMonthKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// ─── Billing-month extraction ──────────────────────────────────────────────────
+// Returns the difference in months: laterKey − earlierKey (positive if later is after)
+function monthDiff(laterKey, earlierKey) {
+  const [ly, lm] = laterKey.split('-').map(Number);
+  const [ey, em] = earlierKey.split('-').map(Number);
+  return (ly - ey) * 12 + (lm - em);
+}
+
+// Polish month prefixes long enough to avoid false matches
+const MONTHS_PL_RE = [
+  [/\bstycze[nń]/i, 1],
+  [/\bluty?\b/i, 2],
+  [/\bmarzec\b/i, 3],
+  [/\bkwietni/i, 4],
+  [/\bmaj[au]?\b/i, 5],
+  [/\bczerwi?e/i, 6],
+  [/\blipiec\b|lipc/i, 7],
+  [/\bsierpni/i, 8],
+  [/\bwrześni|wrzesni/i, 9],
+  [/\bpaździe|pazdzier/i, 10],
+  [/\blistopa/i, 11],
+  [/\bgrudni/i, 12],
+];
+
+/**
+ * Try to extract a billing month from a bank transfer title.
+ * Only re-dates to a month that is 1–3 months BEFORE the booking month,
+ * so future-dating and ancient references are ignored.
+ * Returns a YYYY-MM string (either extracted or the original txMonthKey).
+ */
+function extractBillingMonth(title, txMonthKey) {
+  if (!title) return txMonthKey;
+
+  // Numeric MM/YYYY or MM.YYYY  (e.g. "03/2024", "03.2024")
+  const m1 = title.match(/\b(0?[1-9]|1[0-2])[\/\.](20\d{2})\b/);
+  if (m1) {
+    const candidate = `${m1[2]}-${String(parseInt(m1[1], 10)).padStart(2, '0')}`;
+    const diff = monthDiff(txMonthKey, candidate);
+    if (diff >= 1 && diff <= 3) return candidate;
+  }
+
+  // Numeric MM/YY  (e.g. "03/24")
+  if (!m1) {
+    const m2 = title.match(/\b(0?[1-9]|1[0-2])\/(2\d)\b/);
+    if (m2) {
+      const candidate = `20${m2[2]}-${String(parseInt(m2[1], 10)).padStart(2, '0')}`;
+      const diff = monthDiff(txMonthKey, candidate);
+      if (diff >= 1 && diff <= 3) return candidate;
+    }
+  }
+
+  // Polish month name + 4-digit year  (e.g. "za marzec 2024")
+  const yearM = title.match(/\b(20\d{2})\b/);
+  if (yearM) {
+    for (const [re, monthNum] of MONTHS_PL_RE) {
+      if (re.test(title)) {
+        const candidate = `${yearM[1]}-${String(monthNum).padStart(2, '0')}`;
+        const diff = monthDiff(txMonthKey, candidate);
+        if (diff >= 1 && diff <= 3) return candidate;
+        break;
+      }
+    }
+  }
+
+  return txMonthKey;
+}
+
 async function getAllCategories() {
   return db.all('SELECT * FROM finance_categories ORDER BY display_order');
 }
@@ -93,6 +160,7 @@ async function generateFinancialEvents(importFileId) {
             tx.title, tx.counterparty_name]);
 
         if (feeCat && parsed.fee > 0) {
+          // Card terminal fee — same month as the income settlement, no re-dating
           await db.run(`
             INSERT INTO financial_events
               (bank_transaction_id, event_date, month_key, source, event_type, category_id,
@@ -109,12 +177,18 @@ async function generateFinancialEvents(importFileId) {
     const eventType = tx.direction === 'income' ? 'income'
                     : (cat && cat.event_type === 'cost' ? 'cost' : 'cost');
 
+    // For cost events: attribute to the billing month found in the title (e.g. "03/2024")
+    // so that March invoices paid in April appear in the March P&L, not April.
+    const billingMonthKey = eventType === 'cost'
+      ? extractBillingMonth(tx.title, tx.month_key)
+      : tx.month_key;
+
     await db.run(`
       INSERT INTO financial_events
         (bank_transaction_id, event_date, month_key, source, event_type, category_id,
          amount, description, counterparty_name, is_relevant, status)
       VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?)
-    `, [tx.id, tx.booking_date, tx.month_key, eventType, tx.category_id,
+    `, [tx.id, tx.booking_date, billingMonthKey, eventType, tx.category_id,
         tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status]);
   }
 }
@@ -433,11 +507,28 @@ router.get('/monthly/:monthKey', async (req, res) => {
       ORDER BY bt.booking_date, bt.id
     `, [monthKey]);
 
+    // Cost transactions from OTHER months whose billing month was re-dated to this month
+    const redatedCosts = await db.all(`
+      SELECT bt.*,
+             fc.slug        AS category_slug,
+             fc.name        AS category_name,
+             fe.amount      AS event_amount,
+             fe.month_key   AS billed_month_key
+      FROM financial_events fe
+      JOIN bank_transactions bt ON bt.id = fe.bank_transaction_id
+      LEFT JOIN finance_categories fc ON fc.id = bt.category_id
+      WHERE fe.month_key = ?
+        AND bt.month_key != ?
+        AND fe.event_type = 'cost'
+        AND fe.is_relevant = 1
+      ORDER BY bt.booking_date, bt.id
+    `, [monthKey, monthKey]);
+
     res.render('finance/monthly', {
       title: 'Finanse ' + monthLabel,
       currentPath: '/finance/monthly',
       monthKey, monthLabel, availableMonths, categories,
-      summary, bankSummary, catBreakdown, transactions, fmt,
+      summary, bankSummary, catBreakdown, transactions, redatedCosts, fmt,
     });
   } catch (err) {
     console.error(err);
@@ -644,12 +735,17 @@ async function generateFinancialEventsForSingle(tx) {
 
   const eventType = tx.direction === 'income' ? 'income'
                   : (cat && cat.event_type === 'cost' ? 'cost' : 'cost');
+
+  const billingMonthKey = eventType === 'cost'
+    ? extractBillingMonth(tx.title, tx.month_key)
+    : tx.month_key;
+
   await db.run(`
     INSERT INTO financial_events
       (bank_transaction_id, event_date, month_key, source, event_type, category_id,
        amount, description, counterparty_name, is_relevant, status)
     VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?)
-  `, [tx.id, tx.booking_date, tx.month_key, eventType, tx.category_id,
+  `, [tx.id, tx.booking_date, billingMonthKey, eventType, tx.category_id,
       tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status]);
 }
 

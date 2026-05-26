@@ -241,6 +241,56 @@
             </table>
           </div>
         </div>
+
+        <!-- Re-dated costs: transactions from NEXT month attributed to this month -->
+        <% if (typeof redatedCosts !== 'undefined' && redatedCosts.length > 0) { %>
+        <div class="bg-white rounded-xl border border-amber-200 shadow-sm mt-6">
+          <div class="p-4 border-b border-amber-100 flex items-center gap-3">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <div>
+              <h2 class="text-sm font-semibold text-amber-800">
+                Koszty przypisane do tego miesiąca z późniejszych wyciągów (<%= redatedCosts.length %>)
+              </h2>
+              <p class="text-xs text-amber-600 mt-0.5">Faktury fizycznie zapłacone w kolejnym miesiącu, ale dotyczące <strong><%= monthLabel %></strong> (na podstawie tytułu przelewu).</p>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-slate-500 bg-amber-50 border-b border-amber-100">
+                  <th class="px-3 py-2 font-medium w-24">Data płatności</th>
+                  <th class="px-3 py-2 font-medium w-24">Wyciąg</th>
+                  <th class="px-3 py-2 font-medium">Kontrahent</th>
+                  <th class="px-3 py-2 font-medium max-w-xs">Tytuł przelewu</th>
+                  <th class="px-3 py-2 font-medium text-right w-28">Kwota</th>
+                  <th class="px-3 py-2 font-medium w-40">Kategoria</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-amber-50">
+                <% redatedCosts.forEach(tx => { %>
+                <tr class="hover:bg-amber-50">
+                  <td class="px-3 py-2 whitespace-nowrap text-slate-500 text-xs"><%= tx.booking_date %></td>
+                  <td class="px-3 py-2 whitespace-nowrap text-xs">
+                    <a href="/finance/monthly/<%= tx.month_key %>" class="text-blue-500 hover:underline"><%= tx.month_key %></a>
+                  </td>
+                  <td class="px-3 py-2 text-slate-700 max-w-[150px]">
+                    <div class="truncate" title="<%= tx.counterparty_name %>"><%= tx.counterparty_name || '—' %></div>
+                  </td>
+                  <td class="px-3 py-2 text-slate-600 max-w-xs">
+                    <div class="truncate text-xs" title="<%= tx.title %>"><%= tx.title || '—' %></div>
+                  </td>
+                  <td class="px-3 py-2 text-right font-semibold whitespace-nowrap text-red-700">
+                    <%= fmt(tx.event_amount) %>
+                  </td>
+                  <td class="px-3 py-2 text-xs text-slate-500"><%= tx.category_name || '—' %></td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <% } %>
+
         <% } /* end if tx_count */ %>
 
       </div>

@@ -26,20 +26,37 @@
         <!-- Upload form -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 class="text-base font-semibold text-slate-700 mb-4">Wgraj plik CSV</h2>
-          <form method="POST" action="/finance/import" enctype="multipart/form-data">
+          <form method="POST" action="/finance/import" enctype="multipart/form-data" id="importForm">
             <div class="flex flex-col sm:flex-row gap-3 items-start">
               <div class="flex-1">
                 <label class="block text-sm font-medium text-slate-600 mb-1">Plik wyciągu bankowego (.csv)</label>
                 <input type="file" name="csv_file" accept=".csv,text/csv" required
                   class="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-200 rounded-lg p-1">
               </div>
-              <button type="submit" class="btn btn-primary mt-5 sm:mt-6">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                Importuj
+              <button type="submit" id="importBtn" class="btn btn-primary mt-5 sm:mt-6">
+                <svg id="importIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                <svg id="importSpinner" class="w-4 h-4 hidden animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span id="importBtnText">Importuj</span>
               </button>
             </div>
             <p class="text-xs text-slate-400 mt-2">Importuj jest idempotentny — duplikaty są wykrywane i pomijane automatycznie.</p>
+            <div id="importProgress" class="hidden mt-3 flex items-center gap-2 text-sm text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5">
+              <svg class="w-4 h-4 flex-shrink-0 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <div>
+                <div class="font-medium">Trwa import…</div>
+                <div class="text-xs text-blue-500">Parsowanie CSV, kategoryzacja transakcji i generowanie zdarzeń finansowych. To może potrwać kilka sekund.</div>
+              </div>
+            </div>
           </form>
+          <script>
+            document.getElementById('importForm').addEventListener('submit', function() {
+              document.getElementById('importBtn').disabled = true;
+              document.getElementById('importIcon').classList.add('hidden');
+              document.getElementById('importSpinner').classList.remove('hidden');
+              document.getElementById('importBtnText').textContent = 'Importowanie…';
+              document.getElementById('importProgress').classList.remove('hidden');
+            });
+          </script>
         </div>
 
         <!-- Import result -->
