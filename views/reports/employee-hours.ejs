@@ -40,8 +40,20 @@
     <!-- ── PRINTABLE DOCUMENT ── -->
     <div id="reportContent" class="bg-white rounded-xl border border-slate-200">
 
-      <!-- Document header -->
-      <div class="doc-header px-8 pt-8 pb-5 border-b-2 border-slate-800">
+      <!-- Minimal print-only header (hidden on screen) -->
+      <div class="print-header-block hidden">
+        <div class="print-doc-title">KARTA CZASU PRACY</div>
+        <div class="print-doc-meta">
+          <span><%= employee.name %></span>
+          <span class="print-sep">|</span>
+          <span class="capitalize"><%= monthLabel %></span>
+          <span class="print-sep">|</span>
+          <span>Razem: <%= formatHours(totalHours) %> / <%= workedDays %> dni</span>
+        </div>
+      </div>
+
+      <!-- Document header (hidden on print) -->
+      <div class="doc-header px-8 pt-8 pb-5 border-b-2 border-slate-800 no-print">
         <div class="flex items-start justify-between">
           <div class="flex items-center gap-3">
             <div class="logo-circle">☕</div>
@@ -128,9 +140,9 @@
                 <input type="time" class="time-input no-print hidden text-xs px-1 py-0.5 border border-blue-400 rounded w-20 text-center" value="<%= d.entry.end_time %>">
                 <% } %>
               </td>
-              <td class="text-right font-semibold <%= d.hours > 0 ? 'text-slate-800' : 'text-slate-200' %>">
+              <td class="text-right font-semibold <%= d.hours > 0 ? 'text-slate-800' : 'text-slate-300' %>">
                 <span class="hours-cell" data-entry-id="<%= d.entry ? d.entry.id : '' %>">
-                  <%= d.hours > 0 ? formatHours(d.hours) : (d.entry ? '—' : '') %>
+                  <%= d.hours > 0 ? formatHours(d.hours) : '0' %>
                 </span>
               </td>
               <td>
@@ -164,7 +176,7 @@
       </div>
 
       <!-- Signature section -->
-      <div class="px-8 pb-8 pt-2">
+      <div class="px-8 pb-8 pt-2 print-sig-section">
         <div class="grid grid-cols-2 gap-16 mt-4 pt-6 border-t border-slate-300">
           <div>
             <div class="text-xs text-slate-400 mb-10">Data i podpis pracownika</div>
@@ -190,12 +202,7 @@
 
 <style>
 /* ── Screen styles ── */
-.info-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 8px 12px;
-}
+.info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
 .info-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
 .info-value { font-size: 15px; font-weight: 700; color: #0f172a; }
 .stat-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
@@ -207,32 +214,68 @@
 .doc-table tbody tr { border-bottom: 1px solid #f1f5f9; }
 .doc-table tbody td { padding: 5px 8px; font-size: 12px; color: #374151; }
 .doc-table tfoot .total-row { border-top: 2px solid #1e293b; background: #f8fafc; }
-.doc-table tfoot td { padding: 8px 8px; font-size: 13px; }
+.doc-table tfoot td { padding: 8px; font-size: 13px; }
 .weekend-row { background: #f8fafc; }
 .empty-row td { color: #cbd5e1 !important; }
 
+.print-header-block { display: none; }
+
 /* ── Print ── */
 @media print {
-  @page { size: A4 portrait; margin: 1cm 1.2cm; }
+  @page { size: A4 portrait; margin: 1.2cm 1.4cm; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .no-print { display: none !important; }
   .print-only { display: inline !important; }
   body, html { background: white !important; }
   main { margin: 0 !important; padding: 0 !important; }
+
   #reportContent {
     border: none !important;
     border-radius: 0 !important;
-    max-width: 100% !important;
-    font-size: 11px;
   }
-  .doc-table tbody td { padding: 3px 6px; font-size: 10px; }
-  .doc-table thead th { padding: 4px 6px; font-size: 9px; }
-  .doc-table tfoot td { padding: 5px 6px; font-size: 11px; }
-  .doc-header { padding: 0.4cm 0.6cm 0.4cm; }
-  #reportContent > div:not(.doc-header) { padding-left: 0.6cm; padding-right: 0.6cm; }
+
+  /* Simple print header */
+  .print-header-block {
+    display: block !important;
+    padding-bottom: 8pt;
+    margin-bottom: 6pt;
+    border-bottom: 1.5pt solid #000;
+  }
+  .print-doc-title {
+    font-size: 11pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #000;
+  }
+  .print-doc-meta {
+    font-size: 9pt;
+    color: #444;
+    margin-top: 3pt;
+  }
+  .print-sep { margin: 0 6pt; color: #999; }
+
+  /* Hide screen-only header */
+  .doc-header { display: none !important; }
+
+  /* Table: uniform 9pt font, tight rows */
+  #reportContent > div { padding: 0 !important; }
+  .doc-table { font-size: 9pt; }
+  .doc-table thead th {
+    font-size: 8pt;
+    padding: 4pt 5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #333;
+  }
+  .doc-table tbody td { font-size: 9pt; padding: 2.5pt 5pt; color: #000; }
+  .doc-table tfoot td { font-size: 9pt; padding: 4pt 5pt; }
+  .weekend-row { background: #f5f5f5 !important; }
+  .empty-row td { color: #bbb !important; }
+
   tr { break-inside: avoid; }
-  .info-box, .stat-box { padding: 4px 8px; }
-  .info-value { font-size: 12px; }
+
+  /* Signature */
+  .print-sig-section { padding: 0 !important; margin-top: 10pt; }
 }
 .print-only { display: none; }
 </style>
