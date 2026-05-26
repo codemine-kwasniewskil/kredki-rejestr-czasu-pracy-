@@ -37,7 +37,8 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
           SELECT se.*, COALESCE(st.name,'Własna') as shift_name,
                  COALESCE(se.custom_start, st.start_time) as start_time,
                  COALESCE(se.custom_end, st.end_time) as end_time,
-                 COALESCE(st.color,'#6B7280') as color
+                 COALESCE(st.color,'#6B7280') as color,
+                 se.confirmed_by_employee
           FROM schedule_entries se
           LEFT JOIN shift_templates st ON st.id=se.shift_template_id
           WHERE se.schedule_id=?
@@ -105,7 +106,7 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
     const [mYear, mMonth] = monthPrefix.split('-').map(Number);
     const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
 
-    const shiftTemplates = await db.all(`SELECT * FROM shift_templates WHERE active=1 ORDER BY start_time`);
+    const shiftTemplates = await db.all(`SELECT * FROM shift_templates WHERE active=1 ORDER BY sort_order, start_time`);
 
     const isEditable = schedule && (role === 'admin' || (schedule.status !== 'approved' && role === 'location_manager'));
 

@@ -132,6 +132,33 @@ async function setup() {
     console.log('✓ Admin already exists, skipping seed');
   }
 
+  // Column migrations
+  const colMigrations = [
+    { table: 'users', column: 'must_change_password', def: 'TINYINT(1) DEFAULT 0' },
+    { table: 'shift_templates', column: 'sort_order', def: 'INT DEFAULT 0' },
+    { table: 'schedule_entries', column: 'confirmed_by_employee', def: 'TINYINT(1) DEFAULT 0' },
+  ];
+  for (const m of colMigrations) {
+    const [cols] = await conn.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?`,
+      [m.table, m.column]
+    );
+    if (cols[0].cnt === 0) {
+      await conn.query(`ALTER TABLE \`${m.table}\` ADD COLUMN \`${m.column}\` ${m.def}`);
+      console.log(`✓ Added column ${m.table}.${m.column}`);
+    }
+  }
+
+  // Initialize sort_order for existing templates (only when all are 0)
+  const [sortCheck] = await conn.query('SELECT COUNT(*) as cnt FROM shift_templates WHERE sort_order > 0');
+  if (sortCheck[0].cnt === 0) {
+    const [tpls] = await conn.query('SELECT id FROM shift_templates ORDER BY start_time');
+    for (let i = 0; i < tpls.length; i++) {
+      await conn.query('UPDATE shift_templates SET sort_order=? WHERE id=?', [i, tpls[i].id]);
+    }
+    if (tpls.length) console.log('✓ Initialized shift_templates sort_order');
+  }
+
   await conn.end();
   console.log('\nSetup complete!');
 }

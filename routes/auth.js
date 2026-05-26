@@ -19,7 +19,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       const { toDateString } = require('../utils/helpers');
       const todayStr = toDateString(new Date());
       myShifts = await db.all(`
-        SELECT se.date,
+        SELECT se.id, se.date, se.confirmed_by_employee,
                COALESCE(st.name,'Własna') as shift_name,
                COALESCE(se.custom_start, st.start_time) as start_time,
                COALESCE(se.custom_end, st.end_time) as end_time,
@@ -92,30 +92,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
     const today2 = new Date();
     const currentPrefix = `${today2.getFullYear()}-${String(today2.getMonth() + 1).padStart(2, '0')}`;
 
-    if (role === 'worker') {
-      const workedMonths = (await db.all(`
-        SELECT DISTINCT SUBSTRING(se.date, 1, 7) as prefix
-        FROM schedule_entries se
-        JOIN schedules s ON s.id=se.schedule_id
-        WHERE se.user_id=? AND s.status='approved'
-        ORDER BY prefix DESC
-      `, [id])).map(m => m.prefix);
-      const prefixes = [...new Set([currentPrefix, ...workedMonths])].sort().reverse();
-      for (const prefix of prefixes) {
-        const [y, mo] = prefix.split('-').map(Number);
-        const label = MONTHS_PL[mo - 1] + ' ' + y;
-        const entries = await db.all(`
-          SELECT COALESCE(se.custom_start, st.start_time) as start_time,
-                 COALESCE(se.custom_end, st.end_time) as end_time
-          FROM schedule_entries se
-          LEFT JOIN shift_templates st ON st.id=se.shift_template_id
-          JOIN schedules s ON s.id=se.schedule_id
-          WHERE se.date LIKE ? AND se.user_id=? AND s.status='approved'
-        `, [prefix + '%', id]);
-        const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
-        monthlyHoursHistory.push({ prefix, label, hours });
-      }
-    } else {
+    if (role === 'admin') {
       for (let i = 0; i < 6; i++) {
         const d = new Date(today2.getFullYear(), today2.getMonth() - i, 1);
         const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -157,6 +134,33 @@ router.post('/login', async (req, res) => {
     req.session.userName = user.name;
     req.session.userRole = user.role;
     log(user, 'Logowanie', user.email);
+    if (user.must_change_password) return res.redirect('/change-password');
+    res.redirect('/dashboard');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/change-password', requireAuth, (req, res) => {
+  res.render('auth/change-password');
+});
+
+router.post('/change-password', requireAuth, async (req, res) => {
+  try {
+    const { password, password_confirm } = req.body;
+    if (!password || password.length < 6) {
+      req.flash('error', 'Hasło musi mieć co najmniej 6 znaków.');
+      return res.redirect('/change-password');
+    }
+    if (password !== password_confirm) {
+      req.flash('error', 'Hasła nie są identyczne.');
+      return res.redirect('/change-password');
+    }
+    const hash = bcrypt.hashSync(password, 10);
+    await db.run('UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?', [hash, req.session.userId]);
+    log(res.locals.user, 'Zmiana hasła');
+    req.flash('success', 'Hasło zostało zmienione.');
     res.redirect('/dashboard');
   } catch (err) {
     console.error(err);

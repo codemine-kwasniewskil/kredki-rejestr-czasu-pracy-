@@ -44,6 +44,9 @@
           <button onclick="document.getElementById('rejectModal').classList.remove('hidden')" class="btn btn-danger">✗ Odrzuć</button>
           <% } %>
         <% } %>
+        <% if (user.role === 'admin' && schedule) { %>
+          <button onclick="clearWeek('<%= weekStart %>')" class="btn btn-danger text-xs" title="Usuń wszystkie zmiany z tego tygodnia">🗑 Wyczyść tydzień</button>
+        <% } %>
 
         <% if (schedule && (schedule.status === 'rejected' || (schedule.status === 'submitted' && user.role === 'location_manager'))) { %>
           <form action="/schedule/week/<%= weekStart %>/reopen" method="POST">
@@ -154,8 +157,12 @@
                 <% if (entry.modified_by_admin) { %>
                   <span class="absolute top-0.5 left-1 text-yellow-300 text-xs leading-none" title="Zmienione przez administratora">★</span>
                 <% } %>
+                <% if (entry.confirmed_by_employee) { %>
+                  <span class="absolute top-0.5 right-5 text-emerald-300 text-xs leading-none" title="Potwierdzone przez pracownika">✓</span>
+                <% } %>
                 <span class="font-semibold leading-tight <%= entry.modified_by_admin ? 'pl-3' : '' %>"><%= entry.shift_name %></span>
-                <span class="opacity-90"><%= entry.start_time %> – <%= entry.end_time %><% if (user.role === 'admin') { const _c = entryCostMap[worker.id + '_' + dateStr]; if (_c > 0) { %> · <%= _c.toFixed(0) %> zł<% } } %></span>
+                <span class="opacity-90"><%= entry.start_time %> – <%= entry.end_time %></span>
+                <% if (user.role === 'admin') { const _c = entryCostMap[worker.id + '_' + dateStr]; if (_c > 0) { %><span class="opacity-80 text-xs font-semibold"><%= _c.toFixed(0) %> zł</span><% } } %>
                 <% if (entry.notes) { %>
                   <span class="opacity-75 text-xs italic truncate" title="<%= entry.notes %>"><%= entry.notes %></span>
                 <% } %>
@@ -347,4 +354,13 @@
 </div>
 
 <script src="/js/schedule.js"></script>
+<script>
+function clearWeek(weekStart) {
+  if (!confirm('Usunąć wszystkie zmiany z tego tygodnia?')) return;
+  fetch(`/api/schedule/week/${weekStart}/entries`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Błąd serwera.'); })
+    .catch(() => alert('Błąd serwera.'));
+}
+</script>
 <%- include('../partials/footer') %>

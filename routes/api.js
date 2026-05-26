@@ -411,4 +411,36 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
   }
 });
 
+router.post('/schedule/entry/:id/confirm', requireAuth, async (req, res) => {
+  try {
+    const entry = await db.get(
+      `SELECT se.*, s.status FROM schedule_entries se JOIN schedules s ON s.id=se.schedule_id WHERE se.id=?`,
+      [req.params.id]
+    );
+    if (!entry || entry.status !== 'approved') return res.status(403).json({ ok: false });
+    if (req.session.userRole === 'worker' && entry.user_id !== req.session.userId) {
+      return res.status(403).json({ ok: false });
+    }
+    const newVal = entry.confirmed_by_employee ? 0 : 1;
+    await db.run('UPDATE schedule_entries SET confirmed_by_employee=? WHERE id=?', [newVal, req.params.id]);
+    res.json({ ok: true, confirmed: newVal });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+router.delete('/schedule/week/:weekStart/entries', requireRole('admin'), async (req, res) => {
+  try {
+    const schedule = await db.get('SELECT id FROM schedules WHERE week_start=?', [req.params.weekStart]);
+    if (!schedule) return res.json({ ok: false, error: 'Brak grafiku dla tego tygodnia.' });
+    await db.run('DELETE FROM schedule_entries WHERE schedule_id=?', [schedule.id]);
+    log(res.locals.user, 'Wyczyszczenie tygodnia', req.params.weekStart);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 module.exports = router;

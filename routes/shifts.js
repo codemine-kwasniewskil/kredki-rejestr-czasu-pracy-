@@ -5,7 +5,7 @@ const { requireRole } = require('../middleware/auth');
 
 router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
-    const templates = await db.all(`SELECT * FROM shift_templates ORDER BY start_time`);
+    const templates = await db.all(`SELECT * FROM shift_templates WHERE active=1 ORDER BY sort_order, start_time`);
     res.render('shifts/index', { templates });
   } catch (err) {
     console.error(err);
@@ -20,13 +20,28 @@ router.post('/', requireRole('admin', 'location_manager'), async (req, res) => {
       req.flash('error', 'Nazwa, czas rozpoczęcia i zakończenia są wymagane.');
       return res.redirect('/shifts');
     }
-    await db.run(`INSERT INTO shift_templates (name, start_time, end_time, color) VALUES (?,?,?,?)`,
-      [name, start_time, end_time, color || '#3B82F6']);
+    const maxOrder = await db.get('SELECT COALESCE(MAX(sort_order),0)+1 as next FROM shift_templates');
+    await db.run(`INSERT INTO shift_templates (name, start_time, end_time, color, sort_order) VALUES (?,?,?,?,?)`,
+      [name, start_time, end_time, color || '#3B82F6', maxOrder.next]);
     req.flash('success', 'Szablon zmiany dodany.');
     res.redirect('/shifts');
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.put('/reorder', requireRole('admin'), async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) return res.status(400).json({ error: 'Nieprawidłowe dane.' });
+    for (let i = 0; i < ids.length; i++) {
+      await db.run('UPDATE shift_templates SET sort_order=? WHERE id=?', [i, ids[i]]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
   }
 });
 

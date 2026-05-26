@@ -22,9 +22,15 @@
       <% if (templates.length === 0) { %>
         <div class="p-12 text-center text-slate-400">Brak szablonów zmian.</div>
       <% } else { %>
+      <% if (user.role === 'admin') { %>
+        <p class="px-4 pt-3 text-xs text-slate-400">Przeciągnij wiersze aby zmienić kolejność szablonów.</p>
+      <% } %>
       <table class="w-full min-w-[480px]">
         <thead class="bg-slate-50 border-b border-slate-200">
           <tr>
+            <% if (user.role === 'admin') { %>
+            <th class="w-8 px-2 py-3"></th>
+            <% } %>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Kolor</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Nazwa</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Czas</th>
@@ -32,7 +38,7 @@
             <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Akcje</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100">
+        <tbody id="templatesList" class="divide-y divide-slate-100">
           <% templates.forEach(t => {
             const [sh, sm] = t.start_time.split(':').map(Number);
             const [eh, em] = t.end_time.split(':').map(Number);
@@ -40,7 +46,11 @@
             if (mins < 0) mins += 24 * 60;
             const dur = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60>0 ? mins%60+'m' : ''}`.trim() : `${mins}m`;
           %>
-          <tr class="hover:bg-slate-50">
+          <tr class="hover:bg-slate-50 <%= user.role === 'admin' ? 'draggable-row' : '' %>" data-id="<%= t.id %>"
+            <% if (user.role === 'admin') { %>draggable="true"<% } %>>
+            <% if (user.role === 'admin') { %>
+            <td class="px-2 py-3 text-center text-slate-300 cursor-grab select-none text-lg leading-none" title="Przeciągnij aby zmienić kolejność">☰</td>
+            <% } %>
             <td class="px-4 py-3">
               <span class="inline-block w-8 h-8 rounded-lg shadow-sm" style="background-color:<%= t.color %>"></span>
             </td>
@@ -186,6 +196,53 @@ function openEdit(t) {
   document.getElementById('editColor').value = t.color || '#3B82F6';
   document.getElementById('editModal').classList.remove('hidden');
 }
+
+// Drag-and-drop reorder (admin only)
+(function() {
+  const tbody = document.getElementById('templatesList');
+  if (!tbody) return;
+  const rows = tbody.querySelectorAll('.draggable-row');
+  if (!rows.length) return;
+
+  let dragSrc = null;
+
+  rows.forEach(row => {
+    row.addEventListener('dragstart', e => {
+      dragSrc = row;
+      row.classList.add('opacity-50');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('opacity-50');
+      tbody.querySelectorAll('.draggable-row').forEach(r => r.classList.remove('bg-blue-50'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tbody.querySelectorAll('.draggable-row').forEach(r => r.classList.remove('bg-blue-50'));
+      if (row !== dragSrc) row.classList.add('bg-blue-50');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (row === dragSrc) return;
+      const allRows = [...tbody.querySelectorAll('.draggable-row')];
+      const srcIdx = allRows.indexOf(dragSrc);
+      const tgtIdx = allRows.indexOf(row);
+      if (srcIdx < tgtIdx) tbody.insertBefore(dragSrc, row.nextSibling);
+      else tbody.insertBefore(dragSrc, row);
+      saveOrder();
+    });
+  });
+
+  function saveOrder() {
+    const ids = [...tbody.querySelectorAll('.draggable-row')].map(r => parseInt(r.dataset.id));
+    fetch('/shifts/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }).catch(console.error);
+  }
+})();
 </script>
 
 <%- include('../partials/footer') %>

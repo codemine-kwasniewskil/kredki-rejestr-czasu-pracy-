@@ -33,7 +33,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
       return res.redirect('/users');
     }
     const hash = bcrypt.hashSync(password, 10);
-    await db.run(`INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)`, [name, email, hash, role]);
+    await db.run(`INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)`, [name, email, hash, role]);
     log(res.locals.user, 'Dodanie użytkownika', `${name} | ${role}`);
     req.flash('success', 'Użytkownik został dodany.');
     res.redirect('/users');
@@ -67,7 +67,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     if (!user) return res.redirect('/users');
     if (password && password.trim()) {
       const hash = bcrypt.hashSync(password.trim(), 10);
-      await db.run(`UPDATE users SET name=?,email=?,role=?,active=?,password_hash=? WHERE id=?`,
+      await db.run(`UPDATE users SET name=?,email=?,role=?,active=?,password_hash=?,must_change_password=1 WHERE id=?`,
         [name, email, role, active ? 1 : 0, hash, req.params.id]);
     } else {
       await db.run(`UPDATE users SET name=?,email=?,role=?,active=? WHERE id=?`,
