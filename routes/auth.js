@@ -107,6 +107,18 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
         if (i === 0 || hours > 0) monthlyHoursHistory.push({ prefix, label, hours });
       }
+    } else {
+      const label = MONTHS_PL[today2.getMonth()] + ' ' + today2.getFullYear();
+      const entries = await db.all(`
+        SELECT COALESCE(se.custom_start, st.start_time) as start_time,
+               COALESCE(se.custom_end, st.end_time) as end_time
+        FROM schedule_entries se
+        LEFT JOIN shift_templates st ON st.id=se.shift_template_id
+        JOIN schedules s ON s.id=se.schedule_id
+        WHERE se.date LIKE ? AND se.user_id=? AND s.status='approved'
+      `, [currentPrefix + '%', id]);
+      const hours = entries.reduce((sum, e) => sum + calcHours(e.start_time, e.end_time), 0);
+      monthlyHoursHistory.push({ prefix: currentPrefix, label, hours });
     }
 
     res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory });

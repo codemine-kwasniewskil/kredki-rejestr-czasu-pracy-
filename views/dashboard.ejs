@@ -152,8 +152,17 @@
           </div>
           <% } %>
         </div>
+      <% if (monthlyHoursHistory.length > 0) { %>
+      <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-slate-700">Moje godziny — <span class="capitalize"><%= monthlyHoursHistory[0].label %></span></h2>
+          <span class="text-2xl font-bold text-slate-800">
+            <% const mh = monthlyHoursHistory[0]; %>
+            <%= mh.hours > 0 ? Math.floor(mh.hours) + 'h' + (Math.round((mh.hours % 1)*60) > 0 ? ' ' + Math.round((mh.hours % 1)*60) + 'm' : '') : '—' %>
+          </span>
+        </div>
       </div>
-
+      <% } %>
 
     <% } else { %>
       <!-- Worker dashboard -->
@@ -183,6 +192,17 @@
           <% } %>
         </div>
       </div>
+      <% if (monthlyHoursHistory.length > 0) { %>
+      <div class="bg-white rounded-xl border border-slate-200 p-5 mb-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-slate-700">Moje godziny — <span class="capitalize"><%= monthlyHoursHistory[0].label %></span></h2>
+          <span class="text-2xl font-bold text-slate-800">
+            <% const wh = monthlyHoursHistory[0]; %>
+            <%= wh.hours > 0 ? Math.floor(wh.hours) + 'h' + (Math.round((wh.hours % 1)*60) > 0 ? ' ' + Math.round((wh.hours % 1)*60) + 'm' : '') : '—' %>
+          </span>
+        </div>
+      </div>
+      <% } %>
     <% } %>
   </div>
 </main>
