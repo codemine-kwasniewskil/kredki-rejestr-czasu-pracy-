@@ -31,7 +31,7 @@ router.post('/', requireRole('admin', 'location_manager'), async (req, res) => {
   }
 });
 
-router.put('/reorder', requireRole('admin'), async (req, res) => {
+router.put('/reorder', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: 'Nieprawidłowe dane.' });
