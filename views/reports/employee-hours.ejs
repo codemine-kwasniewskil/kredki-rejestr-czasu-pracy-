@@ -8,7 +8,8 @@
     <!-- Toolbar (hidden on print) -->
     <div class="no-print flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 flex-wrap">
       <h1 class="text-xl font-bold text-slate-800">Karta czasu pracy</h1>
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-xs text-slate-400">Przed drukiem wyłącz <em>Nagłówki i stopki</em> w oknie drukowania</span>
         <a href="/reports/employee/<%= employee.id %>/<%= month %>/csv"
            class="btn btn-secondary text-xs">⬇ Pobierz CSV (Excel)</a>
         <button onclick="window.print()" class="btn btn-primary text-xs">🖨 Drukuj / PDF</button>
@@ -102,7 +103,7 @@
           <thead>
             <tr>
               <th class="text-left w-8">Lp.</th>
-              <th class="text-left w-12">Data</th>
+              <th class="text-left w-24">Data</th>
               <th class="text-left w-10">Dzień</th>
               <th class="text-center w-20">Od</th>
               <th class="text-center w-20">Do</th>
@@ -222,60 +223,62 @@
 
 /* ── Print ── */
 @media print {
-  @page { size: A4 portrait; margin: 1.2cm 1.4cm; }
+  @page { size: A4 portrait; margin: 1cm 1.2cm; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .no-print { display: none !important; }
   .print-only { display: inline !important; }
-  body, html { background: white !important; }
+  body, html { background: white !important; font-family: Arial, sans-serif; }
   main { margin: 0 !important; padding: 0 !important; }
 
-  #reportContent {
-    border: none !important;
-    border-radius: 0 !important;
-  }
+  #reportContent { border: none !important; border-radius: 0 !important; }
 
   /* Simple print header */
   .print-header-block {
     display: block !important;
-    padding-bottom: 8pt;
-    margin-bottom: 6pt;
-    border-bottom: 1.5pt solid #000;
+    padding-bottom: 5pt;
+    margin-bottom: 5pt;
+    border-bottom: 1pt solid #000;
   }
-  .print-doc-title {
-    font-size: 11pt;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: #000;
-  }
-  .print-doc-meta {
-    font-size: 9pt;
-    color: #444;
-    margin-top: 3pt;
-  }
-  .print-sep { margin: 0 6pt; color: #999; }
+  .print-doc-title { font-size: 10pt; font-weight: 700; color: #000; }
+  .print-doc-meta { font-size: 8pt; color: #444; margin-top: 2pt; }
+  .print-sep { margin: 0 5pt; color: #aaa; }
 
-  /* Hide screen-only header */
   .doc-header { display: none !important; }
 
-  /* Table: uniform 9pt font, tight rows */
-  #reportContent > div { padding: 0 !important; }
-  .doc-table { font-size: 9pt; }
+  /* Strip all container padding */
+  #reportContent > div { padding: 0 !important; margin: 0 !important; }
+
+  /* Uniform 8pt table, 1.5pt row padding */
+  .doc-table { font-size: 8pt; line-height: 1.2; }
   .doc-table thead th {
-    font-size: 8pt;
-    padding: 4pt 5pt;
+    font-size: 7.5pt;
+    font-weight: 700;
+    padding: 3pt 4pt;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #333;
+    letter-spacing: 0.03em;
+    color: #000;
+    white-space: nowrap;
   }
-  .doc-table tbody td { font-size: 9pt; padding: 2.5pt 5pt; color: #000; }
-  .doc-table tfoot td { font-size: 9pt; padding: 4pt 5pt; }
+  .doc-table tbody td {
+    font-size: 8pt;
+    padding: 1.5pt 4pt;
+    color: #000;
+    white-space: nowrap;
+  }
+  /* Allow notes column to wrap if needed */
+  .doc-table tbody td:last-child { white-space: normal; }
+  .doc-table tfoot td { font-size: 8pt; padding: 3pt 4pt; }
   .weekend-row { background: #f5f5f5 !important; }
   .empty-row td { color: #bbb !important; }
 
   tr { break-inside: avoid; }
+  table { page-break-inside: auto; }
 
   /* Signature */
-  .print-sig-section { padding: 0 !important; margin-top: 10pt; }
+  .print-sig-section { padding: 0 !important; margin-top: 8pt !important; }
+  .print-sig-section .text-xs { font-size: 7.5pt !important; }
+  .print-sig-section .mb-10 { margin-bottom: 16pt !important; }
+  .print-sig-section .mt-5 { margin-top: 5pt !important; }
 }
 .print-only { display: none; }
 </style>
