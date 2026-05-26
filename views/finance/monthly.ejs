@@ -147,23 +147,14 @@
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
           <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-slate-700">
-              Transakcje (<%= transactions.length %>)
+              Transakcje (<span id="txVisibleCount"><%= transactions.length %></span> / <%= transactions.length %>)
               <% if (summary.review_count > 0) { %>
               <span class="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
                 <%= summary.review_count %> do weryfikacji
               </span>
               <% } %>
             </h2>
-            <div class="flex items-center gap-2">
-              <input type="text" id="txSearch" placeholder="Szukaj…"
-                     class="rounded-lg border border-slate-200 text-sm px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-blue-200">
-              <select id="txFilter" class="rounded-lg border border-slate-200 text-sm px-2 py-1.5">
-                <option value="">Wszystkie</option>
-                <option value="review">Do weryfikacji</option>
-                <option value="relevant">Potwierdzone</option>
-                <option value="not_relevant">Nieistotne</option>
-              </select>
-            </div>
+            <button onclick="clearFilters()" class="text-xs text-slate-400 hover:text-slate-600 transition-colors">Wyczyść filtry</button>
           </div>
 
           <div class="overflow-x-auto">
@@ -177,14 +168,70 @@
                   <th class="px-3 py-2 font-medium w-44">Kategoria</th>
                   <th class="px-3 py-2 font-medium w-32 text-center">Status</th>
                   <th class="px-3 py-2 font-medium w-20 text-center">Istotne</th>
-                  <th class="px-3 py-2 font-medium w-8 text-center"></th>
+                  <th class="px-3 py-2 font-medium w-8"></th>
+                </tr>
+                <tr class="bg-slate-50 border-b border-slate-200">
+                  <th class="px-2 py-1.5">
+                    <input id="fDate" type="text" placeholder="np. 04-15" oninput="filterTable()"
+                           class="w-full rounded border border-slate-200 text-xs px-1.5 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal placeholder-slate-300">
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <input id="fCounterparty" type="text" placeholder="szukaj…" oninput="filterTable()"
+                           class="w-full rounded border border-slate-200 text-xs px-1.5 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal placeholder-slate-300">
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <input id="fTitle" type="text" placeholder="szukaj…" oninput="filterTable()"
+                           class="w-full rounded border border-slate-200 text-xs px-1.5 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal placeholder-slate-300">
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <select id="fDirection" onchange="filterTable()"
+                            class="w-full rounded border border-slate-200 text-xs px-1 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal">
+                      <option value="">Wszystkie</option>
+                      <option value="income">+ Przychody</option>
+                      <option value="expense">− Wydatki</option>
+                    </select>
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <select id="fCategory" onchange="filterTable()"
+                            class="w-full rounded border border-slate-200 text-xs px-1 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal">
+                      <option value="">Wszystkie</option>
+                      <% categories.forEach(cat => { %>
+                      <option value="<%= cat.id %>"><%= cat.name %></option>
+                      <% }) %>
+                    </select>
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <select id="fStatus" onchange="filterTable()"
+                            class="w-full rounded border border-slate-200 text-xs px-1 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal">
+                      <option value="">Wszystkie</option>
+                      <option value="review">Do weryfikacji</option>
+                      <option value="relevant">Potwierdzone</option>
+                      <option value="not_relevant">Nieistotne</option>
+                      <option value="internal_transfer">Przelew wewn.</option>
+                      <option value="duplicate">Duplikat</option>
+                    </select>
+                  </th>
+                  <th class="px-2 py-1.5">
+                    <select id="fRelevant" onchange="filterTable()"
+                            class="w-full rounded border border-slate-200 text-xs px-1 py-1 bg-white focus:outline-none focus:border-blue-300 font-normal">
+                      <option value="">Wszystkie</option>
+                      <option value="1">Tak</option>
+                      <option value="0">Nie</option>
+                    </select>
+                  </th>
+                  <th class="px-2 py-1.5"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-50" id="txBody">
                 <% transactions.forEach(tx => { %>
                 <tr class="hover:bg-slate-50 tx-row"
                     data-status="<%= tx.status %>"
-                    data-search="<%= (tx.counterparty_name + ' ' + tx.title + ' ' + tx.operation_type).toLowerCase() %>">
+                    data-date="<%= tx.booking_date %>"
+                    data-counterparty="<%= tx.counterparty_name || '' %>"
+                    data-title="<%= tx.title || '' %>"
+                    data-direction="<%= tx.amount > 0 ? 'income' : 'expense' %>"
+                    data-category="<%= tx.category_id || '' %>"
+                    data-relevant="<%= tx.is_relevant ? '1' : '0' %>">
                   <td class="px-3 py-2 whitespace-nowrap text-slate-500 text-xs"><%= tx.booking_date %></td>
                   <td class="px-3 py-2 text-slate-700 max-w-[150px]">
                     <div class="truncate" title="<%= tx.counterparty_name %>"><%= tx.counterparty_name || '—' %></div>
@@ -328,17 +375,40 @@ if (incomeCatData.length) {
 }
 <% } %>
 
-// ── Transaction filter + search ────────────────────────────────────────────────
-document.getElementById('txSearch')?.addEventListener('input', filterTable);
-document.getElementById('txFilter')?.addEventListener('change', filterTable);
+// ── Per-column filter ──────────────────────────────────────────────────────────
 function filterTable() {
-  const q      = (document.getElementById('txSearch').value || '').toLowerCase();
-  const status = document.getElementById('txFilter').value;
+  const fDate         = (document.getElementById('fDate')?.value         || '').toLowerCase().trim();
+  const fCounterparty = (document.getElementById('fCounterparty')?.value || '').toLowerCase().trim();
+  const fTitle        = (document.getElementById('fTitle')?.value        || '').toLowerCase().trim();
+  const fDirection    =  document.getElementById('fDirection')?.value    || '';
+  const fCategory     =  document.getElementById('fCategory')?.value     || '';
+  const fStatus       =  document.getElementById('fStatus')?.value       || '';
+  const fRelevant     =  document.getElementById('fRelevant')?.value     || '';
+
+  let visible = 0;
   document.querySelectorAll('.tx-row').forEach(row => {
-    const matchSearch = !q || row.dataset.search.includes(q);
-    const matchStatus = !status || row.dataset.status === status;
-    row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    const d = row.dataset;
+    const show =
+      (!fDate         || d.date.includes(fDate)) &&
+      (!fCounterparty || d.counterparty.toLowerCase().includes(fCounterparty)) &&
+      (!fTitle        || d.title.toLowerCase().includes(fTitle)) &&
+      (!fDirection    || d.direction === fDirection) &&
+      (!fCategory     || d.category  === fCategory) &&
+      (!fStatus       || d.status    === fStatus) &&
+      (!fRelevant     || d.relevant  === fRelevant);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
+  const el = document.getElementById('txVisibleCount');
+  if (el) el.textContent = visible;
+}
+
+function clearFilters() {
+  ['fDate','fCounterparty','fTitle','fDirection','fCategory','fStatus','fRelevant'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  filterTable();
 }
 
 // ── AJAX transaction update ────────────────────────────────────────────────────
