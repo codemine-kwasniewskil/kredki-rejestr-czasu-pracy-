@@ -411,6 +411,21 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
   }
 });
 
+router.put('/schedule/entry/:id/times', requireRole('admin'), async (req, res) => {
+  try {
+    const { start_time, end_time } = req.body;
+    if (!start_time || !end_time) return res.status(400).json({ error: 'Podaj godziny.' });
+    await db.run(
+      'UPDATE schedule_entries SET custom_start=?, custom_end=?, shift_template_id=NULL WHERE id=?',
+      [start_time, end_time, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 router.put('/schedule/entry/:id/notes', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { notes } = req.body;

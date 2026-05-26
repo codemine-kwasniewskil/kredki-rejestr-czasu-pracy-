@@ -1,13 +1,13 @@
 <% locals.currentPath = '/reports/employee'; %>
-<%- include('../partials/head', { title: 'Raport godzin – ' + employee.name }) %>
+<%- include('../partials/head', { title: 'Karta czasu pracy – ' + employee.name }) %>
 <%- include('../partials/nav') %>
 
 <main class="md:ml-60 min-h-screen p-4 sm:p-6 pt-20 md:pt-6">
   <div class="max-w-4xl mx-auto">
 
     <!-- Toolbar (hidden on print) -->
-    <div class="no-print flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 flex-wrap">
-      <h1 class="text-xl font-bold text-slate-800">Raport godzin pracy</h1>
+    <div class="no-print flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 flex-wrap">
+      <h1 class="text-xl font-bold text-slate-800">Karta czasu pracy</h1>
       <div class="flex gap-2 flex-wrap">
         <a href="/reports/employee/<%= employee.id %>/<%= month %>/csv"
            class="btn btn-secondary text-xs">⬇ Pobierz CSV (Excel)</a>
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Selector (hidden on print) -->
-    <div class="no-print bg-white rounded-xl border border-slate-200 p-4 mb-6">
+    <div class="no-print bg-white rounded-xl border border-slate-200 p-4 mb-4">
       <form method="GET" class="flex gap-3 flex-wrap items-end">
         <div>
           <label class="block text-xs font-medium text-slate-500 mb-1">Pracownik</label>
@@ -37,123 +37,212 @@
       </form>
     </div>
 
-    <!-- ── PRINTABLE REPORT ── -->
-    <div id="reportContent" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8">
+    <!-- ── PRINTABLE DOCUMENT ── -->
+    <div id="reportContent" class="bg-white rounded-xl border border-slate-200">
 
-      <!-- Report header -->
-      <div class="flex items-start justify-between mb-6 pb-4 border-b border-slate-200">
-        <div>
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Kredki Cafe — Rejestr czasu pracy</div>
-          <div class="text-2xl font-bold text-slate-800"><%= employee.name %></div>
-          <div class="text-slate-500 mt-0.5 capitalize"><%= monthLabel %></div>
-        </div>
-        <div class="text-right">
-          <div class="text-xs text-slate-400 mb-1">Przepracowane godziny</div>
-          <div class="text-3xl font-bold text-blue-600"><%= formatHours(totalHours) %></div>
-          <div class="text-xs text-slate-400 mt-0.5"><%= workedDays %> dni roboczych</div>
-          <% if (employee.min_hours_per_month) { %>
-          <div class="text-xs mt-1 <%= totalHours >= employee.min_hours_per_month ? 'text-emerald-600' : 'text-amber-600' %> font-medium">
-            min. <%= employee.min_hours_per_month %>h / mies.
+      <!-- Document header -->
+      <div class="doc-header px-8 pt-8 pb-5 border-b-2 border-slate-800">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div class="logo-circle">☕</div>
+            <div>
+              <div class="text-xl font-black text-slate-900 leading-tight">Kredki Cafe</div>
+              <div class="text-xs text-slate-500 tracking-wide">Rejestr czasu pracy</div>
+            </div>
           </div>
-          <% } %>
+          <div class="text-right">
+            <div class="text-xs text-slate-400 uppercase tracking-widest mb-1">Dokument</div>
+            <div class="text-base font-bold text-slate-700 uppercase tracking-wider">Karta czasu pracy</div>
+            <div class="text-xs text-slate-400 mt-0.5">Nr: KCP/<%= mYear %>/<%= String(mMonth).padStart(2,'0') %>/<%= employee.id %></div>
+          </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-3 gap-4">
+          <div class="info-box col-span-2">
+            <div class="info-label">Pracownik</div>
+            <div class="info-value"><%= employee.name %></div>
+          </div>
+          <div class="info-box">
+            <div class="info-label">Okres rozliczeniowy</div>
+            <div class="info-value capitalize"><%= monthLabel %></div>
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-3 gap-4">
+          <div class="stat-box">
+            <div class="info-label">Przepracowane godziny</div>
+            <div class="text-2xl font-black text-slate-900"><%= formatHours(totalHours) %></div>
+          </div>
+          <div class="stat-box">
+            <div class="info-label">Dni roboczych</div>
+            <div class="text-2xl font-black text-slate-900"><%= workedDays %></div>
+          </div>
+          <div class="stat-box">
+            <div class="info-label">Status</div>
+            <div class="text-sm font-semibold text-slate-700">Zatwierdzony</div>
+          </div>
         </div>
       </div>
 
       <!-- Day table -->
-      <table class="w-full text-sm mb-8">
-        <thead>
-          <tr class="border-b-2 border-slate-200">
-            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-8">#</th>
-            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-10">Dzień</th>
-            <th class="text-left py-2 pr-3 text-xs font-semibold text-slate-500 uppercase">Zmiana</th>
-            <th class="text-center py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Od</th>
-            <th class="text-center py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Do</th>
-            <th class="text-right py-2 pr-3 text-xs font-semibold text-slate-500 uppercase w-16">Godz.</th>
-            <th class="text-left py-2 text-xs font-semibold text-slate-500 uppercase">Uwagi</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% days.forEach(d => { %>
-          <tr class="border-b border-slate-100 <%= d.isWeekend ? 'bg-slate-50' : '' %> hover:bg-blue-50/30 group">
-            <td class="py-2 pr-3 text-slate-400 text-xs"><%= d.day %></td>
-            <td class="py-2 pr-3 text-xs font-medium <%= d.isWeekend ? 'text-slate-400' : 'text-slate-600' %>"><%= d.dayLabel %></td>
-            <td class="py-2 pr-3 text-slate-700">
-              <% if (d.entry) { %><%= d.entry.shift_name %><% } else { %><span class="text-slate-300">—</span><% } %>
-            </td>
-            <td class="py-2 pr-3 text-center font-mono text-slate-600">
-              <% if (d.entry) { %><%= d.entry.start_time %><% } %>
-            </td>
-            <td class="py-2 pr-3 text-center font-mono text-slate-600">
-              <% if (d.entry) { %><%= d.entry.end_time %><% } %>
-            </td>
-            <td class="py-2 pr-3 text-right font-semibold <%= d.hours > 0 ? 'text-slate-800' : 'text-slate-200' %>">
-              <%= d.hours > 0 ? formatHours(d.hours) : '—' %>
-            </td>
-            <td class="py-2">
-              <% if (d.entry) { %>
-              <span
-                class="note-display no-print text-xs text-slate-500 cursor-pointer hover:text-blue-600 <%= d.entry.notes ? '' : 'italic text-slate-300' %>"
-                data-entry-id="<%= d.entry.id %>"
-                onclick="editNote(this)"
-                title="Kliknij by edytować"
-              ><%= d.entry.notes || 'dodaj uwagę…' %></span>
-              <span class="print-only text-xs text-slate-500"><%= d.entry.notes || '' %></span>
-              <div class="note-edit hidden no-print flex gap-1 items-center">
-                <input type="text" class="note-input flex-1 text-xs px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" value="<%= d.entry.notes || '' %>">
-                <button onclick="saveNote(this)" class="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">✓</button>
-                <button onclick="cancelNote(this)" class="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200">✕</button>
-              </div>
-              <% } %>
-            </td>
-          </tr>
-          <% }) %>
-        </tbody>
-        <tfoot>
-          <tr class="border-t-2 border-slate-300 bg-slate-50">
-            <td colspan="5" class="py-3 pr-3 text-sm font-semibold text-slate-700 text-right">RAZEM</td>
-            <td class="py-3 pr-3 text-right text-base font-bold text-slate-900"><%= formatHours(totalHours) %></td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
+      <div class="px-8 py-5">
+        <table class="w-full text-sm doc-table">
+          <thead>
+            <tr>
+              <th class="text-left w-8">Lp.</th>
+              <th class="text-left w-12">Data</th>
+              <th class="text-left w-10">Dzień</th>
+              <th class="text-center w-20">Od</th>
+              <th class="text-center w-20">Do</th>
+              <th class="text-right w-16">Godz.</th>
+              <th class="text-left">Uwagi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% let rowNum = 0; days.forEach(d => { if (d.entry) rowNum++; %>
+            <tr class="<%= d.isWeekend ? 'weekend-row' : '' %> <%= d.entry ? '' : 'empty-row' %>">
+              <td class="text-slate-400 text-xs"><%= d.entry ? rowNum : '' %></td>
+              <td class="text-xs font-medium text-slate-600"><%= d.date %></td>
+              <td class="text-xs <%= d.isWeekend ? 'text-slate-400' : 'text-slate-600' %>"><%= d.dayLabel %></td>
+              <td class="text-center font-mono">
+                <% if (d.entry) { %>
+                <span
+                  class="time-display no-print cursor-pointer hover:text-blue-600 hover:underline"
+                  data-entry-id="<%= d.entry.id %>"
+                  data-field="start"
+                  onclick="editTime(this)"
+                ><%= d.entry.start_time %></span>
+                <span class="print-only"><%= d.entry.start_time %></span>
+                <input type="time" class="time-input no-print hidden text-xs px-1 py-0.5 border border-blue-400 rounded w-20 text-center" value="<%= d.entry.start_time %>">
+                <% } %>
+              </td>
+              <td class="text-center font-mono">
+                <% if (d.entry) { %>
+                <span
+                  class="time-display no-print cursor-pointer hover:text-blue-600 hover:underline"
+                  data-entry-id="<%= d.entry.id %>"
+                  data-field="end"
+                  onclick="editTime(this)"
+                ><%= d.entry.end_time %></span>
+                <span class="print-only"><%= d.entry.end_time %></span>
+                <input type="time" class="time-input no-print hidden text-xs px-1 py-0.5 border border-blue-400 rounded w-20 text-center" value="<%= d.entry.end_time %>">
+                <% } %>
+              </td>
+              <td class="text-right font-semibold <%= d.hours > 0 ? 'text-slate-800' : 'text-slate-200' %>">
+                <span class="hours-cell" data-entry-id="<%= d.entry ? d.entry.id : '' %>">
+                  <%= d.hours > 0 ? formatHours(d.hours) : (d.entry ? '—' : '') %>
+                </span>
+              </td>
+              <td>
+                <% if (d.entry) { %>
+                <span
+                  class="note-display no-print text-xs text-slate-500 cursor-pointer hover:text-blue-600 <%= d.entry.notes ? '' : 'italic text-slate-300' %>"
+                  data-entry-id="<%= d.entry.id %>"
+                  onclick="editNote(this)"
+                  title="Kliknij by edytować"
+                ><%= d.entry.notes || 'dodaj uwagę…' %></span>
+                <span class="print-only text-xs text-slate-500"><%= d.entry.notes || '' %></span>
+                <div class="note-edit hidden no-print flex gap-1 items-center">
+                  <input type="text" class="note-input flex-1 text-xs px-2 py-0.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400" value="<%= d.entry.notes || '' %>">
+                  <button onclick="saveNote(this)" class="text-xs px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">✓</button>
+                  <button onclick="cancelNote(this)" class="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200">✕</button>
+                </div>
+                <% } %>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="4" class="text-right text-xs font-bold text-slate-700 uppercase tracking-wider">Razem</td>
+              <td></td>
+              <td class="text-right font-black text-slate-900" id="totalHoursCell"><%= formatHours(totalHours) %></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-      <!-- Signature area -->
-      <div class="mt-10 pt-6 border-t border-slate-200 grid grid-cols-2 gap-16">
-        <div>
-          <div class="text-xs text-slate-400 mb-8">Data i podpis pracownika</div>
-          <div class="border-b border-slate-300 pb-1 text-xs text-slate-400">.........................................................................</div>
-          <div class="mt-1 text-xs text-slate-400"><%= employee.name %></div>
+      <!-- Signature section -->
+      <div class="px-8 pb-8 pt-2">
+        <div class="grid grid-cols-2 gap-16 mt-4 pt-6 border-t border-slate-300">
+          <div>
+            <div class="text-xs text-slate-400 mb-10">Data i podpis pracownika</div>
+            <div class="border-b border-slate-400"></div>
+            <div class="mt-1.5 text-xs text-slate-500"><%= employee.name %></div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 mb-10">Podpis pracodawcy / kierownika</div>
+            <div class="border-b border-slate-400"></div>
+            <div class="mt-1.5 text-xs text-slate-500">Kredki Cafe</div>
+          </div>
         </div>
-        <div>
-          <div class="text-xs text-slate-400 mb-8">Podpis pracodawcy / kierownika</div>
-          <div class="border-b border-slate-300 pb-1 text-xs text-slate-400">.........................................................................</div>
-          <div class="mt-1 text-xs text-slate-400">Kredki Cafe</div>
+
+        <div class="mt-5 flex items-center justify-between">
+          <div class="text-xs text-slate-300">Kredki Cafe — Rejestr czasu pracy</div>
+          <div class="text-xs text-slate-300">Wygenerowano: <%= new Date().toLocaleDateString('pl-PL') %></div>
         </div>
       </div>
 
-      <div class="mt-6 text-xs text-slate-300 text-right">Wygenerowano: <%= new Date().toLocaleDateString('pl-PL') %></div>
-    </div>
+    </div><!-- /reportContent -->
   </div>
 </main>
 
 <style>
+/* ── Screen styles ── */
+.info-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.info-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.info-value { font-size: 15px; font-weight: 700; color: #0f172a; }
+.stat-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+.logo-circle { font-size: 28px; line-height: 1; }
+
+.doc-table { border-collapse: collapse; width: 100%; }
+.doc-table thead tr { border-bottom: 2px solid #1e293b; }
+.doc-table thead th { padding: 6px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; }
+.doc-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+.doc-table tbody td { padding: 5px 8px; font-size: 12px; color: #374151; }
+.doc-table tfoot .total-row { border-top: 2px solid #1e293b; background: #f8fafc; }
+.doc-table tfoot td { padding: 8px 8px; font-size: 13px; }
+.weekend-row { background: #f8fafc; }
+.empty-row td { color: #cbd5e1 !important; }
+
+/* ── Print ── */
 @media print {
+  @page { size: A4 portrait; margin: 1cm 1.2cm; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .no-print { display: none !important; }
   .print-only { display: inline !important; }
-  body { background: white !important; }
+  body, html { background: white !important; }
   main { margin: 0 !important; padding: 0 !important; }
-  #reportContent { border: none !important; box-shadow: none !important; padding: 1.5cm !important; }
+  #reportContent {
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    font-size: 11px;
+  }
+  .doc-table tbody td { padding: 3px 6px; font-size: 10px; }
+  .doc-table thead th { padding: 4px 6px; font-size: 9px; }
+  .doc-table tfoot td { padding: 5px 6px; font-size: 11px; }
+  .doc-header { padding: 0.4cm 0.6cm 0.4cm; }
+  #reportContent > div:not(.doc-header) { padding-left: 0.6cm; padding-right: 0.6cm; }
   tr { break-inside: avoid; }
+  .info-box, .stat-box { padding: 4px 8px; }
+  .info-value { font-size: 12px; }
 }
 .print-only { display: none; }
 </style>
 
 <script>
-// Redirect selects
 document.querySelectorAll('select[name="redirect"], select[name="monthRedirect"]').forEach(sel => {
   sel.addEventListener('change', () => { window.location.href = sel.value; });
 });
 
+// ── Note editing ──
 function editNote(span) {
   const row = span.closest('td');
   span.classList.add('hidden');
@@ -169,19 +258,70 @@ async function saveNote(btn) {
   const row = btn.closest('td');
   const span = row.querySelector('.note-display');
   const input = row.querySelector('.note-input');
-  const entryId = span.dataset.entryId;
   const notes = input.value.trim();
-  await fetch(`/api/schedule/entry/${entryId}/notes`, {
+  await fetch(`/api/schedule/entry/${span.dataset.entryId}/notes`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ notes }),
   });
   span.textContent = notes || 'dodaj uwagę…';
-  span.className = span.className.replace('italic text-slate-300', '');
-  if (!notes) span.classList.add('italic', 'text-slate-300');
+  span.classList.toggle('italic', !notes);
+  span.classList.toggle('text-slate-300', !notes);
   row.querySelector('.note-edit').classList.add('hidden');
   span.classList.remove('hidden');
 }
+
+// ── Time editing (admin only) ──
+<% if (user && user.role === 'admin') { %>
+function editTime(span) {
+  const cell = span.closest('td');
+  const input = cell.querySelector('.time-input');
+  span.classList.add('hidden');
+  cell.querySelector('.print-only') && cell.querySelector('.print-only').classList.add('hidden');
+  input.classList.remove('hidden');
+  input.focus();
+  input.addEventListener('blur', () => commitTime(input, span), { once: true });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.classList.add('hidden'); span.classList.remove('hidden'); }
+  });
+}
+
+async function commitTime(input, span) {
+  const newVal = input.value;
+  if (!newVal) { input.classList.add('hidden'); span.classList.remove('hidden'); return; }
+  const entryId = span.dataset.entryId;
+  const field = span.dataset.field;
+
+  // Get sibling cell's current value
+  const row = input.closest('tr');
+  const startSpan = row.querySelector('[data-field="start"]');
+  const endSpan   = row.querySelector('[data-field="end"]');
+  const start_time = field === 'start' ? newVal : startSpan.textContent.trim();
+  const end_time   = field === 'end'   ? newVal : endSpan.textContent.trim();
+
+  const r = await fetch(`/api/schedule/entry/${entryId}/times`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start_time, end_time }),
+  });
+  if ((await r.json()).ok) {
+    span.textContent = newVal;
+    // Recalc hours display
+    const [sh, sm] = start_time.split(':').map(Number);
+    const [eh, em] = end_time.split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins < 0) mins += 24 * 60;
+    const hrs = mins / 60;
+    const hoursCell = row.querySelector('.hours-cell');
+    if (hoursCell) {
+      hoursCell.textContent = hrs > 0 ? (Number.isInteger(hrs) ? hrs + 'h' : hrs.toFixed(1).replace('.', ',') + 'h') : '—';
+    }
+  }
+  input.classList.add('hidden');
+  span.classList.remove('hidden');
+}
+<% } %>
 </script>
 
 <%- include('../partials/footer') %>
