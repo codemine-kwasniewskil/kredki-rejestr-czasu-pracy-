@@ -1,0 +1,343 @@
+<%- include('../partials/head', { title: title }) %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/nav', { currentPath: currentPath }) %>
+
+  <main class="flex-1 md:ml-60 overflow-y-auto">
+    <div class="pt-14 md:pt-0">
+      <div class="px-4 md:px-8 py-6">
+
+        <!-- Header + month selector -->
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 class="text-2xl font-bold text-slate-800">Finanse — <span id="monthLabel"><%= monthLabel %></span></h1>
+          <div class="flex items-center gap-2">
+            <% const idx = availableMonths.findIndex(m => m.month_key === monthKey); %>
+            <% const prev = availableMonths[idx + 1]; %>
+            <% const next = availableMonths[idx - 1]; %>
+            <% if (prev) { %>
+            <a href="/finance/monthly/<%= prev.month_key %>" class="btn btn-secondary text-sm">‹ Poprzedni</a>
+            <% } %>
+            <select onchange="location.href='/finance/monthly/'+this.value"
+                    class="rounded-lg border border-slate-200 text-sm px-3 py-2 bg-white text-slate-700">
+              <% availableMonths.forEach(m => { %>
+              <option value="<%= m.month_key %>" <%= m.month_key === monthKey ? 'selected' : '' %>><%= m.month_key %></option>
+              <% }) %>
+              <% if (!availableMonths.length) { %>
+              <option value="<%= monthKey %>"><%= monthKey %></option>
+              <% } %>
+            </select>
+            <% if (next) { %>
+            <a href="/finance/monthly/<%= next.month_key %>" class="btn btn-secondary text-sm">Następny ›</a>
+            <% } %>
+            <a href="/finance/import" class="btn btn-primary text-sm ml-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              Import
+            </a>
+          </div>
+        </div>
+
+        <% if (!summary.tx_count) { %>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
+          <p class="text-slate-400 text-base mb-3">Brak danych dla <%= monthKey %>.</p>
+          <a href="/finance/import" class="btn btn-primary">Importuj wyciąg bankowy</a>
+        </div>
+        <% } else { %>
+
+        <!-- KPI cards row 1: Revenue -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Sprzedaż brutto (karta)</div>
+            <div class="text-xl font-bold text-green-700"><%= fmt(summary.revenue_card_gross) %></div>
+            <div class="text-xs text-slate-400 mt-1">netto bank: <%= fmt(summary.revenue_card_net) %></div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Gotówka</div>
+            <div class="text-xl font-bold text-green-600"><%= fmt(summary.revenue_cash) %></div>
+            <div class="text-xs text-slate-400 mt-1">&nbsp;</div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Inne przychody</div>
+            <div class="text-xl font-bold text-emerald-600"><%= fmt(summary.revenue_other) %></div>
+            <div class="text-xs text-slate-400 mt-1">&nbsp;</div>
+          </div>
+          <div class="bg-white rounded-xl border border-green-200 shadow-sm p-4 bg-green-50">
+            <div class="text-xs text-green-700 uppercase tracking-wide mb-1 font-medium">Łączne przychody</div>
+            <div class="text-xl font-bold text-green-800"><%= fmt(summary.revenue_total) %></div>
+            <div class="text-xs text-slate-500 mt-1">bank: <%= fmt(summary.raw_bank_income) %></div>
+          </div>
+        </div>
+
+        <!-- KPI cards row 2: Costs -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Dostawcy / Towary</div>
+            <div class="text-xl font-bold text-orange-600"><%= fmt(summary.cost_goods) %></div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Wynagrodzenia</div>
+            <div class="text-xl font-bold text-orange-700"><%= fmt(summary.cost_employees) %></div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">ZUS + Podatki</div>
+            <div class="text-xl font-bold text-red-600">
+              <%= fmt((summary.cost_zus || 0) + (summary.cost_taxes || 0)) %>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">ZUS: <%= fmt(summary.cost_zus) %> | PIT+VAT: <%= fmt(summary.cost_taxes) %></div>
+          </div>
+          <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4 bg-red-50">
+            <div class="text-xs text-red-700 uppercase tracking-wide mb-1 font-medium">Łączne koszty</div>
+            <div class="text-xl font-bold text-red-800"><%= fmt(summary.cost_total) %></div>
+            <div class="text-xs text-slate-500 mt-1">bank: <%= fmt(summary.raw_bank_expenses) %></div>
+          </div>
+        </div>
+
+        <!-- Profit KPI row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Zysk operacyjny (przed ZUS/podatkami)</div>
+            <div class="text-2xl font-bold <%= (summary.operating_profit_before_tax_zus || 0) >= 0 ? 'text-blue-700' : 'text-red-700' %>">
+              <%= fmt(summary.operating_profit_before_tax_zus) %> PLN
+            </div>
+          </div>
+          <div class="rounded-xl border shadow-sm p-4 <%= (summary.real_income || 0) >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200' %>">
+            <div class="text-xs <%= (summary.real_income || 0) >= 0 ? 'text-blue-700' : 'text-red-700' %> uppercase tracking-wide mb-1 font-medium">Dochód netto (po wszystkich kosztach)</div>
+            <div class="text-2xl font-bold <%= (summary.real_income || 0) >= 0 ? 'text-blue-800' : 'text-red-800' %>">
+              <%= fmt(summary.real_income) %> PLN
+            </div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Cashflow bankowy</div>
+            <div class="text-2xl font-bold <%= (summary.raw_bank_cashflow || 0) >= 0 ? 'text-slate-700' : 'text-orange-700' %>">
+              <%= fmt(summary.raw_bank_cashflow) %> PLN
+            </div>
+            <div class="text-xs text-slate-400 mt-1">
+              Wyłączone: <%= fmt(summary.excluded_total) %> |
+              Do weryfikacji: <span class="<%= (summary.review_count || 0) > 0 ? 'text-amber-600 font-semibold' : '' %>"><%= summary.review_count || 0 %></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart + Category breakdown -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+          <!-- Category chart -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <h2 class="text-sm font-semibold text-slate-700 mb-4">Koszty wg kategorii</h2>
+            <% const costCats = catBreakdown.filter(c => c.event_type === 'cost'); %>
+            <% if (costCats.length) { %>
+            <canvas id="costChart" height="220"></canvas>
+            <% } else { %>
+            <p class="text-slate-400 text-sm text-center py-8">Brak danych o kosztach</p>
+            <% } %>
+          </div>
+
+          <!-- Revenue chart -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <h2 class="text-sm font-semibold text-slate-700 mb-4">Przychody wg kategorii</h2>
+            <% const incomeCats = catBreakdown.filter(c => c.event_type === 'income'); %>
+            <% if (incomeCats.length) { %>
+            <canvas id="incomeChart" height="220"></canvas>
+            <% } else { %>
+            <p class="text-slate-400 text-sm text-center py-8">Brak danych o przychodach</p>
+            <% } %>
+          </div>
+        </div>
+
+        <!-- Transactions table -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-slate-700">
+              Transakcje (<%= transactions.length %>)
+              <% if (summary.review_count > 0) { %>
+              <span class="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                <%= summary.review_count %> do weryfikacji
+              </span>
+              <% } %>
+            </h2>
+            <div class="flex items-center gap-2">
+              <input type="text" id="txSearch" placeholder="Szukaj…"
+                     class="rounded-lg border border-slate-200 text-sm px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <select id="txFilter" class="rounded-lg border border-slate-200 text-sm px-2 py-1.5">
+                <option value="">Wszystkie</option>
+                <option value="review">Do weryfikacji</option>
+                <option value="relevant">Potwierdzone</option>
+                <option value="not_relevant">Nieistotne</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm" id="txTable">
+              <thead>
+                <tr class="text-left text-slate-500 bg-slate-50 border-b border-slate-100">
+                  <th class="px-3 py-2 font-medium w-24">Data</th>
+                  <th class="px-3 py-2 font-medium">Kontrahent</th>
+                  <th class="px-3 py-2 font-medium max-w-xs">Tytuł</th>
+                  <th class="px-3 py-2 font-medium text-right w-28">Kwota</th>
+                  <th class="px-3 py-2 font-medium w-44">Kategoria</th>
+                  <th class="px-3 py-2 font-medium w-32 text-center">Status</th>
+                  <th class="px-3 py-2 font-medium w-20 text-center">Istotne</th>
+                  <th class="px-3 py-2 font-medium w-8 text-center"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50" id="txBody">
+                <% transactions.forEach(tx => { %>
+                <tr class="hover:bg-slate-50 tx-row"
+                    data-status="<%= tx.status %>"
+                    data-search="<%= (tx.counterparty_name + ' ' + tx.title + ' ' + tx.operation_type).toLowerCase() %>">
+                  <td class="px-3 py-2 whitespace-nowrap text-slate-500 text-xs"><%= tx.booking_date %></td>
+                  <td class="px-3 py-2 text-slate-700 max-w-[150px]">
+                    <div class="truncate" title="<%= tx.counterparty_name %>"><%= tx.counterparty_name || '—' %></div>
+                    <div class="text-xs text-slate-400 truncate"><%= tx.operation_type %></div>
+                  </td>
+                  <td class="px-3 py-2 text-slate-600 max-w-xs">
+                    <div class="truncate text-xs" title="<%= tx.title %>"><%= tx.title || '—' %></div>
+                    <% if (tx.user_note) { %>
+                    <div class="text-xs text-blue-600 italic truncate">📝 <%= tx.user_note %></div>
+                    <% } %>
+                  </td>
+                  <td class="px-3 py-2 text-right font-semibold whitespace-nowrap
+                    <%= tx.amount > 0 ? 'text-green-700' : 'text-red-700' %>">
+                    <%= tx.amount > 0 ? '+' : '' %><%= fmt(tx.amount) %>
+                  </td>
+                  <td class="px-3 py-2">
+                    <select class="cat-select w-full rounded border border-slate-200 text-xs px-1.5 py-1 bg-white"
+                            data-id="<%= tx.id %>"
+                            onchange="updateTx(<%= tx.id %>, {category_id: this.value})">
+                      <option value="">— bez kategorii —</option>
+                      <% categories.forEach(cat => { %>
+                      <option value="<%= cat.id %>"
+                        class="<%= cat.event_type === 'income' ? 'text-green-700' : cat.event_type === 'cost' ? 'text-red-700' : 'text-slate-400' %>"
+                        <%= cat.id == tx.category_id ? 'selected' : '' %>><%= cat.name %></option>
+                      <% }) %>
+                    </select>
+                  </td>
+                  <td class="px-3 py-2 text-center">
+                    <select class="status-select rounded border border-slate-200 text-xs px-1.5 py-1 bg-white w-full"
+                            data-id="<%= tx.id %>"
+                            onchange="updateTx(<%= tx.id %>, {status: this.value})">
+                      <option value="review"              <%= tx.status==='review'             ? 'selected' : '' %>>Do weryfikacji</option>
+                      <option value="relevant"            <%= tx.status==='relevant'           ? 'selected' : '' %>>Potwierdzone</option>
+                      <option value="not_relevant"        <%= tx.status==='not_relevant'       ? 'selected' : '' %>>Nieistotne</option>
+                      <option value="internal_transfer"   <%= tx.status==='internal_transfer'  ? 'selected' : '' %>>Przelew wewn.</option>
+                      <option value="duplicate"           <%= tx.status==='duplicate'          ? 'selected' : '' %>>Duplikat</option>
+                    </select>
+                  </td>
+                  <td class="px-3 py-2 text-center">
+                    <input type="checkbox" class="relevant-check accent-blue-600 w-4 h-4"
+                           data-id="<%= tx.id %>"
+                           <%= tx.is_relevant ? 'checked' : '' %>
+                           onchange="updateTx(<%= tx.id %>, {is_relevant: this.checked})">
+                  </td>
+                  <td class="px-3 py-2 text-center">
+                    <button onclick="recategorizeTx(<%= tx.id %>)" title="Auto-kategoryzuj ponownie"
+                            class="text-slate-400 hover:text-blue-600 transition-colors p-0.5 rounded">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <% } /* end if tx_count */ %>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Chart.js ──────────────────────────────────────────────────────────────────
+<% if (typeof catBreakdown !== 'undefined' && catBreakdown.length) { %>
+const costCatData  = <%- JSON.stringify(catBreakdown.filter(c => c.event_type === 'cost')) %>;
+const incomeCatData = <%- JSON.stringify(catBreakdown.filter(c => c.event_type === 'income')) %>;
+const COST_COLORS   = ['#ef4444','#f97316','#f59e0b','#84cc16','#06b6d4','#8b5cf6','#ec4899','#14b8a6','#6366f1','#d946ef'];
+const INCOME_COLORS = ['#22c55e','#10b981','#84cc16','#06b6d4','#3b82f6','#a855f7'];
+
+if (costCatData.length) {
+  new Chart(document.getElementById('costChart'), {
+    type: 'doughnut',
+    data: {
+      labels: costCatData.map(c => c.name),
+      datasets: [{ data: costCatData.map(c => c.total), backgroundColor: COST_COLORS, borderWidth: 1 }],
+    },
+    options: { plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } }, responsive: true },
+  });
+}
+if (incomeCatData.length) {
+  new Chart(document.getElementById('incomeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: incomeCatData.map(c => c.name),
+      datasets: [{ data: incomeCatData.map(c => c.total), backgroundColor: INCOME_COLORS, borderWidth: 1 }],
+    },
+    options: { plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } }, responsive: true },
+  });
+}
+<% } %>
+
+// ── Transaction filter + search ────────────────────────────────────────────────
+document.getElementById('txSearch')?.addEventListener('input', filterTable);
+document.getElementById('txFilter')?.addEventListener('change', filterTable);
+function filterTable() {
+  const q      = (document.getElementById('txSearch').value || '').toLowerCase();
+  const status = document.getElementById('txFilter').value;
+  document.querySelectorAll('.tx-row').forEach(row => {
+    const matchSearch = !q || row.dataset.search.includes(q);
+    const matchStatus = !status || row.dataset.status === status;
+    row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+  });
+}
+
+// ── AJAX transaction update ────────────────────────────────────────────────────
+async function updateTx(id, payload) {
+  try {
+    const r = await fetch(`/finance/api/transactions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Błąd');
+    const row = document.querySelector(`[data-id="${id}"]`)?.closest('tr');
+    if (row && data.transaction) {
+      row.dataset.status = data.transaction.status;
+      // Update relevant checkbox state
+      const cb = row.querySelector('.relevant-check');
+      if (cb) cb.checked = !!data.transaction.is_relevant;
+    }
+    showToast('Zaktualizowano', 'success');
+  } catch (e) {
+    showToast('Błąd: ' + e.message, 'error');
+  }
+}
+
+async function recategorizeTx(id) {
+  try {
+    const r = await fetch(`/finance/api/transactions/${id}/recategorize`, { method: 'POST' });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Błąd');
+    // Update category dropdown
+    const catSelect = document.querySelector(`.cat-select[data-id="${id}"]`);
+    if (catSelect && data.transaction.category_id) {
+      catSelect.value = data.transaction.category_id;
+    }
+    showToast('Ponownie skategoryzowano', 'success');
+  } catch (e) {
+    showToast('Błąd: ' + e.message, 'error');
+  }
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
+    type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+</script>
+</body></html>

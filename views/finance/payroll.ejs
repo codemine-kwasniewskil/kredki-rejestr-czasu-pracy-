@@ -1,0 +1,187 @@
+<%- include('../partials/head', { title: title }) %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/nav', { currentPath: currentPath }) %>
+
+  <main class="flex-1 md:ml-60 overflow-y-auto">
+    <div class="pt-14 md:pt-0">
+      <div class="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+
+        <!-- Header -->
+        <div class="mb-6 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Koszty pracownicze</h1>
+            <p class="text-sm text-slate-500 mt-1">Płatności pracownicze z wyciągu bankowego i dane z list płac</p>
+          </div>
+          <div class="flex gap-2">
+            <a href="/finance/monthly" class="btn btn-secondary text-sm">Raport miesięczny</a>
+            <a href="/finance/import" class="btn btn-primary text-sm">Import wyciągu</a>
+          </div>
+        </div>
+
+        <!-- Employee cost source selector -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+          <h2 class="text-sm font-semibold text-slate-700 mb-3">Źródło kosztów pracowniczych w raporcie</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label class="flex items-start gap-3 p-3 border-2 border-blue-500 rounded-lg cursor-pointer bg-blue-50">
+              <input type="radio" name="cost_source" value="bank_only" checked class="mt-0.5 accent-blue-600">
+              <div>
+                <div class="text-sm font-medium text-blue-800">Bank (wypłaty)</div>
+                <div class="text-xs text-slate-500 mt-0.5">Kwoty faktycznie przelane na konta pracowników</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-slate-300">
+              <input type="radio" name="cost_source" value="payroll_only" class="mt-0.5 accent-blue-600">
+              <div>
+                <div class="text-sm font-medium text-slate-700">Lista płac</div>
+                <div class="text-xs text-slate-500 mt-0.5">Koszt pracodawcy z listy płac (wymaga importu ZIP)</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-slate-300">
+              <input type="radio" name="cost_source" value="payroll_if_available_else_bank" class="mt-0.5 accent-blue-600">
+              <div>
+                <div class="text-sm font-medium text-slate-700">Lista płac (lub bank)</div>
+                <div class="text-xs text-slate-500 mt-0.5">Lista płac jeśli dostępna, inaczej wypłata bankowa</div>
+              </div>
+            </label>
+          </div>
+          <p class="text-xs text-slate-400 mt-3">
+            Aktualnie aktywne: <strong>Bank (wypłaty)</strong>. Import listy płac pozwoli na pełne koszty pracodawcy (ZUS pracodawcy).
+          </p>
+        </div>
+
+        <!-- Bank employee payments by month -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
+          <h2 class="text-sm font-semibold text-slate-700 mb-4">Wypłaty pracownicze z banku</h2>
+          <% if (!employeePayments.length) { %>
+          <p class="text-slate-400 text-sm text-center py-6">
+            Brak danych. Zaimportuj wyciąg bankowy, aby zobaczyć wypłaty pracownicze.
+          </p>
+          <% } else { %>
+          <!-- Group by month -->
+          <%
+            const byMonth = {};
+            employeePayments.forEach(p => {
+              if (!byMonth[p.month_key]) byMonth[p.month_key] = [];
+              byMonth[p.month_key].push(p);
+            });
+          %>
+          <% Object.keys(byMonth).sort().reverse().forEach(mk => { %>
+          <div class="mb-5">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-semibold text-slate-600 uppercase tracking-wide"><%= mk %></h3>
+              <span class="text-sm font-semibold text-orange-700">
+                Razem: <%= fmt(byMonth[mk].reduce((s,p) => s + Math.abs(p.amount), 0)) %> PLN
+              </span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-slate-400 border-b border-slate-100 text-xs">
+                    <th class="pb-1 font-medium pr-4">Pracownik</th>
+                    <th class="pb-1 font-medium pr-4">Tytuł</th>
+                    <th class="pb-1 font-medium pr-4">Data</th>
+                    <th class="pb-1 font-medium text-right pr-4">Kwota</th>
+                    <th class="pb-1 font-medium text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                  <% byMonth[mk].forEach(p => { %>
+                  <tr>
+                    <td class="py-1.5 pr-4 font-medium text-slate-700"><%= p.counterparty_name || '—' %></td>
+                    <td class="py-1.5 pr-4 text-slate-500 text-xs max-w-xs truncate" title="<%= p.title %>"><%= p.title || '—' %></td>
+                    <td class="py-1.5 pr-4 text-slate-500 text-xs whitespace-nowrap"><%= p.booking_date %></td>
+                    <td class="py-1.5 pr-4 text-right font-semibold text-orange-700 whitespace-nowrap">
+                      <%= fmt(Math.abs(p.amount)) %> PLN
+                    </td>
+                    <td class="py-1.5 text-center">
+                      <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                        <%= p.status === 'relevant' ? 'bg-green-100 text-green-700' :
+                            p.status === 'review'   ? 'bg-amber-100 text-amber-700' :
+                                                      'bg-slate-100 text-slate-500' %>">
+                        <%= p.status === 'relevant' ? 'Potwierdzone' :
+                            p.status === 'review'   ? 'Do weryfikacji' : p.status %>
+                      </span>
+                    </td>
+                  </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <% }) %>
+          <% } %>
+        </div>
+
+        <!-- Payroll costs from ZIP import -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-slate-700">Lista płac (import ZIP)</h2>
+            <% if (!payrollCosts.length) { %>
+            <span class="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Brak danych</span>
+            <% } else { %>
+            <span class="text-xs text-green-700 bg-green-100 px-3 py-1 rounded-full font-medium"><%= payrollCosts.length %> rekordów</span>
+            <% } %>
+          </div>
+
+          <% if (!payrollCosts.length) { %>
+          <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center">
+            <p class="text-slate-400 text-sm mb-3">Import listy płac z zaszyfrowanych ZIP nie został jeszcze przeprowadzony.</p>
+            <div class="text-xs text-slate-400 space-y-1">
+              <p>Aby zaimportować listę płac, uruchom skrypt ekstrakcji:</p>
+              <code class="bg-slate-100 px-2 py-1 rounded text-slate-600 text-xs block mt-2">
+                node database/run_finance_migration.js
+              </code>
+              <p class="mt-2">Następnie wgraj plik payroll_documents_manifest.csv przez API.</p>
+            </div>
+          </div>
+          <% } else { %>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-slate-400 border-b border-slate-100 text-xs">
+                  <th class="pb-2 font-medium pr-4">Pracownik</th>
+                  <th class="pb-2 font-medium pr-4">Miesiąc</th>
+                  <th class="pb-2 font-medium pr-4 text-right">Netto</th>
+                  <th class="pb-2 font-medium pr-4 text-right">Brutto</th>
+                  <th class="pb-2 font-medium pr-4 text-right">Koszt pracodawcy</th>
+                  <th class="pb-2 font-medium pr-4 text-center">Reconciled</th>
+                  <th class="pb-2 font-medium text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                <% payrollCosts.forEach(pc => { %>
+                <tr class="hover:bg-slate-50">
+                  <td class="py-2 pr-4 font-medium text-slate-700"><%= pc.employee_name || pc.employee_name_raw || '—' %></td>
+                  <td class="py-2 pr-4 text-slate-600"><%= pc.period_month %></td>
+                  <td class="py-2 pr-4 text-right text-slate-700 whitespace-nowrap"><%= fmt(pc.net_amount) %></td>
+                  <td class="py-2 pr-4 text-right text-slate-700 whitespace-nowrap"><%= fmt(pc.gross_amount) %></td>
+                  <td class="py-2 pr-4 text-right font-semibold text-orange-700 whitespace-nowrap"><%= fmt(pc.employer_cost) %></td>
+                  <td class="py-2 pr-4 text-center">
+                    <% if (pc.bank_reconciled) { %>
+                    <span class="text-green-600">✓</span>
+                    <% } else { %>
+                    <span class="text-slate-300">—</span>
+                    <% } %>
+                  </td>
+                  <td class="py-2 text-center">
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                      <%= pc.review_status === 'approved' ? 'bg-green-100 text-green-700' :
+                          pc.review_status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                            'bg-amber-100 text-amber-700' %>">
+                      <%= pc.review_status === 'approved' ? 'Zatwierdzono' :
+                          pc.review_status === 'rejected' ? 'Odrzucono' : 'Oczekuje' %>
+                    </span>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+          <% } %>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

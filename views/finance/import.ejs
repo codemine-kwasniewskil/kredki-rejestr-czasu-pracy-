@@ -1,0 +1,193 @@
+<%- include('../partials/head', { title: title }) %>
+<div class="flex h-screen overflow-hidden">
+  <%- include('../partials/nav', { currentPath: currentPath }) %>
+
+  <main class="flex-1 md:ml-60 overflow-y-auto">
+    <div class="pt-14 md:pt-0">
+      <div class="px-4 md:px-8 py-6 max-w-5xl mx-auto">
+
+        <!-- Header -->
+        <div class="mb-6 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Import wyciągu mBank</h1>
+            <p class="text-sm text-slate-500 mt-1">Wgraj plik CSV z mBank (kodowanie CP1250)</p>
+          </div>
+          <a href="/finance/monthly" class="btn btn-secondary text-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            Raport miesięczny
+          </a>
+        </div>
+
+        <!-- Flash messages -->
+        <% if (typeof error !== 'undefined' && error && error.length) { %>
+          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error %></div>
+        <% } %>
+
+        <!-- Upload form -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+          <h2 class="text-base font-semibold text-slate-700 mb-4">Wgraj plik CSV</h2>
+          <form method="POST" action="/finance/import" enctype="multipart/form-data">
+            <div class="flex flex-col sm:flex-row gap-3 items-start">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-slate-600 mb-1">Plik wyciągu bankowego (.csv)</label>
+                <input type="file" name="csv_file" accept=".csv,text/csv" required
+                  class="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-200 rounded-lg p-1">
+              </div>
+              <button type="submit" class="btn btn-primary mt-5 sm:mt-6">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Importuj
+              </button>
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Importuj jest idempotentny — duplikaty są wykrywane i pomijane automatycznie.</p>
+          </form>
+        </div>
+
+        <!-- Import result -->
+        <% if (typeof result !== 'undefined' && result) { %>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-slate-800">
+                <%= result.alreadyExisted ? 'Plik już importowany — ' : 'Import zakończony — ' %>
+                <%= result.importedCount %> nowych / <%= result.skippedCount %> pominiętych
+              </h2>
+              <p class="text-sm text-slate-500"><%= result.fileName %></p>
+            </div>
+            <% if (result.monthKey) { %>
+            <a href="/finance/monthly/<%= result.monthKey %>" class="btn btn-primary ml-auto text-sm">
+              Przejdź do raportu →
+            </a>
+            <% } %>
+          </div>
+
+          <!-- Metadata -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+            <div class="bg-slate-50 rounded-lg p-3">
+              <div class="text-xs text-slate-500 mb-1">Konto</div>
+              <div class="text-sm font-mono font-medium text-slate-800"><%= result.meta.account_number || '—' %></div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-3">
+              <div class="text-xs text-slate-500 mb-1">Okres</div>
+              <div class="text-sm font-medium text-slate-800">
+                <%= result.meta.period_start || '—' %> — <%= result.meta.period_end || '—' %>
+              </div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-3">
+              <div class="text-xs text-slate-500 mb-1">Saldo otwarcia</div>
+              <div class="text-sm font-semibold text-slate-800"><%= fmt(result.meta.opening_balance) %> PLN</div>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-3">
+              <div class="text-xs text-slate-500 mb-1">Transakcje</div>
+              <div class="text-sm font-semibold text-slate-800"><%= result.totalTransactions %></div>
+            </div>
+          </div>
+
+          <!-- Validation -->
+          <h3 class="text-sm font-semibold text-slate-700 mb-3">Walidacja danych</h3>
+          <div class="space-y-2 mb-5">
+            <% result.validations.forEach(v => { %>
+            <div class="flex items-center gap-3 text-sm">
+              <span class="w-5 h-5 flex-shrink-0">
+                <% if (v.ok) { %>
+                  <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <% } else { %>
+                  <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <% } %>
+              </span>
+              <span class="text-slate-700 w-40 flex-shrink-0"><%= v.label %></span>
+              <span class="text-slate-500">
+                <% if (v.expected !== null && v.expected !== undefined) { %>
+                  Oczekiwano: <span class="font-medium text-slate-700"><%= v.expected %></span> |
+                <% } %>
+                Znaleziono: <span class="font-medium <%= v.ok ? 'text-green-700' : 'text-red-700' %>"><%= v.actual %></span>
+              </span>
+            </div>
+            <% }) %>
+          </div>
+
+          <!-- Card terminal analysis -->
+          <% if (result.cardCount > 0) { %>
+          <h3 class="text-sm font-semibold text-slate-700 mb-3">Analiza płatności kartą</h3>
+          <div class="grid grid-cols-3 gap-3 mb-2">
+            <div class="bg-green-50 rounded-lg p-3 text-center">
+              <div class="text-xs text-slate-500 mb-1">Rozliczeń terminala</div>
+              <div class="text-lg font-bold text-green-700"><%= result.cardCount %></div>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-3 text-center">
+              <div class="text-xs text-slate-500 mb-1">Sprzedaż brutto</div>
+              <div class="text-lg font-bold text-blue-700"><%= fmt(result.cardGrossTotal) %> PLN</div>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-3 text-center">
+              <div class="text-xs text-slate-500 mb-1">Prowizje terminala</div>
+              <div class="text-lg font-bold text-orange-700"><%= fmt(result.cardFeeTotal) %> PLN</div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-400">Każde rozliczenie generuje 2 zdarzenia finansowe: przychód (brutto) + koszt prowizji.</p>
+          <% } %>
+        </div>
+        <% } %>
+
+        <!-- Previous imports -->
+        <% if (imports.length > 0) { %>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <h2 class="text-base font-semibold text-slate-700 mb-4">Historia importów</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-slate-500 border-b border-slate-100">
+                  <th class="pb-2 font-medium pr-4">Plik</th>
+                  <th class="pb-2 font-medium pr-4">Okres</th>
+                  <th class="pb-2 font-medium pr-4 text-right">Przychody</th>
+                  <th class="pb-2 font-medium pr-4 text-right">Wydatki</th>
+                  <th class="pb-2 font-medium pr-4 text-center">Transakcji</th>
+                  <th class="pb-2 font-medium pr-4">Importował</th>
+                  <th class="pb-2 font-medium">Data importu</th>
+                  <th class="pb-2"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                <% imports.forEach(imp => { %>
+                <tr class="hover:bg-slate-50">
+                  <td class="py-2 pr-4 font-medium text-slate-700 max-w-[160px] truncate">
+                    <span title="<%= imp.file_name %>"><%= imp.file_name %></span>
+                  </td>
+                  <td class="py-2 pr-4 text-slate-600 whitespace-nowrap">
+                    <%= imp.statement_period_start || '—' %> — <%= imp.statement_period_end || '—' %>
+                  </td>
+                  <td class="py-2 pr-4 text-green-700 font-medium text-right whitespace-nowrap">
+                    <%= fmt(imp.income_total_from_statement) %>
+                  </td>
+                  <td class="py-2 pr-4 text-red-700 font-medium text-right whitespace-nowrap">
+                    <%= fmt(imp.expense_total_from_statement) %>
+                  </td>
+                  <td class="py-2 pr-4 text-center text-slate-600"><%= imp.transaction_count_from_statement || '—' %></td>
+                  <td class="py-2 pr-4 text-slate-600"><%= imp.imported_by_name || '—' %></td>
+                  <td class="py-2 pr-4 text-slate-500 whitespace-nowrap text-xs">
+                    <%= imp.imported_at ? imp.imported_at.toString().substring(0,16) : '—' %>
+                  </td>
+                  <td class="py-2">
+                    <% if (imp.statement_period_start) { %>
+                    <a href="/finance/monthly/<%= imp.statement_period_start.substring(0,7) %>"
+                       class="text-blue-600 hover:underline text-xs">Raport →</a>
+                    <% } %>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <% } else { %>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+          <p class="text-slate-400 text-sm">Nie zaimportowano jeszcze żadnych wyciągów.</p>
+        </div>
+        <% } %>
+
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>
