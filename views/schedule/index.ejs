@@ -44,7 +44,7 @@
           <button onclick="document.getElementById('rejectModal').classList.remove('hidden')" class="btn btn-danger">✗ Odrzuć</button>
           <% } %>
         <% } %>
-        <% if (user.role === 'admin' && schedule) { %>
+        <% if (isEditable) { %>
           <button onclick="clearWeek('<%= weekStart %>')" class="btn btn-danger text-xs" title="Usuń wszystkie zmiany z tego tygodnia">🗑 Wyczyść tydzień</button>
         <% } %>
 

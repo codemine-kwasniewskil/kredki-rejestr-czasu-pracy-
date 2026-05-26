@@ -430,7 +430,7 @@ router.post('/schedule/entry/:id/confirm', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/schedule/week/:weekStart/entries', requireRole('admin'), async (req, res) => {
+router.delete('/schedule/week/:weekStart/entries', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const schedule = await db.get('SELECT id FROM schedules WHERE week_start=?', [req.params.weekStart]);
     if (!schedule) return res.json({ ok: false, error: 'Brak grafiku dla tego tygodnia.' });
