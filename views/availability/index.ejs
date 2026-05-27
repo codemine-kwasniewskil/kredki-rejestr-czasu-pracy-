@@ -51,7 +51,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
           </select>
         </form>
         <% } %>
-        <% if (user.role === 'admin') { %>
+        <% if (user.role === 'admin' || user.role === 'location_manager') { %>
           <% const _allLocked = allUsers.length > 0 && allUsers.every(u => u.availability_locked); %>
           <% const _allUnlocked = allUsers.length > 0 && allUsers.every(u => !u.availability_locked); %>
           <button onclick="lockAllAvailability(true)" class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors <%= _allLocked ? 'bg-amber-500 border-amber-500 text-white' : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' %>">🔒 Zablokuj wszystkich</button>
@@ -123,7 +123,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const startTime = avail ? avail.startTime : null;
             const endTime = avail ? avail.endTime : null;
             const isPast = dateStr < todayStr;
-            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role !== 'admin' && targetUserLocked);
+            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role === 'worker' && targetUserLocked);
             const canEdit = !isLocked;
             const isToday = dateStr === todayStr;
           %>

@@ -18,7 +18,7 @@ router.get('/', requireAuth, async (req, res) => {
       if (req.query.userId) {
         const qId = parseInt(req.query.userId);
         if (allUsers.some(u => u.id === qId)) targetUserId = qId;
-      } else if (role === 'admin' && allUsers.length > 0) {
+      } else if ((role === 'admin' || role === 'location_manager') && allUsers.length > 0) {
         targetUserId = allUsers[0].id;
       }
     }
@@ -58,7 +58,7 @@ router.get('/', requireAuth, async (req, res) => {
       : !!(targetUser && targetUser.availability_locked);
 
     let lockBeforeStr = null;
-    if (role !== 'admin') {
+    if (role === 'worker') {
       if (targetUserLocked) {
         // Admin-locked: use the automatic deadline cutoff (irrelevant since all dates are blocked anyway)
         const cutoff = 10;

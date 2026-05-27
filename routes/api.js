@@ -124,14 +124,14 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
       userId = parseInt(targetUserId);
     }
 
-    if (role !== 'admin') {
+    if (role === 'worker') {
       const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
       if (targetUser && targetUser.availability_locked) {
         return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
       }
     }
 
-    if (role !== 'admin') {
+    if (role === 'worker') {
       const today = new Date();
       const lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
       if (date < lockBeforeStr) {
@@ -177,14 +177,14 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
       userId = parseInt(targetUserId);
     }
 
-    if (role !== 'admin') {
+    if (role === 'worker') {
       const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
       if (targetUser && targetUser.availability_locked) {
         return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana.' });
       }
     }
 
-    if (role !== 'admin') {
+    if (role === 'worker') {
       const today = new Date();
       const lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
       if (date < lockBeforeStr) {
@@ -216,7 +216,7 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
 });
 
 // Bulk must come before /:id to avoid route conflict
-router.put('/users/availability-lock-all', requireRole('admin'), async (req, res) => {
+router.put('/users/availability-lock-all', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { locked } = req.body;
     await db.run("UPDATE users SET availability_locked=? WHERE role != 'admin'", [locked ? 1 : 0]);
@@ -228,7 +228,7 @@ router.put('/users/availability-lock-all', requireRole('admin'), async (req, res
   }
 });
 
-router.put('/users/:id/availability-lock', requireRole('admin'), async (req, res) => {
+router.put('/users/:id/availability-lock', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { locked } = req.body;
     const _lu = await db.get('SELECT name FROM users WHERE id=?', [req.params.id]);
