@@ -135,17 +135,17 @@ router.get('/login', (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await db.get('SELECT * FROM users WHERE email=? AND active=1', [email]);
+    const { username, password } = req.body;
+    const user = await db.get('SELECT * FROM users WHERE username=? AND active=1', [username]);
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-      log({ id: null, name: email || '?', role: '?' }, 'Nieudana próba logowania', email || '');
-      req.flash('error', 'Nieprawidłowy e-mail lub hasło.');
+      log({ id: null, name: username || '?', role: '?' }, 'Nieudana próba logowania', username || '');
+      req.flash('error', 'Nieprawidłowa nazwa użytkownika lub hasło.');
       return res.redirect('/login');
     }
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userRole = user.role;
-    log(user, 'Logowanie', user.email);
+    log(user, 'Logowanie', user.username);
     if (user.must_change_password) return res.redirect('/change-password');
     res.redirect('/dashboard');
   } catch (err) {

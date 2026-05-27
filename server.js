@@ -51,6 +51,7 @@ app.use('/finance', require('./routes/finance'));
 // Auto-migrations (safe to run on every startup)
 (async () => {
   try {
+    // schedule_comments table
     await db.run(`CREATE TABLE IF NOT EXISTS schedule_comments (
       id INT NOT NULL AUTO_INCREMENT,
       schedule_id INT NOT NULL,
@@ -63,6 +64,29 @@ app.use('/finance', require('./routes/finance'));
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (parent_id) REFERENCES schedule_comments(id) ON DELETE CASCADE
     )`);
+
+    // Make legacy email column nullable so new users don't need it
+    try { await db.run(`ALTER TABLE users MODIFY COLUMN email VARCHAR(255) DEFAULT NULL`); } catch(e) {}
+
+    // username column (login identifier, replaces email in UI)
+    const umCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='username'`);
+    if (!umCol || umCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN username VARCHAR(255)`);
+      await db.run(`UPDATE users SET username=email WHERE username IS NULL OR username=''`);
+      try { await db.run(`CREATE UNIQUE INDEX idx_users_username ON users (username)`); } catch(e) {}
+    }
+
+    // contact_email column (optional, separate from login)
+    const ceCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='contact_email'`);
+    if (!ceCol || ceCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN contact_email VARCHAR(255)`);
+    }
+
+    // phone column (optional)
+    const phCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='phone'`);
+    if (!phCol || phCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN phone VARCHAR(50)`);
+    }
   } catch (e) {
     console.error('Auto-migration error:', e.message);
   }

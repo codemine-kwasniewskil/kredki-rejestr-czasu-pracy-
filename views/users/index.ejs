@@ -25,7 +25,7 @@
         <thead class="bg-slate-50 border-b border-slate-200">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Imię i nazwisko</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">E-mail</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Użytkownik / Kontakt</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Rola</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Min. godz.</th>
             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
@@ -36,7 +36,11 @@
           <% users.forEach(u => { %>
           <tr class="hover:bg-slate-50">
             <td class="px-4 py-3 text-sm font-medium text-slate-800"><%= u.name %></td>
-            <td class="px-4 py-3 text-sm text-slate-500"><%= u.email %></td>
+            <td class="px-4 py-3">
+              <div class="text-sm font-mono text-slate-700"><%= u.username || u.email || '—' %></div>
+              <% if (u.contact_email) { %><div class="text-xs text-slate-400">✉ <%= u.contact_email %></div><% } %>
+              <% if (u.phone) { %><div class="text-xs text-slate-400">📞 <%= u.phone %></div><% } %>
+            </td>
             <td class="px-4 py-3">
               <span class="text-xs px-2 py-1 rounded-full font-medium
                 <%= u.role === 'admin' ? 'bg-purple-100 text-purple-700' : u.role === 'location_manager' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600' %>">
@@ -85,22 +89,35 @@
     </div>
     <form action="/users" method="POST" class="p-5 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko <span class="text-red-500">*</span></label>
         <input type="text" name="name" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Adres e-mail</label>
-        <input type="email" name="email" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Nazwa użytkownika <span class="text-red-500">*</span></label>
+        <input type="text" name="username" required autocomplete="off"
+          class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          placeholder="np. jan.kowalski">
+        <p class="text-xs text-slate-400 mt-1">Służy do logowania. Bez spacji, najlepiej bez polskich liter.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">E-mail kontaktowy</label>
+          <input type="email" name="contact_email" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="opcjonalnie">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Telefon</label>
+          <input type="tel" name="phone" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="opcjonalnie">
+        </div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Hasło</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Hasło <span class="text-red-500">*</span></label>
         <div class="flex gap-2">
           <input type="text" id="addPasswordField" name="password" required class="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Wpisz lub wygeneruj">
           <button type="button" onclick="generatePassword('addPasswordField')" class="btn btn-secondary text-xs whitespace-nowrap">Generuj</button>
         </div>
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Rola</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Rola <span class="text-red-500">*</span></label>
         <select name="role" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="worker">Pracownik</option>
           <option value="location_manager">Kierownik</option>
@@ -125,12 +142,25 @@
     </div>
     <form action="/users/<%= editUser.id %>?_method=PUT" method="POST" class="p-5 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Imię i nazwisko <span class="text-red-500">*</span></label>
         <input type="text" name="name" value="<%= editUser.name %>" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">Adres e-mail</label>
-        <input type="email" name="email" value="<%= editUser.email %>" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Nazwa użytkownika <span class="text-red-500">*</span></label>
+        <input type="text" name="username" value="<%= editUser.username || editUser.email || '' %>" required autocomplete="off"
+          class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">E-mail kontaktowy</label>
+          <input type="email" name="contact_email" value="<%= editUser.contact_email || '' %>"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="opcjonalnie">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Telefon</label>
+          <input type="tel" name="phone" value="<%= editUser.phone || '' %>"
+            class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="opcjonalnie">
+        </div>
       </div>
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">Nowe hasło (puste = bez zmian)</label>

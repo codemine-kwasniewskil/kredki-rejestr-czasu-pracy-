@@ -17,7 +17,10 @@ async function setup() {
     `CREATE TABLE IF NOT EXISTS users (
       id INT NOT NULL AUTO_INCREMENT,
       name TEXT NOT NULL,
-      email VARCHAR(255) UNIQUE NOT NULL,
+      email VARCHAR(255) DEFAULT NULL,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      contact_email VARCHAR(255) DEFAULT NULL,
+      phone VARCHAR(50) DEFAULT NULL,
       password_hash TEXT NOT NULL,
       role ENUM('admin','location_manager','worker') NOT NULL,
       active TINYINT(1) DEFAULT 1,
@@ -123,8 +126,8 @@ async function setup() {
   if (rows.length === 0) {
     const hash = bcrypt.hashSync('admin123', 10);
     await conn.query(
-      `INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)`,
-      ['Administrator', 'admin@cafe.com', hash, 'admin']
+      `INSERT INTO users (name, username, password_hash, role) VALUES (?,?,?,?)`,
+      ['Administrator', 'admin', hash, 'admin']
     );
     const templates = [
       ['Zmiana 1 (Rano)', '07:00', '15:00', '#3B82F6'],

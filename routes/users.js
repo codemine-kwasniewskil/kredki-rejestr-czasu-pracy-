@@ -22,18 +22,21 @@ router.get('/', requireRole('admin'), async (req, res) => {
 
 router.post('/', requireRole('admin'), async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
-    if (!name || !email || !password || !role) {
-      req.flash('error', 'Wszystkie pola są wymagane.');
+    const { name, username, contact_email, phone, password, role } = req.body;
+    if (!name || !username || !password || !role) {
+      req.flash('error', 'Imię, nazwa użytkownika, hasło i rola są wymagane.');
       return res.redirect('/users');
     }
-    const existing = await db.get('SELECT id FROM users WHERE email=?', [email]);
+    const existing = await db.get('SELECT id FROM users WHERE username=?', [username]);
     if (existing) {
-      req.flash('error', 'Ten e-mail jest już zajęty.');
+      req.flash('error', 'Ta nazwa użytkownika jest już zajęta.');
       return res.redirect('/users');
     }
     const hash = bcrypt.hashSync(password, 10);
-    await db.run(`INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)`, [name, email, hash, role]);
+    await db.run(
+      `INSERT INTO users (name, username, contact_email, phone, password_hash, role, must_change_password) VALUES (?,?,?,?,?,?,1)`,
+      [name, username, contact_email || null, phone || null, hash, role]
+    );
     log(res.locals.user, 'Dodanie użytkownika', `${name} | ${role}`);
     req.flash('success', 'Użytkownik został dodany.');
     res.redirect('/users');
@@ -62,16 +65,26 @@ router.get('/:id/edit', requireRole('admin'), async (req, res) => {
 
 router.put('/:id', requireRole('admin'), async (req, res) => {
   try {
-    const { name, email, role, active, password } = req.body;
+    const { name, username, contact_email, phone, role, active, password } = req.body;
     const user = await db.get('SELECT * FROM users WHERE id=?', [req.params.id]);
     if (!user) return res.redirect('/users');
+    // Check username uniqueness (allow keeping own username)
+    const conflict = await db.get('SELECT id FROM users WHERE username=? AND id!=?', [username, req.params.id]);
+    if (conflict) {
+      req.flash('error', 'Ta nazwa użytkownika jest już zajęta.');
+      return res.redirect(`/users/${req.params.id}/edit`);
+    }
     if (password && password.trim()) {
       const hash = bcrypt.hashSync(password.trim(), 10);
-      await db.run(`UPDATE users SET name=?,email=?,role=?,active=?,password_hash=?,must_change_password=1 WHERE id=?`,
-        [name, email, role, active ? 1 : 0, hash, req.params.id]);
+      await db.run(
+        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=?,password_hash=?,must_change_password=1 WHERE id=?`,
+        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, hash, req.params.id]
+      );
     } else {
-      await db.run(`UPDATE users SET name=?,email=?,role=?,active=? WHERE id=?`,
-        [name, email, role, active ? 1 : 0, req.params.id]);
+      await db.run(
+        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=? WHERE id=?`,
+        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, req.params.id]
+      );
     }
     log(res.locals.user, 'Edycja użytkownika', user.name);
     req.flash('success', 'Dane użytkownika zaktualizowane.');
