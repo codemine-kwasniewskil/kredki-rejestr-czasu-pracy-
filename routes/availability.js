@@ -57,19 +57,18 @@ router.get('/', requireAuth, async (req, res) => {
       ? !!(targetUserDbRow && targetUserDbRow.availability_locked)
       : !!(targetUser && targetUser.availability_locked);
 
+    // Workers can edit current month and future months; past months always locked
     let lockBeforeStr = null;
     if (role === 'worker') {
-      if (targetUserLocked) {
-        // Admin-locked: use the automatic deadline cutoff (irrelevant since all dates are blocked anyway)
-        const cutoff = 10;
-        const firstEditable = today.getDate() <= cutoff
-          ? new Date(today.getFullYear(), today.getMonth() + 1, 1)
-          : new Date(today.getFullYear(), today.getMonth() + 2, 1);
-        lockBeforeStr = `${firstEditable.getFullYear()}-${String(firstEditable.getMonth() + 1).padStart(2, '0')}-01`;
-      } else {
-        // Not admin-locked: allow editing from the start of the current month
-        lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
-      }
+      lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+
+    // Auto-lock: after the 10th of each month, the next month is locked (standard scheduling cutoff)
+    // Computed for all roles so admin view can show it as informational
+    let autoLockedMonth = null;
+    if (today.getDate() > 10) {
+      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      autoLockedMonth = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
     }
 
     const currentWeekStart = toDateString(start);
@@ -82,7 +81,8 @@ router.get('/', requireAuth, async (req, res) => {
     const lockedMonths = new Set(monthLockRows.map(r => r.year_month));
 
     res.render('availability/index', {
-      weeks, availMap, todayStr, allUsers, targetUserId, targetUser, lockBeforeStr, targetUserLocked, currentWeekStart, lockedMonths
+      weeks, availMap, todayStr, allUsers, targetUserId, targetUser,
+      lockBeforeStr, targetUserLocked, currentWeekStart, lockedMonths, autoLockedMonth
     });
   } catch (err) {
     console.error(err);

@@ -165,6 +165,15 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
       if (targetUser && targetUser.availability_locked) {
         return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
       }
+      // Auto-lock: after 10th, next month is locked
+      const today = new Date();
+      if (today.getDate() > 10) {
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+        if (yearMonth === nextMonthStr) {
+          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+        }
+      }
       const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
@@ -240,6 +249,14 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
+      // Auto-lock: after 10th, next month is locked (standard scheduling cutoff)
+      if (today.getDate() > 10) {
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+        if (yearMonth === nextMonthStr) {
+          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+        }
+      }
       const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
@@ -298,6 +315,14 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
+      // Auto-lock: after 10th, next month is locked
+      if (today.getDate() > 10) {
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+        if (yearMonth === nextMonthStr) {
+          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+        }
+      }
       const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
@@ -321,6 +346,46 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
     const _tUser = userId !== res.locals.user.id ? await db.get('SELECT name FROM users WHERE id=?', [userId]) : null;
     log(res.locals.user, 'Ustawienie godzin dostępności', `${_tUser ? _tUser.name + ' | ' : ''}${date}: ${startTime || '?'}–${endTime || '?'}`);
     res.json({ success: true, status: row.status, startTime: row.start_time, endTime: row.end_time });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// Lock/unlock a specific month for ALL workers
+router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const { yearMonth } = req.params;
+    const { locked } = req.body;
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
+    }
+    const workers = await db.all("SELECT id FROM users WHERE active=1 AND role='worker'");
+    if (locked) {
+      for (const w of workers) {
+        await db.run(`
+          INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by) VALUES (?,?,?)
+          ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), created_at=NOW()
+        `, [w.id, yearMonth, res.locals.user.id]);
+      }
+      log(res.locals.user, 'Zablokowanie miesiąca (wszyscy)', yearMonth);
+    } else {
+      await db.run('DELETE FROM availability_month_locks WHERE `year_month`=?', [yearMonth]);
+      log(res.locals.user, 'Odblokowanie miesiąca (wszyscy)', yearMonth);
+    }
+    res.json({ success: true, locked: locked ? 1 : 0, count: workers.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// Remove all admin month locks (reset to standard auto-lock behavior)
+router.delete('/availability/month-locks', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    await db.run('DELETE FROM availability_month_locks');
+    log(res.locals.user, 'Reset blokad miesięcy do standardu');
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Błąd serwera.' });

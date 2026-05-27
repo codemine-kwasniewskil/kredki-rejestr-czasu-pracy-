@@ -58,10 +58,8 @@ if (lockBeforeStr && lockIsForFutureMonths) {
         ><%= targetUserLocked ? '🔓 Odblokuj' : '🔒 Zablokuj' %></button>
         <% } %>
         <% if (user.role === 'admin' || user.role === 'location_manager') { %>
-          <% const _allLocked = allUsers.length > 0 && allUsers.every(u => u.availability_locked); %>
-          <% const _allUnlocked = allUsers.length > 0 && allUsers.every(u => !u.availability_locked); %>
-          <button onclick="lockAllAvailability(true)" class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors <%= _allLocked ? 'bg-amber-500 border-amber-500 text-white' : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' %>">🔒 Zablokuj wszystkich</button>
-          <button onclick="lockAllAvailability(false)" class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors <%= _allUnlocked ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200' %>">🔓 Odblokuj wszystkich</button>
+          <button onclick="openMonthLockModal()" class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100">📅 Blokuj / odblokuj miesiąc</button>
+          <button onclick="resetToStandard()" class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200" title="Usuwa wszystkie ręczne blokady miesięcy. Standard: po 10. każdego miesiąca kolejny miesiąc jest automatycznie blokowany.">↩ Standard</button>
         <% } %>
       </div>
     </div>
@@ -106,14 +104,19 @@ if (lockBeforeStr && lockIsForFutureMonths) {
       %>
         <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey;
           const monthYearMonth = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}`;
-          const isMonthLocked = lockedMonths.has(monthYearMonth);
-          const canSetMonth = !monthLocked && !(user.role === 'worker' && targetUserLocked) && !(user.role === 'worker' && isMonthLocked);
+          const isMonthAdminLocked = lockedMonths.has(monthYearMonth);
+          const isMonthAutoLocked = autoLockedMonth === monthYearMonth;
+          // Workers cannot edit if admin-locked or auto-locked; admins can always edit
+          const canSetMonth = user.role === 'worker'
+            ? (!monthLocked && !targetUserLocked && !isMonthAdminLocked && !isMonthAutoLocked)
+            : true;
         %>
         <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3 flex-wrap">
-          <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : (monthLocked || isMonthLocked) ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
+          <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : (monthLocked || isMonthAdminLocked || (user.role==='worker' && isMonthAutoLocked)) ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
             <%= monthLabel %>
             <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span>
-            <% } else if (isMonthLocked) { %><span class="text-xs normal-case font-normal text-amber-500">🔒 zablokowany</span><% } %>
+            <% } else if (isMonthAdminLocked) { %><span class="text-xs normal-case font-normal text-amber-500">🔒 zablokowany</span>
+            <% } else if (isMonthAutoLocked) { %><span class="text-xs normal-case font-normal text-orange-400">⏰ standard</span><% } %>
           </h2>
           <div class="flex items-center gap-1 flex-wrap">
             <button
@@ -130,10 +133,10 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             >✕ Cały miesiąc</button>
             <% if (user.role !== 'worker') { %>
             <button
-              onclick="toggleMonthLock('<%= monthYearMonth %>', <%= isMonthLocked ? 'false' : 'true' %>, event)"
-              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= isMonthLocked ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200' %>"
-              title="<%= isMonthLocked ? 'Odblokuj ten miesiąc dla pracownika' : 'Zablokuj ten miesiąc dla pracownika' %>"
-            ><%= isMonthLocked ? '🔓 Odblokuj miesiąc' : '🔒 Zablokuj miesiąc' %></button>
+              onclick="toggleMonthLock('<%= monthYearMonth %>', <%= isMonthAdminLocked ? 'false' : 'true' %>, event)"
+              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= isMonthAdminLocked ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200' %>"
+              title="<%= isMonthAdminLocked ? 'Odblokuj ten miesiąc dla pracownika' : 'Zablokuj ten miesiąc dla pracownika' %>"
+            ><%= isMonthAdminLocked ? '🔓 Odblokuj miesiąc' : '🔒 Zablokuj miesiąc' %></button>
             <% } %>
           </div>
           <div class="flex-1 h-px bg-slate-200"></div>
@@ -155,8 +158,16 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const startTime = avail ? avail.startTime : null;
             const endTime = avail ? avail.endTime : null;
             const isPast = dateStr < todayStr;
-            const isMonthLockedDay = lockedMonths.has(dateStr.substring(0, 7));
-            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role === 'worker' && targetUserLocked) || (user.role === 'worker' && isMonthLockedDay);
+            const dayYM = dateStr.substring(0, 7);
+            const isMonthAdminLockedDay = lockedMonths.has(dayYM);
+            const isMonthAutoLockedDay = autoLockedMonth === dayYM;
+            // Workers blocked by: past, past-month cutoff, global user lock, admin month lock, auto month lock
+            // Admins never blocked by month locks (they can always edit)
+            const isLocked = isPast
+              || !!(lockBeforeStr && dateStr < lockBeforeStr)
+              || (user.role === 'worker' && targetUserLocked)
+              || (user.role === 'worker' && isMonthAdminLockedDay)
+              || (user.role === 'worker' && isMonthAutoLockedDay);
             const canEdit = !isLocked;
             const isToday = dateStr === todayStr;
           %>
@@ -196,6 +207,30 @@ if (lockBeforeStr && lockIsForFutureMonths) {
     </div>
   </div>
 </main>
+
+<!-- Month Lock Modal (admin/kierownik) -->
+<div id="monthLockModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200">
+      <h3 class="font-semibold text-slate-800 text-sm">Blokada miesiąca – wszyscy pracownicy</h3>
+      <button onclick="closeMonthLockModal()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <p class="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
+        <strong class="text-slate-600">Standard:</strong> po 10. każdego miesiąca kolejny miesiąc jest automatycznie blokowany dla pracowników — nie mogą już zmieniać dostępności.<br>
+        <span class="mt-1 block">Ręczna blokada/odblokowanie nadpisuje standard dla wybranego miesiąca. <em>↩ Standard</em> usuwa wszystkie ręczne blokady.</span>
+      </p>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Miesiąc</label>
+        <select id="lockModalMonthSelect" class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button onclick="lockMonthForAll(true)" class="flex-1 py-2.5 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors">🔒 Zablokuj wszystkich</button>
+        <button onclick="lockMonthForAll(false)" class="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">🔓 Odblokuj wszystkich</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Time Picker Modal -->
 <div id="timePickerModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -266,17 +301,54 @@ function showToast(msg, type) {
   tc.appendChild(t);
   setTimeout(() => t.remove(), 3000);
 }
-async function lockAllAvailability(lock) {
+const _MONTHS_PL_JS = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+function openMonthLockModal() {
+  const sel = document.getElementById('lockModalMonthSelect');
+  sel.innerHTML = '';
+  const today = new Date();
+  for (let i = -2; i <= 12; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = `${_MONTHS_PL_JS[d.getMonth()]} ${d.getFullYear()}`;
+    if (i === 1) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  document.getElementById('monthLockModal').classList.remove('hidden');
+}
+function closeMonthLockModal() {
+  document.getElementById('monthLockModal').classList.add('hidden');
+}
+async function lockMonthForAll(lock) {
+  const yearMonth = document.getElementById('lockModalMonthSelect').value;
   try {
-    const res = await fetch('/api/users/availability-lock-all', {
+    const res = await fetch(`/api/availability/month/${yearMonth}/lock-all`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ locked: lock })
     });
+    const data = await res.json();
     if (res.ok) {
-      showToast(lock ? 'Dostępność zablokowana dla wszystkich pracowników.' : 'Dostępność odblokowana dla wszystkich pracowników.');
+      showToast(lock ? `🔒 Miesiąc ${yearMonth} zablokowany dla ${data.count} pracowników.` : `🔓 Miesiąc ${yearMonth} odblokowany dla wszystkich.`);
+      closeMonthLockModal();
       setTimeout(() => location.reload(), 900);
     } else {
-      showToast('Wystąpił błąd.', 'error');
+      showToast(data.error || 'Wystąpił błąd.', 'error');
+    }
+  } catch(e) {
+    showToast('Błąd połączenia.', 'error');
+  }
+}
+async function resetToStandard() {
+  if (!confirm('Usunąć wszystkie ręczne blokady miesięcy?\n\nStandard: po 10. każdego miesiąca kolejny miesiąc jest automatycznie blokowany dla pracowników.')) return;
+  try {
+    const res = await fetch('/api/availability/month-locks', { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Przywrócono standard. Automatyczne blokady miesięcy aktywne.');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      const data = await res.json();
+      showToast(data.error || 'Błąd.', 'error');
     }
   } catch(e) {
     showToast('Błąd połączenia.', 'error');
@@ -316,6 +388,9 @@ async function toggleMonthLock(yearMonth, lock, event) {
     showToast('Błąd połączenia.', 'error');
   }
 }
+document.getElementById('monthLockModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('monthLockModal')) closeMonthLockModal();
+});
 </script>
 <script src="/js/availability.js"></script>
 <%- include('../partials/footer') %>

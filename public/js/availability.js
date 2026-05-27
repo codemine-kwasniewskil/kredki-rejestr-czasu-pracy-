@@ -193,7 +193,7 @@ async function setMonthAvailability(yearMonth, status, event) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeTimePicker();
+  if (e.key === 'Escape') { closeTimePicker(); if (typeof closeMonthLockModal === 'function') closeMonthLockModal(); }
 });
 document.getElementById('timePickerModal').addEventListener('click', e => {
   if (e.target === document.getElementById('timePickerModal')) closeTimePicker();
