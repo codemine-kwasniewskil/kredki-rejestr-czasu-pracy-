@@ -106,14 +106,16 @@ if (lockBeforeStr && lockIsForFutureMonths) {
       %>
         <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey;
           const monthYearMonth = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}`;
-          const canSetMonth = !monthLocked && !(user.role === 'worker' && targetUserLocked);
+          const isMonthLocked = lockedMonths.has(monthYearMonth);
+          const canSetMonth = !monthLocked && !(user.role === 'worker' && targetUserLocked) && !(user.role === 'worker' && isMonthLocked);
         %>
-        <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3">
-          <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : monthLocked ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
+        <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3 flex-wrap">
+          <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : (monthLocked || isMonthLocked) ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
             <%= monthLabel %>
-            <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span><% } %>
+            <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span>
+            <% } else if (isMonthLocked) { %><span class="text-xs normal-case font-normal text-amber-500">🔒 zablokowany</span><% } %>
           </h2>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 flex-wrap">
             <button
               onclick="setMonthAvailability('<%= monthYearMonth %>', 'available', event)"
               class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= canSetMonth ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 cursor-pointer' : 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed' %>"
@@ -126,6 +128,13 @@ if (lockBeforeStr && lockIsForFutureMonths) {
               title="<%= canSetMonth ? 'Ustaw cały miesiąc jako niedostępny' : 'Miesiąc zablokowany' %>"
               <%= canSetMonth ? '' : 'disabled' %>
             >✕ Cały miesiąc</button>
+            <% if (user.role !== 'worker') { %>
+            <button
+              onclick="toggleMonthLock('<%= monthYearMonth %>', <%= isMonthLocked ? 'false' : 'true' %>, event)"
+              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= isMonthLocked ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200' %>"
+              title="<%= isMonthLocked ? 'Odblokuj ten miesiąc dla pracownika' : 'Zablokuj ten miesiąc dla pracownika' %>"
+            ><%= isMonthLocked ? '🔓 Odblokuj miesiąc' : '🔒 Zablokuj miesiąc' %></button>
+            <% } %>
           </div>
           <div class="flex-1 h-px bg-slate-200"></div>
         </div>
@@ -146,7 +155,8 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const startTime = avail ? avail.startTime : null;
             const endTime = avail ? avail.endTime : null;
             const isPast = dateStr < todayStr;
-            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role === 'worker' && targetUserLocked);
+            const isMonthLockedDay = lockedMonths.has(dateStr.substring(0, 7));
+            const isLocked = isPast || !!(lockBeforeStr && dateStr < lockBeforeStr) || (user.role === 'worker' && targetUserLocked) || (user.role === 'worker' && isMonthLockedDay);
             const canEdit = !isLocked;
             const isToday = dateStr === todayStr;
           %>
@@ -283,6 +293,24 @@ async function toggleUserLock(userId, lock) {
       setTimeout(() => location.reload(), 900);
     } else {
       showToast('Wystąpił błąd.', 'error');
+    }
+  } catch(e) {
+    showToast('Błąd połączenia.', 'error');
+  }
+}
+async function toggleMonthLock(yearMonth, lock, event) {
+  if (event) event.stopPropagation();
+  try {
+    const res = await fetch(`/api/availability/month/${yearMonth}/lock`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locked: lock, targetUserId: availabilityTargetUserId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(lock ? 'Miesiąc zablokowany dla pracownika.' : 'Miesiąc odblokowany dla pracownika.');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      showToast(data.error || 'Wystąpił błąd.', 'error');
     }
   } catch(e) {
     showToast('Błąd połączenia.', 'error');

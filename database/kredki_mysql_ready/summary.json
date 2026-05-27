@@ -1,0 +1,12 @@
+{
+  "employees": 8,
+  "shifts": 725,
+  "availability": 9,
+  "unmapped": 99,
+  "raw_cells": 1319,
+  "date_headers": 250,
+  "date_range_shifts": [
+    "2025-08-16",
+    "2026-06-07"
+  ]
+}
