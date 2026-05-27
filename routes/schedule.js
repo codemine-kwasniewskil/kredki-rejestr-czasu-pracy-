@@ -125,10 +125,20 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
         `, [schedule.id])
       : [];
 
+    const comments = schedule
+      ? await db.all(`
+          SELECT c.*, u.name AS author_name, u.role AS author_role
+          FROM schedule_comments c
+          JOIN users u ON u.id = c.user_id
+          WHERE c.schedule_id = ?
+          ORDER BY c.created_at ASC
+        `, [schedule.id])
+      : [];
+
     res.render('schedule/index', {
       schedule, workers, weekDates, weekStart,
       entriesMap, availMap, workerWeekHours, workerMonthlyHours, monthLabel,
-      shiftTemplates, isEditable, adminChanges,
+      shiftTemplates, isEditable, adminChanges, comments,
       entryCostMap, dailyCostMap,
       formatHours, formatDayHeader, formatWeekRange,
       prevWeek: prevWeekStart(weekStart),

@@ -100,6 +100,18 @@ async function setup() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     )`,
+    `CREATE TABLE IF NOT EXISTS schedule_comments (
+      id INT NOT NULL AUTO_INCREMENT,
+      schedule_id INT NOT NULL,
+      user_id INT NOT NULL,
+      parent_id INT DEFAULT NULL,
+      body TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES schedule_comments(id) ON DELETE CASCADE
+    )`,
   ];
 
   for (const sql of tables) {

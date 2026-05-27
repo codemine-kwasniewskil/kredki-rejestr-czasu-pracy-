@@ -469,4 +469,68 @@ router.delete('/schedule/week/:weekStart/entries', requireRole('admin', 'locatio
   }
 });
 
+// ── Schedule comments ─────────────────────────────────────────────────────────
+
+router.get('/schedule/:scheduleId/comments', requireAuth, async (req, res) => {
+  try {
+    const comments = await db.all(`
+      SELECT c.*, u.name AS author_name, u.role AS author_role
+      FROM schedule_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.schedule_id = ?
+      ORDER BY c.created_at ASC
+    `, [req.params.scheduleId]);
+    res.json({ comments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+router.post('/schedule/:scheduleId/comments', requireAuth, async (req, res) => {
+  try {
+    const { body, parentId } = req.body;
+    if (!body || !body.trim()) {
+      return res.status(400).json({ error: 'Treść komentarza jest wymagana.' });
+    }
+    // Validate parent belongs to this schedule
+    if (parentId) {
+      const parent = await db.get(
+        'SELECT id FROM schedule_comments WHERE id=? AND schedule_id=?',
+        [parentId, req.params.scheduleId]
+      );
+      if (!parent) return res.status(400).json({ error: 'Nieprawidłowy komentarz nadrzędny.' });
+    }
+    const r = await db.run(
+      `INSERT INTO schedule_comments (schedule_id, user_id, parent_id, body) VALUES (?,?,?,?)`,
+      [req.params.scheduleId, res.locals.user.id, parentId || null, body.trim()]
+    );
+    const comment = await db.get(`
+      SELECT c.*, u.name AS author_name, u.role AS author_role
+      FROM schedule_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.id = ?
+    `, [r.insertId]);
+    res.json({ comment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+router.delete('/schedule/comment/:id', requireAuth, async (req, res) => {
+  try {
+    const comment = await db.get('SELECT * FROM schedule_comments WHERE id=?', [req.params.id]);
+    if (!comment) return res.status(404).json({ error: 'Komentarz nie istnieje.' });
+    if (res.locals.user.role !== 'admin' && comment.user_id !== res.locals.user.id) {
+      return res.status(403).json({ error: 'Brak uprawnień.' });
+    }
+    await db.run('DELETE FROM schedule_comments WHERE id=?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 module.exports = router;

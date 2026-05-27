@@ -48,6 +48,26 @@ app.use('/logs', require('./routes/logs'));
 app.use('/reports', require('./routes/reports'));
 app.use('/finance', require('./routes/finance'));
 
+// Auto-migrations (safe to run on every startup)
+(async () => {
+  try {
+    await db.run(`CREATE TABLE IF NOT EXISTS schedule_comments (
+      id INT NOT NULL AUTO_INCREMENT,
+      schedule_id INT NOT NULL,
+      user_id INT NOT NULL,
+      parent_id INT DEFAULT NULL,
+      body TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_id) REFERENCES schedule_comments(id) ON DELETE CASCADE
+    )`);
+  } catch (e) {
+    console.error('Auto-migration error:', e.message);
+  }
+})();
+
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));
 
 app.use((err, req, res, next) => {

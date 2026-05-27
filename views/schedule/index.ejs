@@ -262,7 +262,132 @@
     <% } %>
 
     <% } %>
-  </div>
+
+    <!-- ── Comments ─────────────────────────────────────────────── -->
+    <% if (schedule) { %>
+    <%
+      const topLevelComments = comments.filter(c => !c.parent_id);
+      const replyComments    = comments.filter(c =>  c.parent_id);
+      function fmtDate(str) {
+        if (!str) return '';
+        return str.substring(0, 16).replace('T', ' ');
+      }
+      function roleLabel(r) {
+        return r === 'admin' ? 'Admin' : r === 'location_manager' ? 'Kierownik' : 'Pracownik';
+      }
+      function roleColor(r) {
+        return r === 'admin' ? 'bg-purple-100 text-purple-700' : r === 'location_manager' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500';
+      }
+      function avatarColor(r) {
+        return r === 'admin' ? 'bg-purple-200 text-purple-800' : r === 'location_manager' ? 'bg-blue-200 text-blue-800' : 'bg-slate-200 text-slate-700';
+      }
+    %>
+    <div class="mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <!-- header -->
+      <div class="flex items-center gap-2 px-5 py-3 border-b border-slate-100">
+        <span class="text-base">💬</span>
+        <h3 class="font-semibold text-slate-700 text-sm">Komentarze</h3>
+        <% if (comments.length > 0) { %>
+          <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full"><%= comments.length %></span>
+        <% } %>
+      </div>
+
+      <!-- comment list -->
+      <div id="commentsList" class="divide-y divide-slate-50">
+        <% if (topLevelComments.length === 0) { %>
+          <p class="text-slate-400 text-sm text-center py-6" id="noCommentsMsg">Brak komentarzy.</p>
+        <% } %>
+
+        <% topLevelComments.forEach(function(c) {
+             const cReplies = replyComments.filter(function(r){ return r.parent_id === c.id; });
+        %>
+        <div class="comment-root px-5 py-4" id="comment-<%= c.id %>">
+          <div class="flex gap-3">
+            <!-- avatar -->
+            <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold <%= avatarColor(c.author_role) %>">
+              <%= c.author_name.charAt(0).toUpperCase() %>
+            </div>
+            <div class="flex-1 min-w-0">
+              <!-- meta row -->
+              <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5 mb-1">
+                <span class="font-semibold text-sm text-slate-800"><%= c.author_name %></span>
+                <span class="text-xs px-1.5 py-0.5 rounded-full font-medium <%= roleColor(c.author_role) %>"><%= roleLabel(c.author_role) %></span>
+                <span class="text-xs text-slate-400"><%= fmtDate(c.created_at) %></span>
+                <div class="ml-auto flex items-center gap-3">
+                  <button onclick="openReply(<%= c.id %>)" class="text-xs text-blue-600 hover:text-blue-800 font-medium">↩ Odpowiedz</button>
+                  <% if (user.role === 'admin' || user.id === c.user_id) { %>
+                    <button onclick="deleteComment(<%= c.id %>, false)" class="text-xs text-red-400 hover:text-red-600">Usuń</button>
+                  <% } %>
+                </div>
+              </div>
+              <!-- body -->
+              <p class="text-sm text-slate-700 whitespace-pre-wrap break-words"><%= c.body %></p>
+
+              <!-- inline reply form -->
+              <div id="reply-form-<%= c.id %>" class="hidden mt-3">
+                <div class="flex gap-2 items-start">
+                  <textarea id="reply-body-<%= c.id %>" rows="2"
+                    placeholder="Napisz odpowiedź…"
+                    class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+                  <div class="flex flex-col gap-1">
+                    <button onclick="submitReply(<%= c.id %>, <%= schedule.id %>)"
+                      class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">Wyślij</button>
+                    <button onclick="closeReply(<%= c.id %>)"
+                      class="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-50">Anuluj</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- replies -->
+              <div class="replies-list mt-3 space-y-3 pl-4 border-l-2 border-slate-100 <%= cReplies.length === 0 ? 'hidden' : '' %>" id="replies-<%= c.id %>">
+                <% cReplies.forEach(function(r) { %>
+                <div class="flex gap-2" id="comment-<%= r.id %>">
+                  <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold <%= avatarColor(r.author_role) %>">
+                    <%= r.author_name.charAt(0).toUpperCase() %>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5 mb-0.5">
+                      <span class="font-semibold text-sm text-slate-800"><%= r.author_name %></span>
+                      <span class="text-xs px-1.5 py-0.5 rounded-full font-medium <%= roleColor(r.author_role) %>"><%= roleLabel(r.author_role) %></span>
+                      <span class="text-xs text-slate-400"><%= fmtDate(r.created_at) %></span>
+                      <% if (user.role === 'admin' || user.id === r.user_id) { %>
+                        <button onclick="deleteComment(<%= r.id %>, true)" class="ml-auto text-xs text-red-400 hover:text-red-600">Usuń</button>
+                      <% } %>
+                    </div>
+                    <p class="text-sm text-slate-700 whitespace-pre-wrap break-words"><%= r.body %></p>
+                  </div>
+                </div>
+                <% }); %>
+              </div>
+            </div>
+          </div>
+        </div>
+        <% }); %>
+      </div>
+
+      <!-- new top-level comment form -->
+      <div class="px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+        <div class="flex gap-3 items-start">
+          <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold <%= avatarColor(user.role) %>">
+            <%= user.name.charAt(0).toUpperCase() %>
+          </div>
+          <div class="flex-1">
+            <textarea id="newCommentBody" rows="2"
+              placeholder="Dodaj komentarz do tego tygodnia…"
+              class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white"></textarea>
+            <div class="flex justify-end mt-2">
+              <button onclick="submitTopComment(<%= schedule.id %>)"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                Dodaj komentarz
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+  </div><!-- /overflow-x-auto -->
 </main>
 
 
@@ -365,6 +490,151 @@ function clearWeek(weekStart) {
     .then(r => r.json())
     .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Błąd serwera.'); })
     .catch(() => alert('Błąd serwera.'));
+}
+
+// ── Comments ──────────────────────────────────────────────────────────────────
+
+const _currentUserId   = <%= user.id %>;
+const _currentUserRole = '<%= user.role %>';
+const _currentUserName = '<%= user.name.replace(/'/g, "\\'") %>';
+
+function _avatarClass(role) {
+  return role === 'admin'
+    ? 'bg-purple-200 text-purple-800'
+    : role === 'location_manager'
+    ? 'bg-blue-200 text-blue-800'
+    : 'bg-slate-200 text-slate-700';
+}
+function _roleLabel(role) {
+  return role === 'admin' ? 'Admin' : role === 'location_manager' ? 'Kierownik' : 'Pracownik';
+}
+function _roleClass(role) {
+  return role === 'admin'
+    ? 'bg-purple-100 text-purple-700'
+    : role === 'location_manager'
+    ? 'bg-blue-100 text-blue-700'
+    : 'bg-slate-100 text-slate-500';
+}
+function _fmtDate(str) {
+  return str ? str.substring(0, 16).replace('T', ' ') : '';
+}
+
+function _buildCommentHTML(c, isReply) {
+  const canDelete = _currentUserRole === 'admin' || c.user_id === _currentUserId;
+  const size      = isReply ? 'w-7 h-7 text-xs' : 'w-8 h-8 text-sm';
+  const deleteBtn = canDelete
+    ? `<button onclick="deleteComment(${c.id},${isReply})" class="ml-auto text-xs text-red-400 hover:text-red-600">Usuń</button>`
+    : '';
+  const replyBtn  = !isReply
+    ? `<button onclick="openReply(${c.id})" class="text-xs text-blue-600 hover:text-blue-800 font-medium">↩ Odpowiedz</button>`
+    : '';
+
+  const repliesBlock = !isReply ? `
+    <div class="replies-list mt-3 space-y-3 pl-4 border-l-2 border-slate-100 hidden" id="replies-${c.id}"></div>` : '';
+
+  const replyForm = !isReply ? `
+    <div id="reply-form-${c.id}" class="hidden mt-3">
+      <div class="flex gap-2 items-start">
+        <textarea id="reply-body-${c.id}" rows="2"
+          placeholder="Napisz odpowiedź…"
+          class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+        <div class="flex flex-col gap-1">
+          <button onclick="submitReply(${c.id}, ${c.schedule_id})"
+            class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">Wyślij</button>
+          <button onclick="closeReply(${c.id})"
+            class="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-medium hover:bg-slate-50">Anuluj</button>
+        </div>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="flex gap-${isReply ? 2 : 3}">
+      <div class="${size} rounded-full flex-shrink-0 flex items-center justify-center font-bold ${_avatarClass(c.author_role)}">
+        ${(c.author_name || '?')[0].toUpperCase()}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5 mb-1">
+          <span class="font-semibold text-sm text-slate-800">${c.author_name}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${_roleClass(c.author_role)}">${_roleLabel(c.author_role)}</span>
+          <span class="text-xs text-slate-400">${_fmtDate(c.created_at)}</span>
+          <div class="ml-auto flex items-center gap-3">${replyBtn}${deleteBtn}</div>
+        </div>
+        <p class="text-sm text-slate-700 whitespace-pre-wrap break-words">${c.body}</p>
+        ${replyForm}${repliesBlock}
+      </div>
+    </div>`;
+}
+
+function openReply(commentId) {
+  document.getElementById(`reply-form-${commentId}`).classList.remove('hidden');
+  document.getElementById(`reply-body-${commentId}`).focus();
+}
+function closeReply(commentId) {
+  const el = document.getElementById(`reply-form-${commentId}`);
+  el.classList.add('hidden');
+  document.getElementById(`reply-body-${commentId}`).value = '';
+}
+
+async function submitTopComment(scheduleId) {
+  const ta   = document.getElementById('newCommentBody');
+  const body = ta.value.trim();
+  if (!body) return;
+  try {
+    const r = await fetch(`/api/schedule/${scheduleId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    });
+    const d = await r.json();
+    if (!r.ok) return alert(d.error || 'Błąd serwera.');
+
+    // hide "no comments" placeholder if present
+    const noMsg = document.getElementById('noCommentsMsg');
+    if (noMsg) noMsg.remove();
+
+    const list = document.getElementById('commentsList');
+    const wrap = document.createElement('div');
+    wrap.className = 'comment-root px-5 py-4 border-t border-slate-50';
+    wrap.id = `comment-${d.comment.id}`;
+    wrap.innerHTML = _buildCommentHTML(d.comment, false);
+    list.appendChild(wrap);
+    ta.value = '';
+  } catch { alert('Błąd serwera.'); }
+}
+
+async function submitReply(parentId, scheduleId) {
+  const ta   = document.getElementById(`reply-body-${parentId}`);
+  const body = ta.value.trim();
+  if (!body) return;
+  try {
+    const r = await fetch(`/api/schedule/${scheduleId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body, parentId }),
+    });
+    const d = await r.json();
+    if (!r.ok) return alert(d.error || 'Błąd serwera.');
+
+    const repliesContainer = document.getElementById(`replies-${parentId}`);
+    repliesContainer.classList.remove('hidden');
+    const wrap = document.createElement('div');
+    wrap.className = 'flex gap-2';
+    wrap.id = `comment-${d.comment.id}`;
+    wrap.innerHTML = _buildCommentHTML(d.comment, true);
+    repliesContainer.appendChild(wrap);
+    closeReply(parentId);
+  } catch { alert('Błąd serwera.'); }
+}
+
+async function deleteComment(commentId, isReply) {
+  if (!confirm('Usunąć ten komentarz?')) return;
+  try {
+    const r = await fetch(`/api/schedule/comment/${commentId}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (!r.ok) return alert(d.error || 'Błąd serwera.');
+    const el = document.getElementById(`comment-${commentId}`);
+    if (el) el.remove();
+  } catch { alert('Błąd serwera.'); }
 }
 </script>
 <%- include('../partials/footer') %>
