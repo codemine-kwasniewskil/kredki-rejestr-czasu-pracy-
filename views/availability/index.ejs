@@ -78,11 +78,15 @@ if (lockBeforeStr && lockIsForFutureMonths) {
         <span class="text-slate-600">Brak info</span>
       </div>
       <% if (lockLastLockedLabel) { %>
-      <div class="flex items-center gap-1.5 ml-auto">
+      <div class="flex items-center gap-1.5">
         <span class="w-4 h-4 rounded bg-slate-100 border border-slate-300"></span>
         <span class="text-slate-400">🔒 Zablokowane (do końca <%= lockLastLockedLabel %>)</span>
       </div>
       <% } %>
+      <button onclick="document.getElementById('helpModal').classList.remove('hidden')" class="ml-auto flex items-center gap-1 text-slate-400 hover:text-blue-600 transition-colors text-[11px] font-medium">
+        <span class="w-4 h-4 rounded-full bg-slate-100 hover:bg-blue-100 flex items-center justify-center text-[9px] font-bold leading-none">?</span>
+        Jak to działa?
+      </button>
     </div>
     </div><!-- end sticky header -->
 
@@ -207,6 +211,73 @@ if (lockBeforeStr && lockIsForFutureMonths) {
     </div>
   </div>
 </main>
+
+<!-- Help Modal -->
+<div id="helpModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between p-5 border-b border-slate-200 sticky top-0 bg-white rounded-t-2xl">
+      <h3 class="font-semibold text-slate-800 text-sm">Jak działa dostępność?</h3>
+      <button onclick="document.getElementById('helpModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+    </div>
+    <div class="p-5 space-y-4 text-xs text-slate-600">
+
+      <!-- Edycja dnia -->
+      <div>
+        <p class="font-semibold text-slate-700 mb-1.5">📅 Edycja dnia</p>
+        <ul class="space-y-1 pl-1">
+          <li class="flex gap-2"><span class="shrink-0">🖱️</span><span>Kliknij dzień, by przełączyć: <strong>brak → ✓ dostępny → ✕ niedostępny → brak</strong></span></li>
+          <li class="flex gap-2"><span class="shrink-0">⏱</span><span>Kliknij zegarek przy dostępnym dniu, by ustawić godziny pracy</span></li>
+        </ul>
+      </div>
+
+      <!-- Miesiąc -->
+      <div>
+        <p class="font-semibold text-slate-700 mb-1.5">📆 Cały miesiąc</p>
+        <ul class="space-y-1 pl-1">
+          <li class="flex gap-2"><span class="shrink-0">✓</span><span><strong>Cały miesiąc</strong> — ustaw wszystkie dni jako dostępne</span></li>
+          <li class="flex gap-2"><span class="shrink-0">✕</span><span><strong>Cały miesiąc</strong> — ustaw wszystkie dni jako niedostępne</span></li>
+        </ul>
+      </div>
+
+      <!-- Blokady -->
+      <div>
+        <p class="font-semibold text-slate-700 mb-1.5">🔒 Blokady — kiedy nie możesz edytować</p>
+        <ul class="space-y-1 pl-1">
+          <li class="flex gap-2"><span class="shrink-0">⏰</span><span><strong>Minione miesiące</strong> — zablokowane automatycznie</span></li>
+          <li class="flex gap-2"><span class="shrink-0">⏰</span><span><strong>Standard:</strong> po 10. każdego miesiąca kolejny miesiąc jest automatycznie blokowany (nie możesz już zmieniać dostępności na następny miesiąc)</span></li>
+          <li class="flex gap-2"><span class="shrink-0">🔒</span><span><strong>Ręczna blokada</strong> — administrator zablokował ten miesiąc lub Twoje konto</span></li>
+        </ul>
+      </div>
+
+      <% if (user.role !== 'worker') { %>
+      <!-- Admin section -->
+      <div class="border-t border-slate-100 pt-3">
+        <p class="font-semibold text-slate-700 mb-1.5">👤 Zarządzanie pracownikami (admin/kierownik)</p>
+        <ul class="space-y-1.5 pl-1">
+          <li class="flex gap-2"><span class="shrink-0">▾</span><span><strong>Lista rozwijana</strong> — wybierz pracownika, by edytować jego dostępność</span></li>
+          <li class="flex gap-2"><span class="shrink-0">🔒🔓</span><span><strong>obok listy</strong> — zablokuj / odblokuj całą dostępność wybranego pracownika</span></li>
+          <li class="flex gap-2"><span class="shrink-0">🔒</span><span><strong>Zablokuj miesiąc</strong> (przy nagłówku miesiąca) — blokada konkretnego miesiąca tylko dla wybranego pracownika</span></li>
+        </ul>
+      </div>
+      <div>
+        <p class="font-semibold text-slate-700 mb-1.5">👥 Blokowanie dla wszystkich</p>
+        <ul class="space-y-1.5 pl-1">
+          <li class="flex gap-2"><span class="shrink-0">📅</span><span><strong>Blokuj / odblokuj miesiąc</strong> — wybierz miesiąc i zablokuj lub odblokuj go dla wszystkich pracowników jednocześnie</span></li>
+          <li class="flex gap-2"><span class="shrink-0">↩</span><span><strong>Standard</strong> — usuwa wszystkie ręczne blokady miesięcy; zostaje automatyczna reguła (po 10. blokuje kolejny miesiąc)</span></li>
+        </ul>
+      </div>
+      <div>
+        <p class="font-semibold text-slate-700 mb-1.5">Oznaczenia nagłówka miesiąca</p>
+        <ul class="space-y-1 pl-1">
+          <li class="flex gap-2"><span class="shrink-0 text-orange-400">⏰ standard</span><span>— miesiąc zablokowany przez regułę automatyczną (po 10.)</span></li>
+          <li class="flex gap-2"><span class="shrink-0 text-amber-500">🔒 zablokowany</span><span>— miesiąc zablokowany ręcznie przez admina</span></li>
+        </ul>
+      </div>
+      <% } %>
+
+    </div>
+  </div>
+</div>
 
 <!-- Month Lock Modal (admin/kierownik) -->
 <div id="monthLockModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -390,6 +461,9 @@ async function toggleMonthLock(yearMonth, lock, event) {
 }
 document.getElementById('monthLockModal').addEventListener('click', e => {
   if (e.target === document.getElementById('monthLockModal')) closeMonthLockModal();
+});
+document.getElementById('helpModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('helpModal')) document.getElementById('helpModal').classList.add('hidden');
 });
 </script>
 <script src="/js/availability.js"></script>
