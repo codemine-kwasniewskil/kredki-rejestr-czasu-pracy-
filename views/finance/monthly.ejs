@@ -75,7 +75,16 @@
           </div>
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
             <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Wynagrodzenia</div>
+            <% if (payrollSummary) { %>
+            <div class="text-xl font-bold text-red-700"><%= fmt(payrollSummary.total_employer_cost) %></div>
+            <div class="text-xs text-slate-400 mt-1">
+              koszt pracodawcy · bank: <%= fmt(summary.cost_employees) %>
+              <a href="/finance/payroll" class="ml-1 text-blue-500 hover:underline">lista płac ›</a>
+            </div>
+            <% } else { %>
             <div class="text-xl font-bold text-orange-700"><%= fmt(summary.cost_employees) %></div>
+            <div class="text-xs text-slate-400 mt-1">wypłaty bankowe (netto)</div>
+            <% } %>
           </div>
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
             <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">ZUS + Podatki</div>

@@ -108,7 +108,7 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
 
     const shiftTemplates = await db.all(`SELECT * FROM shift_templates WHERE active=1 ORDER BY sort_order, start_time`);
 
-    const isEditable = schedule && (role === 'admin' || (schedule.status !== 'approved' && role === 'location_manager'));
+    const isEditable = schedule && schedule.status !== 'approved' && (role === 'admin' || role === 'location_manager');
 
     const adminChanges = (schedule && (role === 'location_manager' || role === 'admin'))
       ? await db.all(`
@@ -189,9 +189,15 @@ router.post('/week/:weekStart/reject', requireRole('admin'), async (req, res) =>
 
 router.post('/week/:weekStart/reopen', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
+    const { role } = res.locals.user;
     const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [req.params.weekStart]);
-    if (schedule && (schedule.status === 'rejected' || schedule.status === 'submitted')) {
-      await db.run(`UPDATE schedules SET status='draft', rejection_notes=NULL WHERE id=?`, [schedule.id]);
+    const canReopen = schedule && (
+      schedule.status === 'rejected' ||
+      schedule.status === 'submitted' ||
+      (schedule.status === 'approved' && role === 'admin')
+    );
+    if (canReopen) {
+      await db.run(`UPDATE schedules SET status='draft', rejection_notes=NULL, approved_by=NULL WHERE id=?`, [schedule.id]);
       log(res.locals.user, 'Przywrócenie grafiku do szkicu', `Tydzień: ${req.params.weekStart}`);
       req.flash('success', 'Grafik przywrócony do szkicu.');
     }

@@ -48,7 +48,11 @@
           <button onclick="clearWeek('<%= weekStart %>')" class="btn btn-danger text-xs" title="Usuń wszystkie zmiany z tego tygodnia">🗑 Wyczyść tydzień</button>
         <% } %>
 
-        <% if (schedule && (schedule.status === 'rejected' || (schedule.status === 'submitted' && user.role === 'location_manager'))) { %>
+        <% if (schedule && (
+          schedule.status === 'rejected' ||
+          (schedule.status === 'submitted' && user.role === 'location_manager') ||
+          (schedule.status === 'approved' && user.role === 'admin')
+        )) { %>
           <form action="/schedule/week/<%= weekStart %>/reopen" method="POST">
             <button class="btn btn-secondary">↩ Przywróć do szkicu</button>
           </form>

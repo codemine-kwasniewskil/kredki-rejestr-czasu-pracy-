@@ -121,7 +121,7 @@
 
     <% } else if (user.role === 'location_manager') { %>
       <!-- Manager dashboard -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div class="bg-white rounded-xl border border-slate-200 p-5">
           <div class="flex items-center justify-between mb-3">
             <h2 class="font-semibold text-slate-700">Grafik tego tygodnia</h2>
@@ -152,17 +152,44 @@
           </div>
           <% } %>
         </div>
-      <% if (monthlyHoursHistory.length > 0) { %>
-      <div class="bg-white rounded-xl border border-slate-200 p-5">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold text-slate-700">Moje godziny — <span class="capitalize"><%= monthlyHoursHistory[0].label %></span></h2>
-          <span class="text-2xl font-bold text-slate-800">
-            <% const mh = monthlyHoursHistory[0]; %>
-            <%= mh.hours > 0 ? Math.floor(mh.hours) + 'h' + (Math.round((mh.hours % 1)*60) > 0 ? ' ' + Math.round((mh.hours % 1)*60) + 'm' : '') : '—' %>
-          </span>
-        </div>
       </div>
-      <% } %>
+
+      <!-- Manager's own shifts -->
+      <div class="bg-white rounded-xl border border-slate-200 p-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-slate-700">Moje nadchodzące zmiany</h2>
+          <% if (monthlyHoursHistory.length > 0) { %>
+          <div class="text-right">
+            <div class="text-xs text-slate-400 capitalize"><%= monthlyHoursHistory[0].label %></div>
+            <% const mh = monthlyHoursHistory[0]; %>
+            <div class="text-lg font-bold text-slate-800 leading-tight">
+              <%= mh.hours > 0 ? Math.floor(mh.hours) + 'h' + (Math.round((mh.hours % 1)*60) > 0 ? ' ' + Math.round((mh.hours % 1)*60) + 'm' : '') : '—' %>
+            </div>
+          </div>
+          <% } %>
+        </div>
+        <% if (myShifts.length === 0) { %>
+          <p class="text-slate-400 text-sm">Brak zaplanowanych zmian.</p>
+        <% } else { %>
+        <div class="space-y-1.5">
+          <% myShifts.forEach(s => { %>
+          <div class="flex items-center gap-3 p-2 rounded-lg" style="background-color:<%= s.color %>18">
+            <div class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:<%= s.color %>"></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-slate-700"><%= s.date %></div>
+              <div class="text-xs text-slate-500"><%= s.shift_name %> (<%= s.start_time %> – <%= s.end_time %>)</div>
+            </div>
+            <button
+              id="confirm-<%= s.id %>"
+              onclick="toggleConfirm(<%= s.id %>, this)"
+              class="flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs transition-colors <%= s.confirmed_by_employee ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-slate-300 hover:border-emerald-400 hover:text-emerald-400' %>"
+              title="<%= s.confirmed_by_employee ? 'Potwierdzona — kliknij by cofnąć' : 'Kliknij by potwierdzić zmianę' %>"
+            ><%= s.confirmed_by_employee ? '✓' : '○' %></button>
+          </div>
+          <% }) %>
+        </div>
+        <% } %>
+      </div>
 
     <% } else { %>
       <!-- Worker dashboard -->

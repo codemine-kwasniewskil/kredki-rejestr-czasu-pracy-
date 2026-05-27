@@ -531,11 +531,29 @@ router.get('/monthly/:monthKey', async (req, res) => {
       ORDER BY bt.booking_date, bt.id
     `, [monthKey, monthKey]);
 
+    // Payroll data for this month (employer costs from accountant lista płac)
+    let payrollSummary = null;
+    try {
+      payrollSummary = await db.get(`
+        SELECT
+          COUNT(*)                AS employee_count,
+          SUM(gross_amount)       AS total_gross,
+          SUM(paid_amount)        AS total_paid,
+          SUM(zus_employer)       AS total_zus_employer,
+          SUM(employer_cost)      AS total_employer_cost,
+          MAX(payment_date)       AS payment_date
+        FROM payroll_costs
+        WHERE period_month = ?
+      `, [monthKey]);
+      if (payrollSummary && !payrollSummary.employee_count) payrollSummary = null;
+    } catch (_) { /* columns not yet added — seed not run */ }
+
     res.render('finance/monthly', {
       title: 'Finanse ' + monthLabel,
       currentPath: '/finance/monthly',
       monthKey, monthLabel, availableMonths, categories,
-      summary, bankSummary, catBreakdown, transactions, redatedCosts, fmt,
+      summary, bankSummary, catBreakdown, transactions, redatedCosts,
+      payrollSummary, fmt,
     });
   } catch (err) {
     console.error(err);
@@ -546,30 +564,82 @@ router.get('/monthly/:monthKey', async (req, res) => {
 // ─── GET /finance/payroll ─────────────────────────────────────────────────────
 router.get('/payroll', async (req, res) => {
   try {
-    const availableMonths = await getAvailableMonths();
+    // Payroll costs from lista płac (accountant PDFs)
+    // Falls back to base columns if payroll_seed.js hasn't been run yet
+    let payrollRows;
+    try {
+      payrollRows = await db.all(`
+        SELECT pc.id, pc.period_month, pc.employee_name_raw,
+               u.name AS employee_name,
+               pc.gross_amount, pc.zus_employee, pc.nfz_amount, pc.pit_amount,
+               pc.net_amount, pc.paid_amount, pc.zus_employer, pc.employer_cost,
+               pc.payment_date, pc.review_status, pc.bank_reconciled
+        FROM payroll_costs pc
+        LEFT JOIN users u ON u.id = pc.employee_id
+        ORDER BY pc.period_month DESC, pc.employee_name_raw
+      `);
+    } catch (_) {
+      payrollRows = await db.all(`
+        SELECT pc.id, pc.period_month, pc.employee_name_raw,
+               u.name AS employee_name,
+               pc.gross_amount, pc.net_amount, pc.employer_cost,
+               pc.review_status, pc.bank_reconciled,
+               0 AS zus_employee, 0 AS nfz_amount, 0 AS pit_amount,
+               0 AS zus_employer, pc.employer_cost AS paid_amount, NULL AS payment_date
+        FROM payroll_costs pc
+        LEFT JOIN users u ON u.id = pc.employee_id
+        ORDER BY pc.period_month DESC, pc.employee_name_raw
+      `);
+    }
 
-    // Employee bank payments by month
-    const employeePayments = await db.all(`
-      SELECT bt.month_key, bt.counterparty_name, bt.amount, bt.booking_date,
-             bt.title, bt.status, bt.id
+    // Group by period_month with totals
+    const byMonth = {};
+    for (const row of payrollRows) {
+      if (!byMonth[row.period_month]) {
+        byMonth[row.period_month] = { rows: [], totals: { gross: 0, zus_emp: 0, nfz: 0, pit: 0, net: 0, paid: 0, zus_firm: 0, cost: 0 } };
+      }
+      byMonth[row.period_month].rows.push(row);
+      const t = byMonth[row.period_month].totals;
+      t.gross    += Number(row.gross_amount  || 0);
+      t.zus_emp  += Number(row.zus_employee  || 0);
+      t.nfz      += Number(row.nfz_amount    || 0);
+      t.pit      += Number(row.pit_amount    || 0);
+      t.net      += Number(row.net_amount    || 0);
+      t.paid     += Number(row.paid_amount   || 0);
+      t.zus_firm += Number(row.zus_employer  || 0);
+      t.cost     += Number(row.employer_cost || 0);
+    }
+
+    const payrollMonths = Object.keys(byMonth).sort().reverse();
+
+    // Bank employee payments grouped by month (for reconciliation reference)
+    const bankPayments = await db.all(`
+      SELECT bt.month_key, bt.counterparty_name, bt.amount, bt.booking_date, bt.title
       FROM bank_transactions bt
       JOIN finance_categories fc ON fc.id = bt.category_id
       WHERE fc.slug = 'employee_cost'
       ORDER BY bt.month_key DESC, bt.counterparty_name
     `);
+    const bankByMonth = {};
+    for (const p of bankPayments) {
+      if (!bankByMonth[p.month_key]) bankByMonth[p.month_key] = [];
+      bankByMonth[p.month_key].push(p);
+    }
 
-    // Payroll costs (if imported)
-    const payrollCosts = await db.all(`
-      SELECT pc.*, u.name AS employee_name
-      FROM payroll_costs pc
-      LEFT JOIN users u ON u.id = pc.employee_id
-      ORDER BY pc.period_month DESC, pc.employee_name_raw
-    `);
+    const MONTHS_PL_LABELS = {
+      '01': 'Styczeń', '02': 'Luty', '03': 'Marzec', '04': 'Kwiecień',
+      '05': 'Maj', '06': 'Czerwiec', '07': 'Lipiec', '08': 'Sierpień',
+      '09': 'Wrzesień', '10': 'Październik', '11': 'Listopad', '12': 'Grudzień',
+    };
+    function monthLabel(mk) {
+      const [y, m] = mk.split('-');
+      return (MONTHS_PL_LABELS[m] || m) + ' ' + y;
+    }
 
     res.render('finance/payroll', {
       title: 'Koszty pracownicze',
       currentPath: '/finance/payroll',
-      availableMonths, employeePayments, payrollCosts, fmt,
+      byMonth, payrollMonths, bankByMonth, monthLabel, fmt,
     });
   } catch (err) {
     console.error(err);

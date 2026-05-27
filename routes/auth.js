@@ -32,22 +32,22 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       `, [id, todayStr]);
     } else if (role === 'location_manager') {
       const { getMonday, toDateString } = require('../utils/helpers');
+      const todayStr = toDateString(new Date());
       const weekStart = toDateString(getMonday(new Date()));
       const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [weekStart]);
-      if (schedule) {
-        myShifts = await db.all(`
-          SELECT se.date,
-                 COALESCE(st.name,'Własna') as shift_name,
-                 COALESCE(se.custom_start, st.start_time) as start_time,
-                 COALESCE(se.custom_end, st.end_time) as end_time,
-                 COALESCE(st.color,'#6B7280') as color
-          FROM schedule_entries se
-          LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-          WHERE se.schedule_id=? AND se.user_id=?
-          ORDER BY se.date
-        `, [schedule.id, id]);
-        mySchedule = schedule;
-      }
+      mySchedule = schedule || null;
+      myShifts = await db.all(`
+        SELECT se.id, se.date, se.confirmed_by_employee,
+               COALESCE(st.name,'Własna') as shift_name,
+               COALESCE(se.custom_start, st.start_time) as start_time,
+               COALESCE(se.custom_end, st.end_time) as end_time,
+               COALESCE(st.color,'#6B7280') as color
+        FROM schedule_entries se
+        LEFT JOIN shift_templates st ON st.id = se.shift_template_id
+        JOIN schedules s ON s.id = se.schedule_id
+        WHERE s.status='approved' AND se.user_id=? AND se.date>=?
+        ORDER BY se.date ASC
+      `, [id, todayStr]);
     }
 
     let workerHours = [];
