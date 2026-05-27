@@ -76,7 +76,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     // Load month-specific locks for the target user (admin-set)
     const monthLockRows = await db.all(
-      'SELECT year_month FROM availability_month_locks WHERE user_id=?',
+      'SELECT `year_month` FROM availability_month_locks WHERE user_id=?',
       [targetUserId]
     );
     const lockedMonths = new Set(monthLockRows.map(r => r.year_month));

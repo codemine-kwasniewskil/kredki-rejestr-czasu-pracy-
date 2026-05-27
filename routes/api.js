@@ -129,12 +129,12 @@ router.put('/availability/month/:yearMonth/lock', requireRole('admin', 'location
 
     if (locked) {
       await db.run(`
-        INSERT INTO availability_month_locks (user_id, year_month, locked_by) VALUES (?,?,?)
+        INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by) VALUES (?,?,?)
         ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), created_at=NOW()
       `, [targetUserId, yearMonth, res.locals.user.id]);
       log(res.locals.user, 'Zablokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
     } else {
-      await db.run('DELETE FROM availability_month_locks WHERE user_id=? AND year_month=?', [targetUserId, yearMonth]);
+      await db.run('DELETE FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [targetUserId, yearMonth]);
       log(res.locals.user, 'Odblokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
     }
 
@@ -165,7 +165,7 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
       if (targetUser && targetUser.availability_locked) {
         return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
       }
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND year_month=?', [userId, yearMonth]);
+      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
       }
@@ -240,7 +240,7 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND year_month=?', [userId, yearMonth]);
+      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
       }
@@ -298,7 +298,7 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND year_month=?', [userId, yearMonth]);
+      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLock) {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
       }

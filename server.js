@@ -91,10 +91,10 @@ app.use('/finance', require('./routes/finance'));
     // availability_month_locks: admin/kierownik can lock a specific month per worker
     await db.run(`CREATE TABLE IF NOT EXISTS availability_month_locks (
       user_id INT NOT NULL,
-      year_month VARCHAR(7) NOT NULL,
+      \`year_month\` VARCHAR(7) NOT NULL,
       locked_by INT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (user_id, year_month),
+      PRIMARY KEY (user_id, \`year_month\`),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE CASCADE
     )`);
