@@ -160,6 +160,38 @@ async function clearTimeRange() {
   } catch(e) { closeTimePicker(); }
 }
 
+async function setMonthAvailability(yearMonth, status, event) {
+  if (event) event.stopPropagation();
+  try {
+    const res = await fetch(`/api/availability/month/${yearMonth}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, targetUserId: availabilityTargetUserId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      if (data.updated === 0) {
+        showToast('Brak dni do zaktualizowania w tym miesiącu.');
+        return;
+      }
+      const statusLabel = status === 'available' ? 'Dostępny/a' : 'Niedostępny/a';
+      showToast(`${statusLabel}: zaktualizowano ${data.updated} dni.`);
+      if (data.dates) {
+        data.dates.forEach(date => {
+          const el = document.querySelector(`.availability-day[data-date="${date}"]`);
+          if (el && el.classList.contains('cursor-pointer')) {
+            updateDayEl(el, status, '', '');
+          }
+        });
+      }
+    } else {
+      showToast(data.error || 'Wystąpił błąd.', 'error');
+    }
+  } catch(e) {
+    showToast('Błąd połączenia.', 'error');
+  }
+}
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeTimePicker();
 });

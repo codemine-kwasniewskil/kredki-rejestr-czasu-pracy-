@@ -104,12 +104,29 @@ if (lockBeforeStr && lockIsForFutureMonths) {
           return ds < todayStr;
         });
       %>
-        <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey; %>
+        <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey;
+          const monthYearMonth = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}`;
+          const canSetMonth = !monthLocked && !(user.role === 'worker' && targetUserLocked);
+        %>
         <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3">
           <h2 class="text-sm font-semibold <%= isEntireWeekPast && !isCurrentWeek ? 'text-slate-400' : monthLocked ? 'text-slate-400' : 'text-slate-600' %> uppercase tracking-wide flex items-center gap-1.5">
             <%= monthLabel %>
             <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span><% } %>
           </h2>
+          <div class="flex items-center gap-1">
+            <button
+              onclick="setMonthAvailability('<%= monthYearMonth %>', 'available', event)"
+              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= canSetMonth ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 cursor-pointer' : 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed' %>"
+              title="<%= canSetMonth ? 'Ustaw cały miesiąc jako dostępny' : 'Miesiąc zablokowany' %>"
+              <%= canSetMonth ? '' : 'disabled' %>
+            >✓ Cały miesiąc</button>
+            <button
+              onclick="setMonthAvailability('<%= monthYearMonth %>', 'unavailable', event)"
+              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= canSetMonth ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 cursor-pointer' : 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed' %>"
+              title="<%= canSetMonth ? 'Ustaw cały miesiąc jako niedostępny' : 'Miesiąc zablokowany' %>"
+              <%= canSetMonth ? '' : 'disabled' %>
+            >✕ Cały miesiąc</button>
+          </div>
           <div class="flex-1 h-px bg-slate-200"></div>
         </div>
         <% } %>

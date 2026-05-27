@@ -113,6 +113,72 @@ router.delete('/schedule/entry/:id', requireRole('admin', 'location_manager'), a
   }
 });
 
+router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
+  try {
+    const { yearMonth } = req.params;
+    const { status, targetUserId } = req.body;
+    const role = res.locals.user.role;
+
+    if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+      return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
+    }
+
+    let userId = res.locals.user.id;
+    if (targetUserId && (role === 'admin' || role === 'location_manager')) {
+      userId = parseInt(targetUserId);
+    }
+
+    if (role === 'worker') {
+      const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
+      if (targetUser && targetUser.availability_locked) {
+        return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
+      }
+    }
+
+    const [year, month] = yearMonth.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+    const lockBeforeStr = role === 'worker'
+      ? `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+      : null;
+
+    const dates = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if (dateStr < todayStr) continue;
+      if (lockBeforeStr && dateStr < lockBeforeStr) continue;
+      dates.push(dateStr);
+    }
+
+    if (dates.length === 0) {
+      return res.json({ success: true, updated: 0, dates: [] });
+    }
+
+    for (const date of dates) {
+      if (!status) {
+        await db.run('DELETE FROM availability WHERE user_id=? AND date=?', [userId, date]);
+      } else {
+        await db.run(`
+          INSERT INTO availability (user_id, date, status, start_time, end_time) VALUES (?,?,?,NULL,NULL)
+          ON DUPLICATE KEY UPDATE status=VALUES(status)
+        `, [userId, date, status]);
+      }
+    }
+
+    const _avUser = userId !== res.locals.user.id ? await db.get('SELECT name FROM users WHERE id=?', [userId]) : null;
+    const _statusLabel = status === 'available' ? 'dostępny' : status === 'unavailable' ? 'niedostępny' : 'brak';
+    log(res.locals.user, 'Masowa zmiana dostępności', `${_avUser ? _avUser.name + ' | ' : ''}${yearMonth}: ${_statusLabel} (${dates.length} dni)`);
+
+    res.json({ success: true, updated: dates.length, dates });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 router.put('/availability/:date', requireAuth, async (req, res) => {
   try {
     const { date } = req.params;
