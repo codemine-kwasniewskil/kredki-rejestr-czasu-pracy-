@@ -50,6 +50,12 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             <% }) %>
           </select>
         </form>
+        <button
+          id="userLockBtn"
+          onclick="toggleUserLock(<%= targetUserId %>, <%= targetUserLocked ? 'false' : 'true' %>)"
+          class="px-3 py-2 text-xs font-medium rounded-lg border transition-colors <%= targetUserLocked ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' %>"
+          title="<%= targetUserLocked ? 'Odblokuj dostępność dla tego pracownika' : 'Zablokuj dostępność dla tego pracownika' %>"
+        ><%= targetUserLocked ? '🔓 Odblokuj' : '🔒 Zablokuj' %></button>
         <% } %>
         <% if (user.role === 'admin' || user.role === 'location_manager') { %>
           <% const _allLocked = allUsers.length > 0 && allUsers.every(u => u.availability_locked); %>
@@ -241,6 +247,22 @@ async function lockAllAvailability(lock) {
     });
     if (res.ok) {
       showToast(lock ? 'Dostępność zablokowana dla wszystkich pracowników.' : 'Dostępność odblokowana dla wszystkich pracowników.');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      showToast('Wystąpił błąd.', 'error');
+    }
+  } catch(e) {
+    showToast('Błąd połączenia.', 'error');
+  }
+}
+async function toggleUserLock(userId, lock) {
+  try {
+    const res = await fetch(`/api/users/${userId}/availability-lock`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locked: lock })
+    });
+    if (res.ok) {
+      showToast(lock ? 'Dostępność zablokowana.' : 'Dostępność odblokowana.');
       setTimeout(() => location.reload(), 900);
     } else {
       showToast('Wystąpił błąd.', 'error');
