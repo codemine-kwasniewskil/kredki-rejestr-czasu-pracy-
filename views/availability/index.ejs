@@ -113,7 +113,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
           const isMonthAutoLocked = !isMonthAdminUnlocked && autoLockedMonth === monthYearMonth;
           // Workers cannot edit if admin-locked or auto-locked; admins can always edit
           const canSetMonth = user.role === 'worker'
-            ? (!monthLocked && !targetUserLocked && !isMonthAdminLocked && !isMonthAutoLocked)
+            ? (!monthLocked && !isMonthAdminLocked && !isMonthAutoLocked)
             : true;
         %>
         <div class="<%= wi > 0 ? 'mt-5' : '' %> mb-1.5 flex items-center gap-3 flex-wrap">
@@ -168,11 +168,8 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const dayYM = dateStr.substring(0, 7);
             const isMonthAdminLockedDay = lockedMonths.has(dayYM);
             const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonth === dayYM;
-            // Workers blocked by: past, past-month cutoff, global user lock, admin month lock, auto month lock
-            // Admins never blocked by month locks (they can always edit)
             const isLocked = isPast
               || !!(lockBeforeStr && dateStr < lockBeforeStr)
-              || (user.role === 'worker' && targetUserLocked)
               || (user.role === 'worker' && isMonthAdminLockedDay)
               || (user.role === 'worker' && isMonthAutoLockedDay);
             const canEdit = !isLocked;

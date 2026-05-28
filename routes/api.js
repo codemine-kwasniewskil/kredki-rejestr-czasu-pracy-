@@ -157,10 +157,6 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
     }
 
     if (role === 'worker') {
-      const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
-      if (targetUser && targetUser.availability_locked) {
-        return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
-      }
       const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLockRow) {
         if (monthLockRow.locked) {
@@ -236,13 +232,6 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
     }
 
     if (role === 'worker') {
-      const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
-      if (targetUser && targetUser.availability_locked) {
-        return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
-      }
-    }
-
-    if (role === 'worker') {
       const today = new Date();
       const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
       const lockBeforeStr = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}-01`;
@@ -302,13 +291,6 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
     let userId = res.locals.user.id;
     if (targetUserId && (role === 'admin' || role === 'location_manager')) {
       userId = parseInt(targetUserId);
-    }
-
-    if (role === 'worker') {
-      const targetUser = await db.get('SELECT availability_locked FROM users WHERE id=?', [userId]);
-      if (targetUser && targetUser.availability_locked) {
-        return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana.' });
-      }
     }
 
     if (role === 'worker') {
@@ -423,7 +405,17 @@ router.put('/users/:id/availability-lock', requireRole('admin', 'location_manage
   try {
     const { locked } = req.body;
     const _lu = await db.get('SELECT name FROM users WHERE id=?', [req.params.id]);
-    await db.run('UPDATE users SET availability_locked=? WHERE id=?', [locked ? 1 : 0, req.params.id]);
+    const today = new Date();
+    const currentYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextYM = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}`;
+    for (const ym of [currentYM, nextYM]) {
+      await db.run('DELETE FROM availability_month_locks WHERE user_id=? AND `year_month`=?', [req.params.id, ym]);
+      await db.run(
+        'INSERT INTO availability_month_locks (user_id, `year_month`, locked_by, locked) VALUES (?,?,?,?)',
+        [req.params.id, ym, res.locals.user.id, locked ? 1 : 0]
+      );
+    }
     log(res.locals.user, locked ? 'Zablokowanie dostępności' : 'Odblokowanie dostępności', _lu ? _lu.name : `ID: ${req.params.id}`);
     res.json({ success: true, locked: locked ? 1 : 0 });
   } catch (err) {

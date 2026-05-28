@@ -14,7 +14,7 @@ router.get('/', requireAuth, async (req, res) => {
     let allUsers = [];
     let targetUserId = loggedInUserId;
     if (role === 'admin' || role === 'location_manager') {
-      allUsers = await db.all(`SELECT id, name, role, availability_locked FROM users WHERE active=1 AND role != 'admin' ORDER BY name`);
+      allUsers = await db.all(`SELECT id, name, role FROM users WHERE active=1 AND role != 'admin' ORDER BY name`);
       if (req.query.userId) {
         const qId = parseInt(req.query.userId);
         if (allUsers.some(u => u.id === qId)) targetUserId = qId;
@@ -49,14 +49,6 @@ router.get('/', requireAuth, async (req, res) => {
 
     const todayStr = toDateString(today);
 
-    const targetUserDbRow = role === 'worker'
-      ? await db.get('SELECT availability_locked FROM users WHERE id=?', [loggedInUserId])
-      : null;
-    // Use only fresh DB data for worker's locked status — session data may be stale after admin unlock
-    const targetUserLocked = role === 'worker'
-      ? !!(targetUserDbRow && targetUserDbRow.availability_locked)
-      : !!(targetUser && targetUser.availability_locked);
-
     // Workers: current month + past always locked; editable from next month onward
     let lockBeforeStr = null;
     if (role === 'worker') {
@@ -81,6 +73,12 @@ router.get('/', requireAuth, async (req, res) => {
     );
     const lockedMonths = new Set(monthLockRows.filter(r => r.locked).map(r => r.year_month));
     const unlockedMonths = new Set(monthLockRows.filter(r => !r.locked).map(r => r.year_month));
+
+    // targetUserLocked: true if current or next month is admin-locked via month locks
+    const todayYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const nextMDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextYM = `${nextMDate.getFullYear()}-${String(nextMDate.getMonth() + 1).padStart(2, '0')}`;
+    const targetUserLocked = lockedMonths.has(todayYM) || lockedMonths.has(nextYM);
 
     res.render('availability/index', {
       weeks, availMap, todayStr, allUsers, targetUserId, targetUser,
