@@ -57,10 +57,11 @@ router.get('/', requireAuth, async (req, res) => {
       ? !!(targetUserDbRow && targetUserDbRow.availability_locked)
       : !!(targetUser && targetUser.availability_locked);
 
-    // Workers can edit current month and future months; past months always locked
+    // Workers: current month + past always locked; editable from next month onward
     let lockBeforeStr = null;
     if (role === 'worker') {
-      lockBeforeStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      lockBeforeStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
     }
 
     // Auto-lock: after the 10th of each month, the next month is locked (standard scheduling cutoff)
