@@ -127,10 +127,11 @@ router.put('/availability/month/:yearMonth/lock', requireRole('admin', 'location
 
     const _lu = await db.get('SELECT name FROM users WHERE id=?', [targetUserId]);
 
-    await db.run(`
-      INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)
-      ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), locked=VALUES(locked), created_at=NOW()
-    `, [targetUserId, yearMonth, res.locals.user.id, locked ? 1 : 0]);
+    await db.run('DELETE FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [targetUserId, yearMonth]);
+    await db.run(
+      `INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)`,
+      [targetUserId, yearMonth, res.locals.user.id, locked ? 1 : 0]
+    );
     log(res.locals.user, locked ? 'Zablokowanie miesiąca' : 'Odblokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
 
     res.json({ success: true, locked: locked ? 1 : 0 });
@@ -364,11 +365,16 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
       return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
     }
     const workers = await db.all("SELECT id FROM users WHERE active=1 AND role='worker'");
+    // Delete all existing rows for this month for workers, then insert fresh state
+    await db.run(
+      `DELETE FROM availability_month_locks WHERE \`year_month\`=? AND user_id IN (SELECT id FROM users WHERE active=1 AND role='worker')`,
+      [yearMonth]
+    );
     for (const w of workers) {
-      await db.run(`
-        INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)
-        ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), locked=VALUES(locked), created_at=NOW()
-      `, [w.id, yearMonth, res.locals.user.id, locked ? 1 : 0]);
+      await db.run(
+        `INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)`,
+        [w.id, yearMonth, res.locals.user.id, locked ? 1 : 0]
+      );
     }
     log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', yearMonth);
     res.json({ success: true, locked: locked ? 1 : 0, count: workers.length });
