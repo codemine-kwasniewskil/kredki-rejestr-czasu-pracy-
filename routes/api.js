@@ -364,18 +364,13 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
       return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
     }
     const workers = await db.all("SELECT id FROM users WHERE active=1 AND role='worker'");
-    if (locked) {
-      for (const w of workers) {
-        await db.run(`
-          INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by) VALUES (?,?,?)
-          ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), created_at=NOW()
-        `, [w.id, yearMonth, res.locals.user.id]);
-      }
-      log(res.locals.user, 'Zablokowanie miesiąca (wszyscy)', yearMonth);
-    } else {
-      await db.run('DELETE FROM availability_month_locks WHERE `year_month`=?', [yearMonth]);
-      log(res.locals.user, 'Odblokowanie miesiąca (wszyscy)', yearMonth);
+    for (const w of workers) {
+      await db.run(`
+        INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)
+        ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), locked=VALUES(locked), created_at=NOW()
+      `, [w.id, yearMonth, res.locals.user.id, locked ? 1 : 0]);
     }
+    log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', yearMonth);
     res.json({ success: true, locked: locked ? 1 : 0, count: workers.length });
   } catch (err) {
     console.error(err);
