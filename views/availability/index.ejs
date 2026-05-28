@@ -109,7 +109,8 @@ if (lockBeforeStr && lockIsForFutureMonths) {
         <% if (monthKey !== lastMonthKey) { lastMonthKey = monthKey;
           const monthYearMonth = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}`;
           const isMonthAdminLocked = lockedMonths.has(monthYearMonth);
-          const isMonthAutoLocked = autoLockedMonth === monthYearMonth;
+          const isMonthAdminUnlocked = unlockedMonths.has(monthYearMonth);
+          const isMonthAutoLocked = !isMonthAdminUnlocked && autoLockedMonth === monthYearMonth;
           // Workers cannot edit if admin-locked or auto-locked; admins can always edit
           const canSetMonth = user.role === 'worker'
             ? (!monthLocked && !targetUserLocked && !isMonthAdminLocked && !isMonthAutoLocked)
@@ -120,7 +121,8 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             <%= monthLabel %>
             <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span>
             <% } else if (isMonthAdminLocked) { %><span class="text-xs normal-case font-normal text-amber-500">🔒 zablokowany</span>
-            <% } else if (isMonthAutoLocked) { %><span class="text-xs normal-case font-normal text-orange-400">⏰ standard</span><% } %>
+            <% } else if (isMonthAutoLocked) { %><span class="text-xs normal-case font-normal text-orange-400">⏰ standard</span>
+            <% } else if (isMonthAdminUnlocked && user.role !== 'worker') { %><span class="text-xs normal-case font-normal text-emerald-500">🔓 odblokowany (admin)</span><% } %>
           </h2>
           <div class="flex items-center gap-1 flex-wrap">
             <button
@@ -136,11 +138,12 @@ if (lockBeforeStr && lockIsForFutureMonths) {
               <%= canSetMonth ? '' : 'disabled' %>
             >✕ Cały miesiąc</button>
             <% if (user.role !== 'worker') { %>
+            <% const isEffectivelyLocked = isMonthAdminLocked || isMonthAutoLocked; %>
             <button
-              onclick="toggleMonthLock('<%= monthYearMonth %>', <%= isMonthAdminLocked ? 'false' : 'true' %>, event)"
-              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= isMonthAdminLocked ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200' %>"
-              title="<%= isMonthAdminLocked ? 'Odblokuj ten miesiąc dla pracownika' : 'Zablokuj ten miesiąc dla pracownika' %>"
-            ><%= isMonthAdminLocked ? '🔓 Odblokuj miesiąc' : '🔒 Zablokuj miesiąc' %></button>
+              onclick="toggleMonthLock('<%= monthYearMonth %>', <%= isEffectivelyLocked ? 'false' : 'true' %>, event)"
+              class="px-2 py-0.5 text-[10px] font-medium rounded border transition-colors <%= isEffectivelyLocked ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200' %>"
+              title="<%= isEffectivelyLocked ? 'Odblokuj ten miesiąc dla pracownika' : 'Zablokuj ten miesiąc dla pracownika' %>"
+            ><%= isEffectivelyLocked ? '🔓 Odblokuj miesiąc' : '🔒 Zablokuj miesiąc' %></button>
             <% } %>
           </div>
           <div class="flex-1 h-px bg-slate-200"></div>
@@ -164,7 +167,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const isPast = dateStr < todayStr;
             const dayYM = dateStr.substring(0, 7);
             const isMonthAdminLockedDay = lockedMonths.has(dayYM);
-            const isMonthAutoLockedDay = autoLockedMonth === dayYM;
+            const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonth === dayYM;
             // Workers blocked by: past, past-month cutoff, global user lock, admin month lock, auto month lock
             // Admins never blocked by month locks (they can always edit)
             const isLocked = isPast

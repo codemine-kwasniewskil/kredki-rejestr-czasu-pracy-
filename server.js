@@ -93,11 +93,17 @@ app.use('/finance', require('./routes/finance'));
       user_id INT NOT NULL,
       \`year_month\` VARCHAR(7) NOT NULL,
       locked_by INT NOT NULL,
+      locked TINYINT NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, \`year_month\`),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE CASCADE
     )`);
+    // Add locked column to existing availability_month_locks tables
+    const lockedCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='availability_month_locks' AND COLUMN_NAME='locked'`);
+    if (!lockedCol || lockedCol.cnt === 0) {
+      await db.run(`ALTER TABLE availability_month_locks ADD COLUMN locked TINYINT NOT NULL DEFAULT 1`);
+    }
   } catch (e) {
     console.error('Auto-migration error:', e.message);
   }

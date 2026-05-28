@@ -127,16 +127,11 @@ router.put('/availability/month/:yearMonth/lock', requireRole('admin', 'location
 
     const _lu = await db.get('SELECT name FROM users WHERE id=?', [targetUserId]);
 
-    if (locked) {
-      await db.run(`
-        INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by) VALUES (?,?,?)
-        ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), created_at=NOW()
-      `, [targetUserId, yearMonth, res.locals.user.id]);
-      log(res.locals.user, 'Zablokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
-    } else {
-      await db.run('DELETE FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [targetUserId, yearMonth]);
-      log(res.locals.user, 'Odblokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
-    }
+    await db.run(`
+      INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)
+      ON DUPLICATE KEY UPDATE locked_by=VALUES(locked_by), locked=VALUES(locked), created_at=NOW()
+    `, [targetUserId, yearMonth, res.locals.user.id, locked ? 1 : 0]);
+    log(res.locals.user, locked ? 'Zablokowanie miesiąca' : 'Odblokowanie miesiąca', `${_lu ? _lu.name : targetUserId} | ${yearMonth}`);
 
     res.json({ success: true, locked: locked ? 1 : 0 });
   } catch (err) {
@@ -165,18 +160,22 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
       if (targetUser && targetUser.availability_locked) {
         return res.status(403).json({ error: 'Dostępność tego pracownika jest zablokowana przez administratora.' });
       }
-      // Auto-lock: after 10th, next month is locked
-      const today = new Date();
-      if (today.getDate() > 10) {
-        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
-        if (yearMonth === nextMonthStr) {
-          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+      const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
+      if (monthLockRow) {
+        if (monthLockRow.locked) {
+          return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
-      }
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
-      if (monthLock) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
+        // locked=0: explicit admin unlock override — allow editing even if auto-locked
+      } else {
+        // No explicit record — check auto-lock rule
+        const today = new Date();
+        if (today.getDate() > 10) {
+          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+          const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+          if (yearMonth === nextMonthStr) {
+            return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+          }
+        }
       }
     }
 
@@ -249,17 +248,19 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
-      // Auto-lock: after 10th, next month is locked (standard scheduling cutoff)
-      if (today.getDate() > 10) {
-        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
-        if (yearMonth === nextMonthStr) {
-          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+      const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
+      if (monthLockRow) {
+        if (monthLockRow.locked) {
+          return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
-      }
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
-      if (monthLock) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
+      } else {
+        if (today.getDate() > 10) {
+          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+          const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+          if (yearMonth === nextMonthStr) {
+            return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+          }
+        }
       }
     }
 
@@ -315,17 +316,19 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
       }
       const yearMonth = date.substring(0, 7);
-      // Auto-lock: after 10th, next month is locked
-      if (today.getDate() > 10) {
-        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
-        if (yearMonth === nextMonthStr) {
-          return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+      const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
+      if (monthLockRow) {
+        if (monthLockRow.locked) {
+          return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
-      }
-      const monthLock = await db.get('SELECT 1 FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
-      if (monthLock) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
+      } else {
+        if (today.getDate() > 10) {
+          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+          const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+          if (yearMonth === nextMonthStr) {
+            return res.status(403).json({ error: 'Kolejny miesiąc jest zablokowany — termin składania dostępności minął 10-go.' });
+          }
+        }
       }
     }
 
