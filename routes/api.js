@@ -382,6 +382,10 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
         [u.id, yearMonth, res.locals.user.id, locked ? 1 : 0]
       );
     }
+    // When unlocking: also clear the global availability_locked flag so workers can actually edit
+    if (!locked) {
+      await db.run("UPDATE users SET availability_locked=0 WHERE active=1 AND role != 'admin'");
+    }
     log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', `${yearMonth} — ${users.length} użytkowników`);
     res.json({ success: true, locked: locked ? 1 : 0, count: users.length });
   } catch (err) {
