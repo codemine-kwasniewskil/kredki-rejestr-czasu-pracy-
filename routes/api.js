@@ -358,7 +358,7 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
   }
 });
 
-// Lock/unlock a specific month for ALL workers
+// Lock/unlock a specific month for ALL non-admin users
 router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { yearMonth } = req.params;
@@ -366,23 +366,27 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
     if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
       return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
     }
-    const workers = await db.all("SELECT id FROM users WHERE active=1 AND role='worker'");
-    // Delete all existing rows for this month for workers, then insert fresh state
+    const users = await db.all("SELECT id FROM users WHERE active=1 AND role != 'admin'");
+    if (users.length === 0) {
+      return res.json({ success: true, locked: locked ? 1 : 0, count: 0 });
+    }
+    const userIds = users.map(u => u.id);
+    // Delete existing rows for these users, then insert fresh state
     await db.run(
-      `DELETE FROM availability_month_locks WHERE \`year_month\`=? AND user_id IN (SELECT id FROM users WHERE active=1 AND role='worker')`,
-      [yearMonth]
+      `DELETE FROM availability_month_locks WHERE \`year_month\`=? AND user_id IN (?)`,
+      [yearMonth, userIds]
     );
-    for (const w of workers) {
+    for (const u of users) {
       await db.run(
         `INSERT INTO availability_month_locks (user_id, \`year_month\`, locked_by, locked) VALUES (?,?,?,?)`,
-        [w.id, yearMonth, res.locals.user.id, locked ? 1 : 0]
+        [u.id, yearMonth, res.locals.user.id, locked ? 1 : 0]
       );
     }
-    log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', yearMonth);
-    res.json({ success: true, locked: locked ? 1 : 0, count: workers.length });
+    log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', `${yearMonth} — ${users.length} użytkowników`);
+    res.json({ success: true, locked: locked ? 1 : 0, count: users.length });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Błąd serwera.' });
+    console.error('lock-all error:', err);
+    res.status(500).json({ error: 'Błąd serwera: ' + err.message });
   }
 });
 

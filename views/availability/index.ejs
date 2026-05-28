@@ -403,7 +403,7 @@ async function lockMonthForAll(lock) {
     });
     const data = await res.json();
     if (res.ok) {
-      showToast(lock ? `🔒 Miesiąc ${yearMonth} zablokowany dla ${data.count} pracowników.` : `🔓 Miesiąc ${yearMonth} odblokowany dla wszystkich.`);
+      showToast(lock ? `🔒 Miesiąc ${yearMonth} zablokowany dla ${data.count} osób.` : `🔓 Miesiąc ${yearMonth} odblokowany dla ${data.count} osób.`);
       closeMonthLockModal();
       setTimeout(() => location.reload(), 900);
     } else {
