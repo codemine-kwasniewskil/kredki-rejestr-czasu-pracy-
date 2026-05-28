@@ -56,15 +56,6 @@
               </span>
             </td>
             <td class="px-4 py-3 text-right flex items-center justify-end gap-2 flex-wrap">
-              <% if (u.role !== 'admin') { %>
-              <button
-                id="lockBtn_<%= u.id %>"
-                onclick="toggleLock(<%= u.id %>, this)"
-                data-locked="<%= u.availability_locked ? '1' : '0' %>"
-                class="text-xs px-2 py-1 rounded-lg border transition-colors <%= u.availability_locked ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-500' %>"
-                title="<%= u.availability_locked ? 'Zablokowana dostępność – kliknij by odblokować' : 'Dostępność odblokowana – kliknij by zablokować' %>"
-              ><%= u.availability_locked ? '🔒' : '🔓' %></button>
-              <% } %>
               <a href="/users/<%= u.id %>/edit" class="btn btn-secondary text-xs">Edytuj</a>
               <% if (u.id !== user.id) { %>
               <form action="/users/<%= u.id %>?_method=DELETE" method="POST" onsubmit="return confirm('Dezaktywować użytkownika?')">
@@ -200,20 +191,5 @@ function generatePassword(fieldId) {
   field.type = 'text';
 }
 
-async function toggleLock(userId, btn) {
-  const locked = btn.dataset.locked === '1' ? 0 : 1;
-  try {
-    const res = await fetch(`/api/users/${userId}/availability-lock`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locked })
-    });
-    if (res.ok) {
-      btn.dataset.locked = locked ? '1' : '0';
-      btn.textContent = locked ? '🔒' : '🔓';
-      btn.className = `text-xs px-2 py-1 rounded-lg border transition-colors ${locked ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-500'}`;
-      btn.title = locked ? 'Zablokowana dostępność – kliknij by odblokować' : 'Dostępność odblokowana – kliknij by zablokować';
-    }
-  } catch(e) {}
-}
 </script>
 <%- include('../partials/footer') %>
