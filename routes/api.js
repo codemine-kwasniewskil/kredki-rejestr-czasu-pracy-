@@ -156,13 +156,14 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
       userId = parseInt(targetUserId);
     }
 
+    let adminExplicitUnlock = false;
     if (role === 'worker') {
       const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLockRow) {
         if (monthLockRow.locked) {
           return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
-        // locked=0: explicit admin unlock override — allow editing even if auto-locked
+        adminExplicitUnlock = true; // locked=0: explicit admin unlock — bypass default rules
       } else {
         // No explicit record — check auto-lock rule
         const today = new Date();
@@ -182,7 +183,7 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
-    const lockBeforeStr = role === 'worker'
+    const lockBeforeStr = (role === 'worker' && !adminExplicitUnlock)
       ? (() => { const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1); return `${nm.getFullYear()}-${String(nm.getMonth()+1).padStart(2,'0')}-01`; })()
       : null;
 
@@ -233,18 +234,20 @@ router.put('/availability/:date', requireAuth, async (req, res) => {
 
     if (role === 'worker') {
       const today = new Date();
-      const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const lockBeforeStr = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}-01`;
-      if (date < lockBeforeStr) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
-      }
       const yearMonth = date.substring(0, 7);
       const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLockRow) {
         if (monthLockRow.locked) {
           return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
+        // locked=0: explicit admin unlock — allow regardless of default date cutoff
       } else {
+        // No explicit record — apply default rules
+        const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const lockBeforeStr = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}-01`;
+        if (date < lockBeforeStr) {
+          return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
+        }
         if (today.getDate() > 10) {
           const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
           const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
@@ -295,18 +298,20 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
 
     if (role === 'worker') {
       const today = new Date();
-      const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const lockBeforeStr = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}-01`;
-      if (date < lockBeforeStr) {
-        return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
-      }
       const yearMonth = date.substring(0, 7);
       const monthLockRow = await db.get('SELECT locked FROM availability_month_locks WHERE user_id=? AND \`year_month\`=?', [userId, yearMonth]);
       if (monthLockRow) {
         if (monthLockRow.locked) {
           return res.status(403).json({ error: 'Ten miesiąc jest zablokowany przez administratora.' });
         }
+        // locked=0: explicit admin unlock — allow regardless of default date cutoff
       } else {
+        // No explicit record — apply default rules
+        const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const lockBeforeStr = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, '0')}-01`;
+        if (date < lockBeforeStr) {
+          return res.status(403).json({ error: 'Ten miesiąc jest zablokowany do edycji.' });
+        }
         if (today.getDate() > 10) {
           const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
           const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;

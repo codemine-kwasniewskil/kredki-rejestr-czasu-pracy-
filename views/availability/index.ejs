@@ -98,7 +98,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
         const monthKey = firstDay.getMonth() + '-' + firstDay.getFullYear();
         const monthLabel = MONTHS_PL[firstDay.getMonth()] + ' ' + firstDay.getFullYear();
         const monthStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-01`;
-        const monthLocked = lockBeforeStr && monthStr < lockBeforeStr;
+        const monthLocked = lockBeforeStr && monthStr < lockBeforeStr && !unlockedMonths.has(monthStr.substring(0, 7));
         const weekStartStr = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-${String(firstDay.getDate()).padStart(2,'0')}`;
         const isCurrentWeek = weekStartStr === currentWeekStart;
         const isEntireWeekPast = weekDays.every(d => {
@@ -122,7 +122,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             <% if (monthLocked) { %><span class="text-xs normal-case font-normal text-slate-400">⏰ termin minął</span>
             <% } else if (isMonthAdminLocked) { %><span class="text-xs normal-case font-normal text-amber-500">🔒 zablokowany</span>
             <% } else if (isMonthAutoLocked) { %><span class="text-xs normal-case font-normal text-orange-400">⏰ standard</span>
-            <% } else if (isMonthAdminUnlocked && user.role !== 'worker') { %><span class="text-xs normal-case font-normal text-emerald-500">🔓 odblokowany (admin)</span><% } %>
+            <% } else if (isMonthAdminUnlocked) { %><span class="text-xs normal-case font-normal text-emerald-500">🔓 odblokowany (admin)</span><% } %>
           </h2>
           <div class="flex items-center gap-1 flex-wrap">
             <button
@@ -169,7 +169,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const isMonthAdminLockedDay = lockedMonths.has(dayYM);
             const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonth === dayYM;
             const isLocked = isPast
-              || !!(lockBeforeStr && dateStr < lockBeforeStr)
+              || !!(lockBeforeStr && dateStr < lockBeforeStr && !unlockedMonths.has(dayYM))
               || (user.role === 'worker' && isMonthAdminLockedDay)
               || (user.role === 'worker' && isMonthAutoLockedDay);
             const canEdit = !isLocked;
