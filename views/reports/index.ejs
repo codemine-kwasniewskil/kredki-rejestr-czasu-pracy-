@@ -55,7 +55,7 @@
               <th class="text-left px-4 py-3 font-semibold text-slate-600" title="Imię pracownika. Kolorowa kropka sygnalizuje status: zielona = brak konfliktów, żółta = ostrzeżenie, czerwona = konflikt.">Pracownik <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
               <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Liczba dni w miesiącu, w których pracownik zadeklarował dostępność. W nawiasie podano liczbę dni z deklaracją niedostępności.">Dni dostępny <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
               <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Liczba dni, w których pracownik ma przypisaną zmianę w grafiku.">Zaplanowane dni <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
-              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Suma godzin zaplanowanych zmian. Wartość +/− pokazuje różnicę względem zadeklarowanych godzin.">Zaplanowane godz. <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
+              <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Suma godzin zaplanowanych zmian w tym miesiącu.">Zaplanowane godz. <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
               <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Minimalna liczba godzin miesięcznych wynikająca z umowy pracownika. Pasek postępu pokazuje stopień realizacji.">Min. godz. / mies. <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
               <th class="text-center px-3 py-3 font-semibold text-slate-600 whitespace-nowrap" title="Liczba przypadków, gdy zaplanowana zmiana koliduje z dostępnością pracownika. Kliknij wynik, aby zobaczyć szczegóły.">Konflikty <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
               <th class="text-center px-3 py-3 font-semibold text-slate-600" title="OK = brak problemów. Ostrzeżenie = zmiana poza zadeklarowanymi godzinami. Konflikt = zmiana w dniu niedostępności lub braku deklaracji dostępności.">Status <span class="text-slate-400 font-normal text-xs cursor-help">ⓘ</span></th>
@@ -87,13 +87,6 @@
               <td class="px-3 py-3 text-center">
                 <% if (w.scheduledHours > 0) { %>
                   <span class="font-semibold text-slate-800"><%= formatHours(w.scheduledHours) %></span>
-                  <% if (w.availHoursWithTime > 0) {
-                    const diff = w.scheduledHours - w.availHoursWithTime;
-                  %>
-                    <div class="text-xs <%= diff > 0 ? 'text-amber-600' : 'text-emerald-600' %> leading-tight">
-                      <%= diff > 0 ? '+' : '' %><%= formatHours(Math.abs(diff)) %> <%= diff > 0 ? 'więcej' : 'mniej' %>
-                    </div>
-                  <% } %>
                 <% } else { %>
                   <span class="text-slate-400">—</span>
                 <% } %>
