@@ -170,12 +170,15 @@ router.post('/save', async (req, res) => {
     const items = await db.all(
       `SELECT id FROM stock_items WHERE report_type = ? AND active = 1`, [report_type]
     );
-    // If dual-layout sent duplicate fields, pick the first non-empty value; enforce integer
+    // Pick first non-empty value from potential array; normalize decimal separator
     const pick = (v) => {
       const raw = (Array.isArray(v) ? v.find(x => x && x.trim()) || '' : v || '').trim();
       if (!raw || raw === '—' || raw === '-') return null;
-      const n = parseInt(raw.replace(',', '.'), 10);
-      return isNaN(n) ? null : String(n);
+      const normalized = raw.replace(',', '.');
+      const n = parseFloat(normalized);
+      if (isNaN(n)) return null;
+      // Store without trailing zeros: "0.50" → "0.5", "2.0" → "2"
+      return String(parseFloat(n.toPrecision(10)));
     };
 
     for (const item of items) {

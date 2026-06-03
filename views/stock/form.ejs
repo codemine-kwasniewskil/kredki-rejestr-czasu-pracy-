@@ -86,7 +86,7 @@
                         onfocus="this.select()"
                         data-item-id="<%= item.id %>"
                         class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                      <% const szVal = parseInt(e.stan_zamkniecie, 10); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
+                      <% const szVal = parseFloat((e.stan_zamkniecie || '').replace(',', '.')); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
                       <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !szBelow ? 'hidden' : '' %>" title="Poniżej min (<%= item.min_qty %>)">!</span>
                     </div>
                   </div>
@@ -170,7 +170,7 @@
                       onfocus="this.select()"
                       data-item-id="<%= item.id %>"
                       class="stock-input w-20 h-11 text-center border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    <% const initVal = parseInt(inputVal, 10); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
+                    <% const initVal = parseFloat((inputVal || '').replace(',', '.')); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
                     <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !belowMin ? 'hidden' : '' %>" title="Poniżej minimalnej ilości (<%= item.min_qty %>)">!</span>
                   </div>
                 </div>
@@ -204,10 +204,10 @@
 <script>
 const minQtyMap = <%- JSON.stringify(minQtyMap) %>;
 
-// Valid value: empty, dash, or non-negative integer
+// Valid value: empty, dash, or non-negative number (integer or decimal, . or , separator)
 function isValidQty(v) {
   const s = (v || '').trim();
-  return !s || s === '—' || s === '-' || /^\d+$/.test(s);
+  return !s || s === '—' || s === '-' || /^\d+([.,]\d+)?$/.test(s);
 }
 
 function applyValidStyle(inp, valid) {
@@ -226,7 +226,7 @@ document.addEventListener('input', e => {
   // min-qty badge
   const itemId = inp.dataset.itemId;
   if (itemId) {
-    const val = parseInt(inp.value, 10);
+    const val = parseFloat((inp.value || '').replace(',', '.'));
     const min = minQtyMap[itemId];
     const warn = inp.parentElement.querySelector('.min-warn');
     if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
