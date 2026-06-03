@@ -190,9 +190,12 @@ router.post('/save', async (req, res) => {
     const items = await db.all(
       `SELECT id FROM stock_items WHERE report_type = ? AND active = 1`, [report_type]
     );
-    // Pick first non-empty value from potential array; normalize decimal separator
+    // Pick last non-empty value from potential array (desktop inputs come after mobile in DOM);
+    // normalize decimal separator
     const pick = (v) => {
-      const raw = (Array.isArray(v) ? v.find(x => x && x.trim()) || '' : v || '').trim();
+      const raw = (Array.isArray(v)
+        ? ([...v].reverse().find(x => x && x.trim()) || '')
+        : v || '').trim();
       if (!raw || raw === '—' || raw === '-') return null;
       const normalized = raw.replace(',', '.');
       const n = parseFloat(normalized);

@@ -278,8 +278,14 @@ function toggleHideItem(itemId) {
   updateHiddenInput();
 }
 
-// Apply initial hidden state on load
 document.addEventListener('DOMContentLoaded', () => {
+  // Clear inputs in the hidden half so pre-filled old values don't override
+  // what the user types in the visible half (dual-layout sends both)
+  document.querySelectorAll('input[inputmode="decimal"]').forEach(inp => {
+    if (inp.offsetParent === null) inp.value = '';
+  });
+
+  // Apply per-report hidden items
   hiddenItems.forEach(id => applyHideState(id, true));
   updateHiddenInput();
 });
