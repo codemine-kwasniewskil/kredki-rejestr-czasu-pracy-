@@ -150,9 +150,6 @@
               <div class="flex items-center gap-3 px-4 py-3">
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></div>
-                  <% if (item.target_qty) { %>
-                    <div class="text-xs text-slate-400 mt-0.5">Zwykle: <span class="font-medium text-slate-500"><%= item.target_qty %></span></div>
-                  <% } %>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                   <% if (item.unit && item.unit !== '-') { %>

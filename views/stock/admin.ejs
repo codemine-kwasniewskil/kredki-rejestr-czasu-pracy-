@@ -120,11 +120,6 @@
                 <input type="hidden" name="unit" id="editUnitHidden" value="<%= editItem.unit || '' %>">
               </div>
 
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Zwykła ilość</label>
-                <input type="text" name="target_qty" value="<%= editItem.target_qty || '' %>" placeholder="np. ~4 l"
-                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
-              </div>
 
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">
@@ -178,7 +173,6 @@
                   <th class="text-left px-3 py-2.5 font-semibold">Kategoria</th>
                   <th class="text-left px-3 py-2.5 font-semibold">Nazwa</th>
                   <th class="text-left px-3 py-2.5 font-semibold hidden sm:table-cell">Jedn.</th>
-                  <th class="text-left px-3 py-2.5 font-semibold hidden md:table-cell">Zwykle</th>
                   <th class="text-center px-3 py-2.5 font-semibold hidden md:table-cell">Min. alert</th>
                   <th class="text-center px-3 py-2.5 font-semibold">Status</th>
                   <th class="px-3 py-2.5"></th>
@@ -191,7 +185,6 @@
                     <td class="px-3 py-2.5 text-slate-500 text-xs"><%= item.category || '—' %></td>
                     <td class="px-3 py-2.5 font-medium text-slate-800 text-sm"><%= item.name %></td>
                     <td class="px-3 py-2.5 text-slate-500 text-xs hidden sm:table-cell"><%= item.unit || '—' %></td>
-                    <td class="px-3 py-2.5 text-slate-500 text-xs hidden md:table-cell"><%= item.target_qty || '—' %></td>
                     <td class="px-3 py-2.5 text-center hidden md:table-cell">
                       <% if (item.min_qty !== null) { %>
                         <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">
@@ -375,11 +368,6 @@
               <input type="hidden" name="unit" id="addUnitHidden" value="">
             </div>
 
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Zwykła ilość</label>
-              <input type="text" name="target_qty" placeholder="np. ~4 l, ~20 szt"
-                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
-            </div>
 
             <div>
               <label class="block text-xs font-medium text-slate-600 mb-1">

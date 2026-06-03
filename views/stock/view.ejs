@@ -115,9 +115,7 @@
                   <%= item.name %>
                   <% if (qBelow) { %><span class="text-amber-600 text-xs font-semibold">⚠️ mało</span><% } %>
                 </div>
-                <% if (item.target_qty) { %>
-                  <div class="text-xs text-slate-400">Zwykle: <%= item.target_qty %><% if (item.min_qty !== null) { %> · Min: <strong class="text-amber-600"><%= item.min_qty %></strong><% } %></div>
-                <% } else if (item.min_qty !== null) { %>
+                <% if (item.min_qty !== null) { %>
                   <div class="text-xs text-amber-600">Min: <%= item.min_qty %></div>
                 <% } %>
               </div>
