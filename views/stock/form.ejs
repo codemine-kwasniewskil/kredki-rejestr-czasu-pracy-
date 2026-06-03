@@ -46,17 +46,21 @@
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
               <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3" data-product-row="<%= item.id %>">
-                <div class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-1.5">
-                  <span class="flex-1"><%= item.name %>
-                    <% if (item.unit && item.unit !== '-') { %><span class="text-xs text-slate-400 font-normal ml-1"><%= item.unit %></span><% } %>
-                    <% const lvs = lastValues[item.id]; if (lvs && lvs.stan_zamkniecie) { %><br><span class="text-xs text-slate-400 font-normal">poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
-                  </span>
-                  <% if (canManageItems) { %>
-                    <button type="button" onclick="toggleHideItem(<%= item.id %>)"
-                      class="item-eye-btn text-slate-300 hover:text-slate-500 transition-colors shrink-0" title="Ukryj/pokaż w tym raporcie">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                    </button>
-                  <% } %>
+                <div class="mb-3">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm font-semibold text-slate-800 flex-1"><%= item.name %></span>
+                    <% if (canManageItems) { %>
+                      <button type="button" onclick="toggleHideItem(<%= item.id %>)"
+                        class="item-eye-btn text-slate-300 hover:text-slate-500 transition-colors shrink-0" title="Ukryj/pokaż w tym raporcie">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      </button>
+                    <% } %>
+                  </div>
+                  <% const lvs = lastValues[item.id]; %>
+                  <div class="text-xs text-slate-400 mt-0.5">
+                    <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
+                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
+                  </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
                   <div>
@@ -168,16 +172,18 @@
               <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
               <div class="flex items-center gap-3 px-4 py-3" data-product-row="<%= item.id %>">
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-slate-800 leading-snug flex items-center gap-1.5 flex-wrap">
-                    <span><%= item.name %></span>
-                    <% if (item.unit && item.unit !== '-') { %><span class="text-xs text-slate-400 font-normal"><%= item.unit %></span><% } %>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></span>
                     <% if (canManageItems) { %>
                       <button type="button" onclick="toggleHideItem(<%= item.id %>)"
-                        class="item-eye-btn text-slate-300 hover:text-slate-500 transition-colors" title="Ukryj/pokaż w tym raporcie">
+                        class="item-eye-btn shrink-0 text-slate-300 hover:text-slate-500 transition-colors" title="Ukryj/pokaż w tym raporcie">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                       </button>
                     <% } %>
-                    <% if (!existing && lv && lv.quantity) { %><br><span class="text-xs text-slate-400 font-normal w-full">poprzednio: <%= lv.quantity %></span><% } %>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-0.5">
+                    <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
+                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>poprzednio: <%= lv.quantity %></span><% } %>
                   </div>
                 </div>
                 <div class="shrink-0">
@@ -201,29 +207,6 @@
 
       <% } %>
 
-      <!-- Quick add product (cakes_noon / products_shift only) -->
-      <% if (canManageItems) { %>
-      <div class="mt-5 bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-3">
-        <div class="text-xs font-semibold text-slate-500 mb-2">Dodaj nowy produkt do raportu</div>
-        <form method="POST" action="/stock/quick-add-item" class="flex flex-wrap gap-2 items-end">
-          <input type="hidden" name="report_type" value="<%= type %>">
-          <input type="hidden" name="report_date" value="<%= reportDate %>">
-          <div class="flex-1 min-w-36">
-            <input type="text" name="name" required placeholder="Nazwa produktu"
-              class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" autocomplete="off">
-          </div>
-          <div class="w-24">
-            <input type="text" name="unit" placeholder="szt"
-              class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" autocomplete="off">
-          </div>
-          <button type="submit" class="btn btn-success py-2 text-sm whitespace-nowrap">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Dodaj
-          </button>
-        </form>
-      </div>
-      <% } %>
-
       <!-- Notes -->
       <div class="mt-5 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-4">
         <label class="block text-sm font-medium text-slate-700 mb-1.5">Uwagi <span class="text-slate-400 font-normal">(opcjonalnie)</span></label>
@@ -240,6 +223,28 @@
         <a href="/stock?date=<%= reportDate %>" class="btn btn-secondary py-3 text-base">Anuluj</a>
       </div>
     </form>
+
+    <!-- Quick add product — OUTSIDE main form (nested forms are invalid HTML) -->
+    <% if (canManageItems) { %>
+    <div class="mt-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-3">
+      <div class="text-xs font-semibold text-slate-500 mb-2">
+        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Dodaj nowy produkt do listy
+      </div>
+      <form method="POST" action="/stock/quick-add-item" class="flex flex-wrap gap-2 items-center">
+        <input type="hidden" name="report_type" value="<%= type %>">
+        <input type="hidden" name="report_date" value="<%= reportDate %>">
+        <input type="text" name="name" required placeholder="Nazwa produktu"
+          class="stock-input flex-1 min-w-40 border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" autocomplete="off">
+        <input type="text" name="unit" placeholder="jedn. (np. szt)"
+          class="stock-input w-32 border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" autocomplete="off">
+        <button type="submit" class="btn btn-success py-2.5 text-sm whitespace-nowrap">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Dodaj
+        </button>
+      </form>
+    </div>
+    <% } %>
 
   </div>
 </div>
