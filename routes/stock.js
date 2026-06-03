@@ -283,7 +283,7 @@ router.post('/quick-add-item', async (req, res) => {
     }
     await db.run(
       `INSERT INTO stock_items (report_type, name, unit, sort_order, active) VALUES (?,?,?,999,1)`,
-      [report_type, name.trim(), unit?.trim() || 'szt', 999]
+      [report_type, name.trim(), 'szt', 999]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt (quick add)', `${name.trim()} | Typ: ${report_type}`);
     req.flash('success', `Produkt "${name.trim()}" dodany.`);
