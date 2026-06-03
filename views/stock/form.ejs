@@ -211,6 +211,13 @@ function checkMin(input, itemId) {
   if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
 }
 
+// Before submit: disable hidden-half inputs so they don't double-post
+document.querySelector('form').addEventListener('submit', () => {
+  document.querySelectorAll('input[inputmode="decimal"]').forEach(inp => {
+    if (inp.offsetParent === null) inp.disabled = true;
+  });
+});
+
 // Enter/Next key → jump to next visible input
 document.addEventListener('DOMContentLoaded', () => {
   function visibleInputs() {

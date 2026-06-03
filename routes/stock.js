@@ -170,14 +170,17 @@ router.post('/save', async (req, res) => {
     const items = await db.all(
       `SELECT id FROM stock_items WHERE report_type = ? AND active = 1`, [report_type]
     );
+    // If dual-layout sent duplicate fields, pick the first non-empty value
+    const pick = (v) => (Array.isArray(v) ? v.find(x => x && x.trim()) || '' : v || '').trim() || null;
+
     for (const item of items) {
       const id = item.id;
       if (meta.isShift) {
-        const s_o = (req.body[`stan_otwarcie_${id}`] || '').trim() || null;
-        const d   = (req.body[`dostawa_${id}`] || '').trim() || null;
-        const s16 = (req.body[`stan_16_${id}`] || '').trim() || null;
-        const s_z = (req.body[`stan_zamkniecie_${id}`] || '').trim() || null;
-        const usz = (req.body[`uszkodzone_${id}`] || '').trim() || null;
+        const s_o = pick(req.body[`stan_otwarcie_${id}`]);
+        const d   = pick(req.body[`dostawa_${id}`]);
+        const s16 = pick(req.body[`stan_16_${id}`]);
+        const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
+        const usz = pick(req.body[`uszkodzone_${id}`]);
         await db.run(
           `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone)
            VALUES (?,?,?,?,?,?,?)
