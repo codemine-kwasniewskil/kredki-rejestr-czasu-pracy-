@@ -3,10 +3,15 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { log } = require('../utils/logger');
 
 const requireManager = requireRole('admin', 'location_manager');
 
 router.use(requireAuth);
+
+function sessionUser(req) {
+  return { id: req.session.userId, name: req.session.userName, role: req.session.userRole };
+}
 
 function today() {
   const d = new Date();
@@ -130,6 +135,7 @@ router.post('/save', async (req, res) => {
       `SELECT id FROM stock_reports WHERE report_date = ? AND report_type = ?`,
       [report_date, report_type]
     );
+    const wasNew = !report;
     if (report) {
       await db.run(
         `UPDATE stock_reports SET submitted_by=?, notes=?, updated_at=NOW() WHERE id=?`,
@@ -173,6 +179,8 @@ router.post('/save', async (req, res) => {
       }
     }
 
+    const action = wasNew ? 'Raport Stanów – nowy raport' : 'Raport Stanów – aktualizacja raportu';
+    await log(sessionUser(req), action, `Typ: ${meta.label} | Data: ${report_date}`);
     req.flash('success', 'Raport zapisany.');
     res.redirect(`/stock/view/${report.id}`);
   } catch (e) {
@@ -317,6 +325,7 @@ router.post('/admin/items', requireManager, async (req, res) => {
       [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
        target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal]
     );
+    await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');
     res.redirect(`/stock/admin?type=${report_type}`);
   } catch (e) {
@@ -336,6 +345,7 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
       [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
        target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, req.params.id]
     );
+    await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');
     res.redirect(`/stock/admin?type=${report_type}`);
   } catch (e) {
@@ -349,7 +359,10 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
 router.post('/admin/items/:id/toggle', requireManager, async (req, res) => {
   try {
     const item = await db.get(`SELECT * FROM stock_items WHERE id=?`, [req.params.id]);
-    if (item) await db.run(`UPDATE stock_items SET active=? WHERE id=?`, [item.active ? 0 : 1, item.id]);
+    if (item) {
+      await db.run(`UPDATE stock_items SET active=? WHERE id=?`, [item.active ? 0 : 1, item.id]);
+      await log(sessionUser(req), `Raport Stanów – produkt ${item.active ? 'ukryty' : 'aktywowany'}`, `${item.name} | Typ: ${item.report_type}`);
+    }
     res.redirect(`/stock/admin?type=${req.body.report_type || ''}`);
   } catch (e) {
     console.error(e);
@@ -365,7 +378,9 @@ router.delete('/admin/items/:id', requireManager, async (req, res) => {
       req.flash('error', 'Nie można usunąć – produkt ma historię w raportach. Użyj „Ukryj" aby go dezaktywować.');
       return res.redirect(`/stock/admin?tab=items&type=${req.body.report_type || ''}`);
     }
+    const toDelete = await db.get(`SELECT name, report_type FROM stock_items WHERE id=?`, [req.params.id]);
     await db.run(`DELETE FROM stock_items WHERE id=?`, [req.params.id]);
+    await log(sessionUser(req), 'Raport Stanów – usunięto produkt', `${toDelete?.name} | Typ: ${toDelete?.report_type}`);
     req.flash('success', 'Produkt usunięty.');
     res.redirect(`/stock/admin?tab=items&type=${req.body.report_type || ''}`);
   } catch (e) {
@@ -384,6 +399,7 @@ router.post('/admin/categories/add', requireManager, async (req, res) => {
       return res.redirect(`/stock/admin?tab=items&type=${report_type}`);
     }
     await db.run(`INSERT IGNORE INTO stock_categories (report_type, name) VALUES (?,?)`, [report_type, name.trim()]);
+    await log(sessionUser(req), 'Raport Stanów – dodano kategorię', `${name.trim()} | Typ: ${report_type}`);
     req.flash('success', `Kategoria „${name.trim()}" dodana.`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -402,6 +418,7 @@ router.post('/admin/units/add', requireManager, async (req, res) => {
       return res.redirect(`/stock/admin?tab=items&type=${report_type}`);
     }
     await db.run(`INSERT IGNORE INTO stock_units (name) VALUES (?)`, [name.trim()]);
+    await log(sessionUser(req), 'Raport Stanów – dodano jednostkę', name.trim());
     req.flash('success', `Jednostka „${name.trim()}" dodana.`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -422,6 +439,7 @@ router.post('/admin/categories/rename', requireManager, async (req, res) => {
     const n = new_category.trim();
     await db.run(`UPDATE stock_items SET category=? WHERE report_type=? AND category=?`, [n, report_type, old_category]);
     await db.run(`UPDATE stock_categories SET name=? WHERE report_type=? AND name=?`, [n, report_type, old_category]);
+    await log(sessionUser(req), 'Raport Stanów – zmieniono nazwę kategorii', `${old_category} → ${n} | Typ: ${report_type}`);
     req.flash('success', `Kategoria „${old_category}" → „${n}".`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -437,6 +455,7 @@ router.post('/admin/categories/delete', requireManager, async (req, res) => {
     const { report_type, category } = req.body;
     await db.run(`UPDATE stock_items SET category=NULL WHERE report_type=? AND category=?`, [report_type, category]);
     await db.run(`DELETE FROM stock_categories WHERE report_type=? AND name=?`, [report_type, category]);
+    await log(sessionUser(req), 'Raport Stanów – usunięto kategorię', `${category} | Typ: ${report_type}`);
     req.flash('success', `Kategoria „${category}" usunięta.`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -457,6 +476,7 @@ router.post('/admin/units/rename', requireManager, async (req, res) => {
     const n = new_unit.trim();
     await db.run(`UPDATE stock_items SET unit=? WHERE unit=?`, [n, old_unit]);
     await db.run(`UPDATE stock_units SET name=? WHERE name=?`, [n, old_unit]);
+    await log(sessionUser(req), 'Raport Stanów – zmieniono nazwę jednostki', `${old_unit} → ${n}`);
     req.flash('success', `Jednostka „${old_unit}" → „${n}".`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -472,6 +492,7 @@ router.post('/admin/units/delete', requireManager, async (req, res) => {
     const { report_type, unit } = req.body;
     await db.run(`UPDATE stock_items SET unit=NULL WHERE unit=?`, [unit]);
     await db.run(`DELETE FROM stock_units WHERE name=?`, [unit]);
+    await log(sessionUser(req), 'Raport Stanów – usunięto jednostkę', unit);
     req.flash('success', `Jednostka „${unit}" usunięta.`);
     res.redirect(`/stock/admin?tab=items&type=${report_type}`);
   } catch (e) {
@@ -495,6 +516,7 @@ router.post('/admin/types', requireManager, async (req, res) => {
       [slug, label.trim(), icon?.trim() || '📋', description?.trim() || null,
        freq?.trim() || null, is_shift_type === '1' ? 1 : 0, parseInt(sort_order) || 50]
     );
+    await log(sessionUser(req), 'Raport Stanów – dodano typ raportu', `${slug} | ${label.trim()}`);
     req.flash('success', `Typ raportu "${label}" dodany.`);
     res.redirect('/stock/admin?tab=types');
   } catch (e) {
@@ -537,7 +559,9 @@ router.post('/admin/types/:id/toggle', requireManager, async (req, res) => {
 // Delete report
 router.delete('/admin/reports/:id', requireManager, async (req, res) => {
   try {
+    const toDelReport = await db.get(`SELECT report_date, report_type FROM stock_reports WHERE id=?`, [req.params.id]);
     await db.run(`DELETE FROM stock_reports WHERE id=?`, [req.params.id]);
+    await log(sessionUser(req), 'Raport Stanów – usunięto raport', `Typ: ${toDelReport?.report_type} | Data: ${toDelReport?.report_date}`);
     req.flash('success', 'Raport usunięty.');
     res.redirect('/stock/admin?tab=history');
   } catch (e) {
