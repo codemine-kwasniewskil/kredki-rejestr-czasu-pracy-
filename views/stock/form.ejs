@@ -46,7 +46,11 @@
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
               <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
-                <div class="text-sm font-semibold text-slate-800 mb-3"><%= item.name %></div>
+                <div class="text-sm font-semibold text-slate-800 mb-3">
+                  <%= item.name %>
+                  <% if (item.unit && item.unit !== '-') { %><span class="text-xs text-slate-400 font-normal ml-1"><%= item.unit %></span><% } %>
+                  <% const lvs = lastValues[item.id]; if (lvs && lvs.stan_zamkniecie) { %><span class="text-xs text-slate-400 font-normal ml-1">poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
+                </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Otwarcie<br><span class="text-slate-400">(bez dostaw)</span></div>
@@ -122,7 +126,11 @@
                 <% for (const item of group.items) { %>
                   <% const e = entries[item.id] || {}; %>
                   <tr class="border-b border-slate-50 last:border-0">
-                    <td class="px-3 py-2 text-slate-800 font-medium text-xs leading-tight"><%= item.name %></td>
+                    <td class="px-3 py-2 text-xs leading-tight">
+                      <span class="font-medium text-slate-800"><%= item.name %></span>
+                      <% if (item.unit && item.unit !== '-') { %><span class="text-slate-400 ml-1"><%= item.unit %></span><% } %>
+                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { %><br><span class="text-slate-400">poprzednio: <%= lvd.stan_zamkniecie %></span><% } %>
+                    </td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
@@ -149,12 +157,13 @@
               <% const e = entries[item.id] || {}; %>
               <div class="flex items-center gap-3 px-4 py-3">
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></div>
+                  <div class="text-sm font-medium text-slate-800 leading-snug">
+                    <%= item.name %>
+                    <% if (item.unit && item.unit !== '-') { %><span class="text-xs text-slate-400 font-normal ml-1"><%= item.unit %></span><% } %>
+                    <% const lv = lastValues[item.id]; if (lv && lv.quantity) { %><span class="text-xs text-slate-400 font-normal ml-1">poprzednio: <%= lv.quantity %></span><% } %>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <% if (item.unit && item.unit !== '-') { %>
-                    <span class="text-xs text-slate-400 hidden sm:inline"><%= item.unit %></span>
-                  <% } %>
+                <div class="shrink-0">
                   <div class="relative">
                     <input type="text" name="qty_<%= item.id %>"
                       value="<%= e.quantity || '' %>"

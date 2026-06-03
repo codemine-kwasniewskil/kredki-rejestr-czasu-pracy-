@@ -109,10 +109,28 @@ router.get('/form/:type', async (req, res) => {
       if (item.min_qty !== null && item.min_qty !== undefined) minQtyMap[item.id] = Number(item.min_qty);
     }
 
+    // Last reported value per item (most recent report of this type)
+    const lastRows = await db.all(
+      `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie
+       FROM stock_report_entries sre
+       INNER JOIN (
+         SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
+         FROM stock_report_entries sre2
+         JOIN stock_reports sr2 ON sr2.id = sre2.report_id
+         WHERE sr2.report_type = ?
+         GROUP BY sre2.item_id
+       ) latest ON latest.item_id = sre.item_id
+       JOIN stock_reports sr ON sr.id = sre.report_id AND sr.report_date = latest.max_date
+       WHERE sr.report_type = ?`,
+      [type, type]
+    );
+    const lastValues = {};
+    for (const row of lastRows) lastValues[row.item_id] = row;
+
     res.render('stock/form', {
       title: meta.label, currentPath: '/stock',
       type, meta, reportDate, existing,
-      grouped: groupByCategory(items), entries, REPORT_META, minQtyMap,
+      grouped: groupByCategory(items), entries, REPORT_META, minQtyMap, lastValues,
     });
   } catch (e) {
     console.error(e);
