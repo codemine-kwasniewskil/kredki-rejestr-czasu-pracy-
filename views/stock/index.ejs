@@ -1,0 +1,117 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/nav') %>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="p-4 md:p-6 max-w-4xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Raport Stanów</h1>
+        <p class="text-sm text-slate-500 mt-0.5">Codzienne i cykliczne kontrole zapasów</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="date" id="dateFilter" value="<%= reportDate %>"
+          class="border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onchange="window.location='/stock?date='+this.value">
+        <% if (user && (user.role === 'admin' || user.role === 'location_manager')) { %>
+          <a href="/stock/admin" class="btn btn-secondary text-sm py-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Zarządzaj
+          </a>
+        <% } %>
+      </div>
+    </div>
+
+    <% if (locals.success && success.length) { %>
+      <div class="mb-4 bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (locals.error && error.length) { %>
+      <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- Report type cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <% const types = ['daily_morning','biweekly','cakes_noon','products_shift']; %>
+      <% for (const type of types) { %>
+        <% const meta = REPORT_META[type]; %>
+        <% const existing = reportsByType[type]; %>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-4 pt-4 pb-3 flex items-start gap-3">
+            <span class="text-2xl mt-0.5"><%= meta.icon %></span>
+            <div class="flex-1 min-w-0">
+              <div class="font-semibold text-slate-800 text-sm leading-tight"><%= meta.label %></div>
+              <div class="text-xs text-slate-500 mt-0.5"><%= meta.freq %></div>
+              <div class="text-xs text-slate-400 mt-1"><%= meta.desc %></div>
+            </div>
+          </div>
+
+          <% if (existing) { %>
+            <div class="px-4 pb-3 flex items-center gap-2">
+              <span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Wypełniony
+              </span>
+              <span class="text-xs text-slate-400">przez <%= existing.submitted_by_name %></span>
+            </div>
+            <div class="px-4 pb-4 flex gap-2">
+              <a href="/stock/view/<%= existing.id %>" class="btn btn-secondary text-sm py-2.5 flex-1 justify-center">Podgląd</a>
+              <a href="/stock/form/<%= type %>?date=<%= reportDate %>" class="btn btn-primary text-sm py-2.5 flex-1 justify-center">Edytuj</a>
+            </div>
+          <% } else { %>
+            <div class="px-4 pb-3">
+              <span class="inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
+                Brak raportu
+              </span>
+            </div>
+            <div class="px-4 pb-4">
+              <a href="/stock/form/<%= type %>?date=<%= reportDate %>" class="btn btn-primary text-sm py-2.5 w-full justify-center">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Wypełnij raport
+              </a>
+            </div>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Recent history -->
+    <% if (history.length > 0) { %>
+    <div>
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wider mb-3">Ostatnie 7 dni</h2>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 bg-slate-50">
+              <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Data</th>
+              <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">Typ raportu</th>
+              <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hidden sm:table-cell">Wypełnił/a</th>
+              <th class="px-4 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% for (const row of history) { %>
+            <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-2.5 text-slate-700 font-medium"><%= row.report_date %></td>
+              <td class="px-4 py-2.5">
+                <span class="inline-flex items-center gap-1.5 text-slate-700">
+                  <span><%= REPORT_META[row.report_type].icon %></span>
+                  <span class="text-xs"><%= REPORT_META[row.report_type].label %></span>
+                </span>
+              </td>
+              <td class="px-4 py-2.5 text-slate-500 text-xs hidden sm:table-cell"><%= row.submitted_by_name %></td>
+              <td class="px-4 py-2.5 text-right">
+                <a href="/stock/view/<%= row.id %>" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Podgląd</a>
+              </td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% } %>
+
+  </div>
+</div>
+
+<%- include('../partials/footer') %>

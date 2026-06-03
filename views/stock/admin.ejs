@@ -1,0 +1,696 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/nav') %>
+
+<style>
+  .stock-input { font-size: 16px !important; }
+</style>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="p-4 md:p-6 max-w-5xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-5">
+      <a href="/stock" class="text-slate-400 hover:text-slate-600 p-1 -ml-1 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div>
+        <h1 class="text-lg font-bold text-slate-800">Zarządzaj – Raport Stanów</h1>
+        <p class="text-sm text-slate-500">Produkty, typy raportów, historia</p>
+      </div>
+    </div>
+
+    <% if (locals.success && success.length) { %>
+      <div class="mb-4 bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (locals.error && error.length) { %>
+      <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- Main tabs -->
+    <div class="flex gap-1 mb-5 bg-slate-100 p-1 rounded-xl w-fit">
+      <a href="/stock/admin?tab=items&type=<%= activeType %>"
+        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'items' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
+        Produkty
+      </a>
+      <a href="/stock/admin?tab=types"
+        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'types' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
+        Typy raportów
+      </a>
+      <a href="/stock/admin?tab=history"
+        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
+        Historia
+      </a>
+    </div>
+
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <%# TAB: PRODUKTY %>
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <% if (tab === 'items') { %>
+
+      <!-- Type selector tabs -->
+      <div class="flex flex-wrap gap-2 mb-5">
+        <% for (const t of reportTypes) { %>
+          <a href="/stock/admin?tab=items&type=<%= t.id %>"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors
+              <%= activeType === t.id ? 'bg-white border-blue-300 text-blue-700 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300' %>
+              <%= !t.active ? 'opacity-50' : '' %>">
+            <span><%= t.icon %></span>
+            <span class="hidden sm:inline"><%= t.label %></span>
+            <span class="sm:hidden text-xs"><%= t.id %></span>
+          </a>
+        <% } %>
+      </div>
+
+      <!-- Edit item form (shown when ?edit=id) -->
+      <% if (editItem) { %>
+        <div id="edit" class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+          <div class="text-sm font-semibold text-blue-800 mb-3">Edytuj produkt: <span class="font-normal"><%= editItem.name %></span></div>
+          <form method="POST" action="/stock/admin/items/<%= editItem.id %>">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Typ raportu</label>
+                <select name="report_type" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                  <% for (const t of reportTypes) { %>
+                    <option value="<%= t.id %>" <%= editItem.report_type === t.id ? 'selected' : '' %>><%= t.icon %> <%= t.label %></option>
+                  <% } %>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Kategoria</label>
+                <select id="editCatSel" onchange="toggleCustom('editCatSel','editCatInput','editCatHidden')"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                  <option value="">-- brak --</option>
+                  <% for (const cat of categories) { %>
+                    <option value="<%= cat %>" <%= editItem.category === cat ? 'selected' : '' %>><%= cat %></option>
+                  <% } %>
+                  <% if (editItem.category && !categories.includes(editItem.category)) { %>
+                    <option value="<%= editItem.category %>" selected><%= editItem.category %></option>
+                  <% } %>
+                  <option value="__new__">+ Nowa kategoria…</option>
+                </select>
+                <input type="text" id="editCatInput" name="category_edit" placeholder="Nowa kategoria"
+                  class="stock-input hidden w-full mt-1 border border-blue-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="hidden" name="category" id="editCatHidden" value="<%= editItem.category || '' %>">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa <span class="text-red-500">*</span></label>
+                <input type="text" name="name" value="<%= editItem.name %>" required
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Jednostka</label>
+                <select id="editUnitSel" onchange="toggleCustom('editUnitSel','editUnitInput','editUnitHidden')"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                  <option value="">-- brak --</option>
+                  <% const COMMON_UNITS = ['l','kg','szt','op','worki','par','-']; %>
+                  <% for (const u of COMMON_UNITS) { %>
+                    <option value="<%= u %>" <%= editItem.unit === u ? 'selected' : '' %>><%= u %></option>
+                  <% } %>
+                  <% for (const u of units) { if (!COMMON_UNITS.includes(u)) { %>
+                    <option value="<%= u %>" <%= editItem.unit === u ? 'selected' : '' %>><%= u %></option>
+                  <% } } %>
+                  <option value="__new__">+ Inna jednostka…</option>
+                </select>
+                <input type="text" id="editUnitInput" name="unit_edit" placeholder="Nowa jednostka"
+                  class="stock-input hidden w-full mt-1 border border-blue-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="hidden" name="unit" id="editUnitHidden" value="<%= editItem.unit || '' %>">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Zwykła ilość</label>
+                <input type="text" name="target_qty" value="<%= editItem.target_qty || '' %>" placeholder="np. ~4 l"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">
+                  Min. ilość (alert)
+                  <span class="text-slate-400 font-normal ml-1">– alert gdy mniej</span>
+                </label>
+                <input type="number" name="min_qty" value="<%= editItem.min_qty !== null ? editItem.min_qty : '' %>" placeholder="np. 2" min="0" step="0.5"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Kolejność</label>
+                <input type="number" name="sort_order" value="<%= editItem.sort_order %>"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+
+              <div class="flex items-end pb-1">
+                <label class="flex items-center gap-2 cursor-pointer py-2.5">
+                  <input type="checkbox" name="active" value="1" <%= editItem.active ? 'checked' : '' %>
+                    class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+                  <span class="text-sm text-slate-700">Aktywny</span>
+                </label>
+              </div>
+
+            </div>
+            <div class="flex gap-2 mt-3">
+              <button type="submit" class="btn btn-primary py-2">Zapisz zmiany</button>
+              <a href="/stock/admin?tab=items&type=<%= activeType %>" class="btn btn-secondary py-2">Anuluj</a>
+            </div>
+          </form>
+        </div>
+      <% } %>
+
+      <!-- Items table -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <span class="text-sm font-semibold text-slate-800"><%= REPORT_META[activeType]?.icon %> <%= REPORT_META[activeType]?.label || activeType %></span>
+            <span class="ml-2 text-xs text-slate-400"><%= items.length %> pozycji</span>
+          </div>
+        </div>
+
+        <% if (items.length === 0) { %>
+          <div class="px-4 py-8 text-center text-slate-400 text-sm">Brak produktów. Dodaj pierwszy poniżej.</div>
+        <% } else { %>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <th class="text-left px-3 py-2.5 font-semibold w-8">#</th>
+                  <th class="text-left px-3 py-2.5 font-semibold">Kategoria</th>
+                  <th class="text-left px-3 py-2.5 font-semibold">Nazwa</th>
+                  <th class="text-left px-3 py-2.5 font-semibold hidden sm:table-cell">Jedn.</th>
+                  <th class="text-left px-3 py-2.5 font-semibold hidden md:table-cell">Zwykle</th>
+                  <th class="text-center px-3 py-2.5 font-semibold hidden md:table-cell">Min. alert</th>
+                  <th class="text-center px-3 py-2.5 font-semibold">Status</th>
+                  <th class="px-3 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const item of items) { %>
+                  <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors <%= !item.active ? 'opacity-40' : '' %>">
+                    <td class="px-3 py-2.5 text-slate-400 text-xs"><%= item.sort_order %></td>
+                    <td class="px-3 py-2.5 text-slate-500 text-xs"><%= item.category || '—' %></td>
+                    <td class="px-3 py-2.5 font-medium text-slate-800 text-sm"><%= item.name %></td>
+                    <td class="px-3 py-2.5 text-slate-500 text-xs hidden sm:table-cell"><%= item.unit || '—' %></td>
+                    <td class="px-3 py-2.5 text-slate-500 text-xs hidden md:table-cell"><%= item.target_qty || '—' %></td>
+                    <td class="px-3 py-2.5 text-center hidden md:table-cell">
+                      <% if (item.min_qty !== null) { %>
+                        <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                          ⚠️ &lt; <%= item.min_qty %>
+                        </span>
+                      <% } else { %>
+                        <span class="text-slate-300 text-xs">—</span>
+                      <% } %>
+                    </td>
+                    <td class="px-3 py-2.5 text-center">
+                      <% if (item.active) { %>
+                        <span class="inline-block bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded-full">Aktywny</span>
+                      <% } else { %>
+                        <span class="inline-block bg-slate-100 text-slate-400 text-xs font-medium px-2 py-0.5 rounded-full">Ukryty</span>
+                      <% } %>
+                    </td>
+                    <td class="px-3 py-2.5 text-right">
+                      <div class="flex items-center justify-end gap-2">
+                        <a href="/stock/admin?tab=items&type=<%= activeType %>&edit=<%= item.id %>#edit"
+                          class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edytuj</a>
+                        <% if (item.entry_count === 0) { %>
+                          <form method="POST" action="/stock/admin/items/<%= item.id %>?_method=DELETE" class="inline"
+                            onsubmit="return confirm('Na pewno usunąć „<%= item.name %>"?')">
+                            <input type="hidden" name="report_type" value="<%= item.report_type %>">
+                            <button type="submit" class="text-xs font-medium text-red-400 hover:text-red-600 transition-colors">Usuń</button>
+                          </form>
+                        <% } else { %>
+                          <form method="POST" action="/stock/admin/items/<%= item.id %>/toggle" class="inline">
+                            <input type="hidden" name="report_type" value="<%= item.report_type %>">
+                            <button type="submit" class="text-xs font-medium transition-colors <%= item.active ? 'text-slate-400 hover:text-orange-500' : 'text-slate-400 hover:text-green-600' %>">
+                              <%= item.active ? 'Ukryj' : 'Pokaż' %>
+                            </button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Category & unit management -->
+      <details class="mb-5 group">
+        <summary class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between cursor-pointer select-none list-none">
+          <span class="text-sm font-semibold text-slate-700">
+            <svg class="w-4 h-4 inline-block mr-1 -mt-0.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+            Zarządzaj kategoriami i jednostkami
+          </span>
+          <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </summary>
+
+        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <!-- Categories -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Kategorie</span>
+              <span class="text-xs text-slate-400"><%= categoryStats.length %> szt.</span>
+            </div>
+            <div class="divide-y divide-slate-50">
+              <% for (const cat of categoryStats) { %>
+              <div class="px-3 py-2 flex items-center gap-2">
+                <span class="flex-1 text-sm text-slate-700 font-medium truncate"><%= cat.category %></span>
+                <span class="text-xs text-slate-400 shrink-0"><%= cat.cnt %> prod.</span>
+                <form method="POST" action="/stock/admin/categories/rename" class="flex items-center gap-1 shrink-0" onsubmit="return validateRename(this)">
+                  <input type="hidden" name="report_type" value="<%= activeType %>">
+                  <input type="hidden" name="old_category" value="<%= cat.category %>">
+                  <input type="text" name="new_category" placeholder="Nowa nazwa" class="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" style="font-size:14px">
+                  <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 font-medium px-1 whitespace-nowrap">Zmień</button>
+                </form>
+                <form method="POST" action="/stock/admin/categories/delete" class="inline shrink-0"
+                  onsubmit="return confirm('Usunąć kategorię „<%= cat.category %>"?\nProdukty pozostaną bez kategorii.')">
+                  <input type="hidden" name="report_type" value="<%= activeType %>">
+                  <input type="hidden" name="category" value="<%= cat.category %>">
+                  <button type="submit" class="text-xs text-red-400 hover:text-red-600 font-medium transition-colors">Usuń</button>
+                </form>
+              </div>
+              <% } %>
+              <!-- Add new category -->
+              <form method="POST" action="/stock/admin/categories/add" class="px-3 py-2.5 flex items-center gap-2 bg-slate-50">
+                <input type="hidden" name="report_type" value="<%= activeType %>">
+                <input type="text" name="name" placeholder="Nowa kategoria…" required
+                  class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" style="font-size:14px">
+                <button type="submit" class="btn btn-success py-1.5 text-xs whitespace-nowrap">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  Dodaj
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Units -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Jednostki</span>
+              <span class="text-xs text-slate-400"><%= unitStats.length %> szt.</span>
+            </div>
+            <div class="divide-y divide-slate-50">
+              <% for (const u of unitStats) { %>
+              <div class="px-3 py-2 flex items-center gap-2">
+                <span class="flex-1 text-sm text-slate-700 font-medium font-mono truncate"><%= u.unit %></span>
+                <span class="text-xs text-slate-400 shrink-0"><%= u.cnt %> prod.</span>
+                <form method="POST" action="/stock/admin/units/rename" class="flex items-center gap-1 shrink-0" onsubmit="return validateRename(this)">
+                  <input type="hidden" name="report_type" value="<%= activeType %>">
+                  <input type="hidden" name="old_unit" value="<%= u.unit %>">
+                  <input type="text" name="new_unit" placeholder="Nowa" class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono" style="font-size:14px">
+                  <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 font-medium px-1 whitespace-nowrap">Zmień</button>
+                </form>
+                <form method="POST" action="/stock/admin/units/delete" class="inline shrink-0"
+                  onsubmit="return confirm('Usunąć jednostkę „<%= u.unit %>"?\nWszystkie produkty stracą tę jednostkę.')">
+                  <input type="hidden" name="report_type" value="<%= activeType %>">
+                  <input type="hidden" name="unit" value="<%= u.unit %>">
+                  <button type="submit" class="text-xs text-red-400 hover:text-red-600 font-medium transition-colors">Usuń</button>
+                </form>
+              </div>
+              <% } %>
+              <!-- Add new unit -->
+              <form method="POST" action="/stock/admin/units/add" class="px-3 py-2.5 flex items-center gap-2 bg-slate-50">
+                <input type="hidden" name="report_type" value="<%= activeType %>">
+                <input type="text" name="name" placeholder="Nowa jednostka… (np. szt, l, kg)" required
+                  class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-mono" style="font-size:14px">
+                <button type="submit" class="btn btn-success py-1.5 text-xs whitespace-nowrap">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  Dodaj
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </details>
+
+      <!-- Add new item form -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div class="text-sm font-semibold text-slate-800 mb-3">
+          <svg class="w-4 h-4 inline-block mr-1 -mt-0.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Dodaj nowy produkt do: <span class="text-blue-700"><%= REPORT_META[activeType]?.icon %> <%= REPORT_META[activeType]?.label || activeType %></span>
+        </div>
+        <form method="POST" action="/stock/admin/items">
+          <input type="hidden" name="report_type" value="<%= activeType %>">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Kategoria</label>
+              <select id="addCatSel" onchange="toggleCustom('addCatSel','addCatInput','addCatHidden')"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                <option value="">-- brak --</option>
+                <% for (const cat of categories) { %>
+                  <option value="<%= cat %>"><%= cat %></option>
+                <% } %>
+                <option value="__new__">+ Nowa kategoria…</option>
+              </select>
+              <input type="text" id="addCatInput" name="category_add" placeholder="Wpisz nazwę kategorii"
+                class="stock-input hidden w-full mt-1 border border-blue-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <input type="hidden" name="category" id="addCatHidden" value="">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa <span class="text-red-500">*</span></label>
+              <input type="text" name="name" required placeholder="Nazwa produktu"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Jednostka</label>
+              <select id="addUnitSel" onchange="toggleCustom('addUnitSel','addUnitInput','addUnitHidden')"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                <option value="">-- brak --</option>
+                <% const COMMON_UNITS = ['l','kg','szt','op','worki','par','-']; %>
+                <% for (const u of COMMON_UNITS) { %><option value="<%= u %>"><%= u %></option><% } %>
+                <% for (const u of units) { if (!COMMON_UNITS.includes(u)) { %>
+                  <option value="<%= u %>"><%= u %></option>
+                <% } } %>
+                <option value="__new__">+ Inna jednostka…</option>
+              </select>
+              <input type="text" id="addUnitInput" name="unit_add" placeholder="Nowa jednostka"
+                class="stock-input hidden w-full mt-1 border border-blue-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <input type="hidden" name="unit" id="addUnitHidden" value="">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Zwykła ilość</label>
+              <input type="text" name="target_qty" placeholder="np. ~4 l, ~20 szt"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">
+                Min. ilość (alert)
+                <span class="text-slate-400 font-normal">– alert gdy mniej</span>
+              </label>
+              <input type="number" name="min_qty" placeholder="np. 2" min="0" step="0.5"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Kolejność</label>
+              <input type="number" name="sort_order" value="500" placeholder="500"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+          </div>
+          <button type="submit" class="btn btn-success mt-3 py-2.5 text-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Dodaj produkt
+          </button>
+        </form>
+      </div>
+
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <%# TAB: TYPY RAPORTÓW %>
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <% } else if (tab === 'types') { %>
+
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100">
+          <span class="text-sm font-semibold text-slate-800">Typy raportów</span>
+          <span class="ml-2 text-xs text-slate-400"><%= reportTypes.length %> typów</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                <th class="text-left px-3 py-2.5 font-semibold">ID</th>
+                <th class="text-left px-3 py-2.5 font-semibold">Ikona</th>
+                <th class="text-left px-3 py-2.5 font-semibold">Nazwa</th>
+                <th class="text-left px-3 py-2.5 font-semibold hidden sm:table-cell">Częstotliwość</th>
+                <th class="text-center px-3 py-2.5 font-semibold hidden md:table-cell">Typ zmiany</th>
+                <th class="text-center px-3 py-2.5 font-semibold">Kol.</th>
+                <th class="text-center px-3 py-2.5 font-semibold">Status</th>
+                <th class="px-3 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% for (const t of reportTypes) { %>
+                <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
+                  <td class="px-3 py-2.5 font-mono text-xs text-slate-500"><%= t.id %></td>
+                  <td class="px-3 py-2.5 text-lg"><%= t.icon %></td>
+                  <td class="px-3 py-2.5 font-medium text-slate-800"><%= t.label %></td>
+                  <td class="px-3 py-2.5 text-slate-500 text-xs hidden sm:table-cell"><%= t.freq || '—' %></td>
+                  <td class="px-3 py-2.5 text-center hidden md:table-cell">
+                    <% if (t.is_shift_type) { %>
+                      <span class="inline-block bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">5 kolumn</span>
+                    <% } else { %>
+                      <span class="inline-block bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full">prosta</span>
+                    <% } %>
+                  </td>
+                  <td class="px-3 py-2.5 text-center text-slate-500 text-xs"><%= t.sort_order %></td>
+                  <td class="px-3 py-2.5 text-center">
+                    <% if (t.active) { %>
+                      <span class="inline-block bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded-full">Aktywny</span>
+                    <% } else { %>
+                      <span class="inline-block bg-slate-100 text-slate-400 text-xs font-medium px-2 py-0.5 rounded-full">Ukryty</span>
+                    <% } %>
+                  </td>
+                  <td class="px-3 py-2.5 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                      <button onclick="openTypeEdit('<%= t.id %>','<%= t.label %>','<%= t.icon %>',`<%= (t.description||'').replace(/`/g,'') %>`,`<%= (t.freq||'').replace(/`/g,'') %>`,<%= t.is_shift_type %>,<%= t.sort_order %>)"
+                        class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edytuj</button>
+                      <form method="POST" action="/stock/admin/types/<%= t.id %>/toggle" class="inline">
+                        <button type="submit" class="text-xs font-medium transition-colors <%= t.active ? 'text-slate-400 hover:text-red-500' : 'text-slate-400 hover:text-green-600' %>">
+                          <%= t.active ? 'Ukryj' : 'Pokaż' %>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Edit type modal (inline, shown via JS) -->
+      <div id="typeEditPanel" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+        <div class="text-sm font-semibold text-blue-800 mb-3">Edytuj typ raportu</div>
+        <form method="POST" id="typeEditForm">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div><label class="block text-xs font-medium text-slate-600 mb-1">Nazwa <span class="text-red-500">*</span></label>
+              <input type="text" name="label" id="te_label" required class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></div>
+            <div><label class="block text-xs font-medium text-slate-600 mb-1">Ikona (emoji)</label>
+              <input type="text" name="icon" id="te_icon" placeholder="📋" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></div>
+            <div><label class="block text-xs font-medium text-slate-600 mb-1">Częstotliwość</label>
+              <input type="text" name="freq" id="te_freq" placeholder="np. Codziennie rano" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></div>
+            <div class="sm:col-span-2"><label class="block text-xs font-medium text-slate-600 mb-1">Opis</label>
+              <input type="text" name="description" id="te_desc" placeholder="Krótki opis" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></div>
+            <div><label class="block text-xs font-medium text-slate-600 mb-1">Kolejność</label>
+              <input type="number" name="sort_order" id="te_sort" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></div>
+            <div class="flex items-end pb-1">
+              <label class="flex items-center gap-2 cursor-pointer py-2.5">
+                <input type="checkbox" name="is_shift_type" id="te_shift" value="1" class="w-4 h-4 rounded border-slate-300 text-blue-600">
+                <span class="text-sm text-slate-700">Formularz z 5 kolumnami (zmiana)</span>
+              </label>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary py-2">Zapisz</button>
+            <button type="button" onclick="document.getElementById('typeEditPanel').classList.add('hidden')" class="btn btn-secondary py-2">Anuluj</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Add new type form -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div class="text-sm font-semibold text-slate-800 mb-3">
+          <svg class="w-4 h-4 inline-block mr-1 -mt-0.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Dodaj nowy typ raportu
+        </div>
+        <form method="POST" action="/stock/admin/types">
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa <span class="text-red-500">*</span></label>
+              <input type="text" name="label" id="newTypeLabel" required placeholder="np. Stan alkoholi"
+                oninput="autoSlug(this)" class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">ID (slug) <span class="text-red-500">*</span></label>
+              <input type="text" name="id" id="newTypeSlug" required placeholder="np. alcohol_stock"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm">
+              <div class="text-xs text-slate-400 mt-0.5">Małe litery, cyfry, podkreślnik</div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Ikona (emoji)</label>
+              <input type="text" name="icon" placeholder="📋"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Częstotliwość</label>
+              <input type="text" name="freq" placeholder="np. Codziennie rano"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Kolejność</label>
+              <input type="number" name="sort_order" value="50"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Opis (opcjonalnie)</label>
+              <input type="text" name="description" placeholder="Krótki opis raportu"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div class="flex items-end pb-1">
+              <label class="flex items-center gap-2 cursor-pointer py-2.5">
+                <input type="checkbox" name="is_shift_type" value="1" class="w-4 h-4 rounded border-slate-300 text-blue-600">
+                <span class="text-sm text-slate-700">Formularz z 5 kolumnami (typ zmiany)</span>
+              </label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success mt-3 py-2.5 text-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Dodaj typ raportu
+          </button>
+        </form>
+      </div>
+
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <%# TAB: HISTORIA %>
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <% } else { %>
+
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm text-slate-500">Ostatnie 100 raportów</div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <% if (history.length === 0) { %>
+          <div class="px-4 py-8 text-center text-slate-400 text-sm">Brak raportów.</div>
+        <% } else { %>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <th class="text-left px-4 py-2.5 font-semibold">Data</th>
+                  <th class="text-left px-4 py-2.5 font-semibold">Typ</th>
+                  <th class="text-left px-4 py-2.5 font-semibold hidden sm:table-cell">Wypełnił/a</th>
+                  <th class="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const r of history) { %>
+                  <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="/stock?date=<%= r.report_date %>" class="font-medium text-blue-600 hover:text-blue-800"><%= r.report_date %></a>
+                    </td>
+                    <td class="px-4 py-2.5">
+                      <span class="inline-flex items-center gap-1.5 text-slate-700">
+                        <span><%= REPORT_META[r.report_type]?.icon || '📋' %></span>
+                        <span class="text-xs hidden sm:inline"><%= REPORT_META[r.report_type]?.label || r.report_type %></span>
+                      </span>
+                    </td>
+                    <td class="px-4 py-2.5 text-slate-500 text-xs hidden sm:table-cell"><%= r.submitted_by_name %></td>
+                    <td class="px-4 py-2.5 text-right">
+                      <div class="flex items-center justify-end gap-3">
+                        <a href="/stock/view/<%= r.id %>" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Podgląd</a>
+                        <a href="/stock/form/<%= r.report_type %>?date=<%= r.report_date %>" class="text-slate-500 hover:text-slate-700 text-xs font-medium">Edytuj</a>
+                        <form method="POST" action="/stock/admin/reports/<%= r.id %>?_method=DELETE"
+                          onsubmit="return confirm('Na pewno usunąć ten raport?')" class="inline">
+                          <button type="submit" class="text-red-400 hover:text-red-600 text-xs font-medium transition-colors">Usuń</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Create report for any date -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div class="text-sm font-semibold text-slate-800 mb-3">Utwórz raport dla dowolnej daty</div>
+        <div class="flex flex-wrap gap-3 items-end">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data</label>
+            <input type="date" id="newReportDate" value="<%= new Date().toISOString().slice(0,10) %>"
+              class="stock-input border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Typ raportu</label>
+            <select id="newReportType" class="stock-input border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+              <% for (const t of reportTypes.filter(t => t.active)) { %>
+                <option value="<%= t.id %>"><%= t.icon %> <%= t.label %></option>
+              <% } %>
+            </select>
+          </div>
+          <button onclick="window.location='/stock/form/'+document.getElementById('newReportType').value+'?date='+document.getElementById('newReportDate').value"
+            class="btn btn-primary py-2.5 text-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Otwórz formularz
+          </button>
+        </div>
+      </div>
+
+    <% } %>
+
+  </div>
+</div>
+
+<script>
+// ── Rename validation ─────────────────────────────────────────────────────
+function validateRename(form) {
+  const inp = form.querySelector('input[name="new_category"],input[name="new_unit"]');
+  if (!inp || !inp.value.trim()) { inp?.focus(); return false; }
+  return true;
+}
+
+// ── Category / Unit dropdown toggle ────────────────────────────────────────
+function toggleCustom(selId, inputId, hiddenId) {
+  const sel = document.getElementById(selId);
+  const inp = document.getElementById(inputId);
+  const hid = document.getElementById(hiddenId);
+  if (sel.value === '__new__') {
+    inp.classList.remove('hidden');
+    inp.focus();
+    // wire the text input to the hidden field
+    inp.oninput = () => { hid.value = inp.value; };
+    hid.value = '';
+  } else {
+    inp.classList.add('hidden');
+    hid.value = sel.value;
+  }
+}
+
+// Initialise hidden fields on page load (for edit form pre-filled values)
+document.querySelectorAll('[id$="CatSel"],[id$="UnitSel"]').forEach(sel => {
+  const suffix = sel.id.replace('CatSel','').replace('UnitSel','');
+  const isCat = sel.id.includes('Cat');
+  const hidId = suffix + (isCat ? 'CatHidden' : 'UnitHidden');
+  const hid = document.getElementById(hidId);
+  if (hid && sel.value !== '__new__') hid.value = sel.value;
+});
+
+// ── Auto-generate slug from label ─────────────────────────────────────────
+function autoSlug(input) {
+  const slug = input.value
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+  document.getElementById('newTypeSlug').value = slug;
+}
+
+// ── Edit type panel ───────────────────────────────────────────────────────
+function openTypeEdit(id, label, icon, desc, freq, isShift, sort) {
+  const panel = document.getElementById('typeEditPanel');
+  document.getElementById('typeEditForm').action = '/stock/admin/types/' + id;
+  document.getElementById('te_label').value = label;
+  document.getElementById('te_icon').value = icon;
+  document.getElementById('te_desc').value = desc;
+  document.getElementById('te_freq').value = freq;
+  document.getElementById('te_sort').value = sort;
+  document.getElementById('te_shift').checked = !!isShift;
+  panel.classList.remove('hidden');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+
+<%- include('../partials/footer') %>

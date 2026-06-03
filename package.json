@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "nodemon -r dotenv/config server.js",
     "setup": "node database/setup.js",
     "migrate": "node database/migrate.js",
     "finance-migrate": "node database/run_finance_migration.js",

@@ -1,0 +1,210 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/nav') %>
+
+<style>
+  /* Prevent iOS Safari from zooming on input focus */
+  .stock-input { font-size: 16px !important; }
+</style>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="p-4 md:p-6 max-w-5xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-5">
+      <a href="/stock?date=<%= reportDate %>" class="text-slate-400 hover:text-slate-600 p-1 -ml-1 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xl"><%= meta.icon %></span>
+          <h1 class="text-lg font-bold text-slate-800"><%= meta.label %></h1>
+        </div>
+        <p class="text-sm text-slate-500 ml-8">
+          <%= reportDate %>
+          <% if (existing) { %><span class="ml-2 text-green-600 text-xs font-medium">• edytowanie</span><% } %>
+        </p>
+      </div>
+    </div>
+
+    <% if (locals.error && error.length) { %>
+      <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <form method="POST" action="/stock/save">
+      <input type="hidden" name="report_type" value="<%= type %>">
+      <input type="hidden" name="report_date" value="<%= reportDate %>">
+
+      <% if (type === 'products_shift') { %>
+
+        <% for (const group of grouped) { %>
+          <% if (group.category) { %>
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-3 px-1"><%= group.category %></div>
+          <% } %>
+
+          <%/* ── MOBILE: card per item (hidden on md+) ── */%>
+          <div class="md:hidden space-y-3 mb-3">
+            <% for (const item of group.items) { %>
+              <% const e = entries[item.id] || {}; %>
+              <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
+                <div class="text-sm font-semibold text-slate-800 mb-3"><%= item.name %></div>
+                <div class="grid grid-cols-3 gap-2 mb-2">
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Otwarcie<br><span class="text-slate-400">(bez dostaw)</span></div>
+                    <input type="text" name="stan_otwarcie_<%= item.id %>"
+                      value="<%= e.stan_otwarcie || '' %>"
+                      placeholder="—" inputmode="numeric"
+                      class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Dostawa<br><span class="text-slate-400">(szt.)</span></div>
+                    <input type="text" name="dostawa_<%= item.id %>"
+                      value="<%= e.dostawa || '' %>"
+                      placeholder="—" inputmode="numeric"
+                      class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Stan<br><span class="text-slate-400">16:00</span></div>
+                    <input type="text" name="stan_16_<%= item.id %>"
+                      value="<%= e.stan_16 || '' %>"
+                      placeholder="—" inputmode="numeric"
+                      class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Stan 18:00<br><span class="text-slate-400">(zamknięcie)</span></div>
+                    <div class="relative">
+                      <input type="text" name="stan_zamkniecie_<%= item.id %>"
+                        value="<%= e.stan_zamkniecie || '' %>"
+                        placeholder="—" inputmode="numeric"
+                        oninput="checkMin(this, <%= item.id %>)"
+                        class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <% const szVal = parseFloat(e.stan_zamkniecie); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
+                      <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !szBelow ? 'hidden' : '' %>" title="Poniżej min (<%= item.min_qty %>)">!</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Uszkodzone<br><span class="text-slate-400">(g. 18:00)</span></div>
+                    <input type="text" name="uszkodzone_<%= item.id %>"
+                      value="<%= e.uszkodzone || '' %>"
+                      placeholder="—" inputmode="numeric"
+                      class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  </div>
+                </div>
+              </div>
+            <% } %>
+          </div>
+
+          <%/* ── DESKTOP: table (hidden on mobile) ── */%>
+          <div class="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto mb-3">
+            <table class="w-full text-sm" style="min-width:620px">
+              <thead>
+                <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <th class="text-left px-3 py-2.5 font-semibold w-44">Produkt</th>
+                  <th class="px-2 py-2.5 font-semibold text-center">
+                    <div>Otwarcie</div><div class="font-normal text-slate-400">(bez dostaw)</div>
+                  </th>
+                  <th class="px-2 py-2.5 font-semibold text-center">
+                    <div>Dostawa</div><div class="font-normal text-slate-400">(szt.)</div>
+                  </th>
+                  <th class="px-2 py-2.5 font-semibold text-center">
+                    <div>Stan 16:00</div><div class="font-normal text-slate-400">(jednodniowe)</div>
+                  </th>
+                  <th class="px-2 py-2.5 font-semibold text-center">
+                    <div>Stan 18:00</div><div class="font-normal text-slate-400">(zamknięcie)</div>
+                  </th>
+                  <th class="px-2 py-2.5 font-semibold text-center">
+                    <div>Uszkodzone</div><div class="font-normal text-slate-400">(g. 18:00)</div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const item of group.items) { %>
+                  <% const e = entries[item.id] || {}; %>
+                  <tr class="border-b border-slate-50 last:border-0">
+                    <td class="px-3 py-2 text-slate-800 font-medium text-xs leading-tight"><%= item.name %></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="uszkodzone_<%= item.id %>" value="<%= e.uszkodzone || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+
+        <% } %>
+
+      <% } else { %>
+
+        <%/* ── Snapshot types: simple quantity list ── */%>
+        <% for (const group of grouped) { %>
+          <% if (group.category) { %>
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2 px-1"><%= group.category %></div>
+          <% } %>
+
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-100">
+            <% for (const item of group.items) { %>
+              <% const e = entries[item.id] || {}; %>
+              <div class="flex items-center gap-3 px-4 py-3">
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></div>
+                  <% if (item.target_qty) { %>
+                    <div class="text-xs text-slate-400 mt-0.5">Zwykle: <span class="font-medium text-slate-500"><%= item.target_qty %></span></div>
+                  <% } %>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <% if (item.unit && item.unit !== '-') { %>
+                    <span class="text-xs text-slate-400 hidden sm:inline"><%= item.unit %></span>
+                  <% } %>
+                  <div class="relative">
+                    <input type="text" name="qty_<%= item.id %>"
+                      value="<%= e.quantity || '' %>"
+                      placeholder="—"
+                      inputmode="numeric"
+                      oninput="checkMin(this, <%= item.id %>)"
+                      class="stock-input w-20 h-11 text-center border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <% const initVal = parseFloat(e.quantity); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
+                    <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !belowMin ? 'hidden' : '' %>" title="Poniżej minimalnej ilości (<%= item.min_qty %>)">!</span>
+                  </div>
+                </div>
+              </div>
+            <% } %>
+          </div>
+        <% } %>
+
+      <% } %>
+
+      <!-- Notes -->
+      <div class="mt-5 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Uwagi <span class="text-slate-400 font-normal">(opcjonalnie)</span></label>
+        <textarea name="notes" rows="2" placeholder="Dodatkowe informacje..."
+          class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"><%= existing && existing.notes ? existing.notes : '' %></textarea>
+      </div>
+
+      <!-- Submit -->
+      <div class="mt-4 flex gap-3">
+        <button type="submit" class="btn btn-primary flex-1 sm:flex-none justify-center py-3 text-base">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          Zapisz raport
+        </button>
+        <a href="/stock?date=<%= reportDate %>" class="btn btn-secondary py-3 text-base">Anuluj</a>
+      </div>
+    </form>
+
+  </div>
+</div>
+
+<script>
+const minQtyMap = <%- JSON.stringify(minQtyMap) %>;
+
+function checkMin(input, itemId) {
+  const val = parseFloat(input.value);
+  const min = minQtyMap[itemId];
+  const warn = input.parentElement.querySelector('.min-warn');
+  if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
+}
+</script>
+
+<%- include('../partials/footer') %>
