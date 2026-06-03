@@ -168,6 +168,12 @@ app.use('/stock', require('./routes/stock'));
       await db.run(`ALTER TABLE stock_items ADD COLUMN min_qty DECIMAL(10,2) DEFAULT NULL`);
     }
 
+    // hidden_items column on stock_reports (comma-separated item IDs hidden per report)
+    const hiCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_reports' AND COLUMN_NAME='hidden_items'`);
+    if (!hiCol || hiCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_reports ADD COLUMN hidden_items TEXT DEFAULT NULL`);
+    }
+
     // Standalone category/unit catalogs
     await db.run(`CREATE TABLE IF NOT EXISTS stock_categories (
       id INT AUTO_INCREMENT PRIMARY KEY,

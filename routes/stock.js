@@ -104,10 +104,26 @@ router.get('/form/:type', async (req, res) => {
       for (const e of rows) entries[e.item_id] = e;
     }
 
+    // Lock past reports for workers
+    const isWorker = req.session.userRole === 'worker';
+    if (isWorker && reportDate !== today()) {
+      if (existing) return res.redirect(`/stock/view/${existing.id}`);
+      return res.redirect(`/stock?date=${reportDate}`);
+    }
+
     const minQtyMap = {};
     for (const item of items) {
       if (item.min_qty !== null && item.min_qty !== undefined) minQtyMap[item.id] = Number(item.min_qty);
     }
+
+    // Hidden items for this report (per-report hide, stored in stock_reports.hidden_items)
+    const hiddenSet = new Set(
+      (existing?.hidden_items || '').split(',').filter(Boolean).map(Number)
+    );
+
+    // Types that allow worker quick-add/hide
+    const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
+    const canManageItems = QUICK_MANAGE_TYPES.includes(type);
 
     // Last reported value per item (most recent report of this type)
     const lastRows = await db.all(
@@ -131,6 +147,7 @@ router.get('/form/:type', async (req, res) => {
       title: meta.label, currentPath: '/stock',
       type, meta, reportDate, existing,
       grouped: groupByCategory(items), entries, REPORT_META, minQtyMap, lastValues,
+      hiddenSet: [...hiddenSet], canManageItems,
     });
   } catch (e) {
     console.error(e);
@@ -153,16 +170,19 @@ router.post('/save', async (req, res) => {
       `SELECT id FROM stock_reports WHERE report_date = ? AND report_type = ?`,
       [report_date, report_type]
     );
+    const hiddenItems = (req.body.hidden_items || '').trim();
+    const hiddenSaveSet = new Set(hiddenItems.split(',').filter(Boolean).map(Number));
+
     const wasNew = !report;
     if (report) {
       await db.run(
-        `UPDATE stock_reports SET submitted_by=?, notes=?, updated_at=NOW() WHERE id=?`,
-        [userId, notes || null, report.id]
+        `UPDATE stock_reports SET submitted_by=?, notes=?, hidden_items=?, updated_at=NOW() WHERE id=?`,
+        [userId, notes || null, hiddenItems || null, report.id]
       );
     } else {
       const result = await db.run(
-        `INSERT INTO stock_reports (report_date, report_type, submitted_by, notes) VALUES (?,?,?,?)`,
-        [report_date, report_type, userId, notes || null]
+        `INSERT INTO stock_reports (report_date, report_type, submitted_by, notes, hidden_items) VALUES (?,?,?,?,?)`,
+        [report_date, report_type, userId, notes || null, hiddenItems || null]
       );
       report = { id: result.insertId };
     }
@@ -183,6 +203,7 @@ router.post('/save', async (req, res) => {
 
     for (const item of items) {
       const id = item.id;
+      if (hiddenSaveSet.has(id)) continue;
       if (meta.isShift) {
         const s_o = pick(req.body[`stan_otwarcie_${id}`]);
         const d   = pick(req.body[`dostawa_${id}`]);
@@ -248,6 +269,29 @@ router.get('/view/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+// ── Quick add product (workers, cakes_noon & products_shift only) ──────────
+
+router.post('/quick-add-item', async (req, res) => {
+  try {
+    const { report_type, name, unit, report_date } = req.body;
+    const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
+    if (!QUICK_MANAGE_TYPES.includes(report_type) || !name?.trim()) {
+      return res.redirect(`/stock/form/${report_type || ''}?date=${report_date || ''}`);
+    }
+    await db.run(
+      `INSERT INTO stock_items (report_type, name, unit, sort_order, active) VALUES (?,?,?,999,1)`,
+      [report_type, name.trim(), unit?.trim() || 'szt', 999]
+    );
+    await log(sessionUser(req), 'Raport Stanów – dodano produkt (quick add)', `${name.trim()} | Typ: ${report_type}`);
+    req.flash('success', `Produkt "${name.trim()}" dodany.`);
+    res.redirect(`/stock/form/${report_type}?date=${report_date}`);
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd przy dodawaniu produktu.');
+    res.redirect(`/stock/form/${req.body.report_type || ''}?date=${req.body.report_date || ''}`);
   }
 });
 
