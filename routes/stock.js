@@ -170,8 +170,13 @@ router.post('/save', async (req, res) => {
     const items = await db.all(
       `SELECT id FROM stock_items WHERE report_type = ? AND active = 1`, [report_type]
     );
-    // If dual-layout sent duplicate fields, pick the first non-empty value
-    const pick = (v) => (Array.isArray(v) ? v.find(x => x && x.trim()) || '' : v || '').trim() || null;
+    // If dual-layout sent duplicate fields, pick the first non-empty value; enforce integer
+    const pick = (v) => {
+      const raw = (Array.isArray(v) ? v.find(x => x && x.trim()) || '' : v || '').trim();
+      if (!raw || raw === '—' || raw === '-') return null;
+      const n = parseInt(raw.replace(',', '.'), 10);
+      return isNaN(n) ? null : String(n);
+    };
 
     for (const item of items) {
       const id = item.id;
@@ -189,7 +194,7 @@ router.post('/save', async (req, res) => {
           [report.id, id, s_o, d, s16, s_z, usz]
         );
       } else {
-        const qty = (req.body[`qty_${id}`] || '').trim() || null;
+        const qty = pick(req.body[`qty_${id}`]);
         const n   = (req.body[`notes_${id}`] || '').trim() || null;
         await db.run(
           `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes)

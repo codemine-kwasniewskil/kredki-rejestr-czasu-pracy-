@@ -84,9 +84,9 @@
                         value="<%= e.stan_zamkniecie || '' %>" placeholder="—"
                         inputmode="decimal" enterkeyhint="next" autocomplete="off"
                         onfocus="this.select()"
-                        oninput="checkMin(this, <%= item.id %>)"
+                        data-item-id="<%= item.id %>"
                         class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                      <% const szVal = parseFloat(e.stan_zamkniecie); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
+                      <% const szVal = parseInt(e.stan_zamkniecie, 10); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
                       <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !szBelow ? 'hidden' : '' %>" title="Poniżej min (<%= item.min_qty %>)">!</span>
                     </div>
                   </div>
@@ -128,7 +128,7 @@
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" data-item-id="<%= item.id %>" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="uszkodzone_<%= item.id %>" value="<%= e.uszkodzone || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                   </tr>
                 <% } %>
@@ -168,9 +168,9 @@
                       inputmode="decimal" enterkeyhint="next"
                       autocomplete="off"
                       onfocus="this.select()"
-                      oninput="checkMin(this, <%= item.id %>)"
+                      data-item-id="<%= item.id %>"
                       class="stock-input w-20 h-11 text-center border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    <% const initVal = parseFloat(inputVal); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
+                    <% const initVal = parseInt(inputVal, 10); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
                     <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !belowMin ? 'hidden' : '' %>" title="Poniżej minimalnej ilości (<%= item.min_qty %>)">!</span>
                   </div>
                 </div>
@@ -204,18 +204,51 @@
 <script>
 const minQtyMap = <%- JSON.stringify(minQtyMap) %>;
 
-function checkMin(input, itemId) {
-  const val = parseFloat(input.value);
-  const min = minQtyMap[itemId];
-  const warn = input.parentElement.querySelector('.min-warn');
-  if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
+// Valid value: empty, dash, or non-negative integer
+function isValidQty(v) {
+  const s = (v || '').trim();
+  return !s || s === '—' || s === '-' || /^\d+$/.test(s);
 }
 
-// Before submit: disable hidden-half inputs so they don't double-post
-document.querySelector('form').addEventListener('submit', () => {
+function applyValidStyle(inp, valid) {
+  inp.style.borderColor = valid ? '' : '#f87171';
+  inp.style.outline    = valid ? '' : '2px solid rgba(248,113,113,0.5)';
+}
+
+// Validation + min-qty check on every input event
+document.addEventListener('input', e => {
+  const inp = e.target;
+  if (inp.getAttribute('inputmode') !== 'decimal') return;
+
+  const valid = isValidQty(inp.value);
+  applyValidStyle(inp, valid);
+
+  // min-qty badge
+  const itemId = inp.dataset.itemId;
+  if (itemId) {
+    const val = parseInt(inp.value, 10);
+    const min = minQtyMap[itemId];
+    const warn = inp.parentElement.querySelector('.min-warn');
+    if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
+  }
+});
+
+document.querySelector('form').addEventListener('submit', e => {
+  // 1. Disable hidden-half inputs (dual layout) so they don't double-post
   document.querySelectorAll('input[inputmode="decimal"]').forEach(inp => {
     if (inp.offsetParent === null) inp.disabled = true;
   });
+
+  // 2. Block submission if any visible input has a non-integer value
+  const bad = Array.from(document.querySelectorAll('input[inputmode="decimal"]'))
+    .filter(inp => !inp.disabled && inp.offsetParent !== null && !isValidQty(inp.value));
+
+  if (bad.length) {
+    e.preventDefault();
+    bad.forEach(inp => applyValidStyle(inp, false));
+    bad[0].focus();
+    bad[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 });
 
 // Enter/Next key → jump to next visible input
@@ -225,12 +258,11 @@ document.addEventListener('DOMContentLoaded', () => {
       .filter(el => el.offsetParent !== null);
   }
 
-  // keydown covers desktop + most Android; keyup covers some Android virtual keyboards
   let lastHandled = 0;
   function handleEnter(e) {
     if (e.key !== 'Enter' && e.keyCode !== 13) return;
     const now = Date.now();
-    if (now - lastHandled < 100) return; // debounce double-fire
+    if (now - lastHandled < 100) return;
     lastHandled = now;
     const inputs = visibleInputs();
     const idx = inputs.indexOf(document.activeElement);
