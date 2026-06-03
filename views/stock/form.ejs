@@ -211,6 +211,24 @@ function checkMin(input, itemId) {
   const warn = input.parentElement.querySelector('.min-warn');
   if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
 }
+
+// Enter key → jump to next visible numeric input
+document.addEventListener('DOMContentLoaded', () => {
+  function visibleInputs() {
+    return Array.from(document.querySelectorAll('input[inputmode="numeric"]'))
+      .filter(el => el.offsetParent !== null);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const inputs = visibleInputs();
+    const idx = inputs.indexOf(document.activeElement);
+    if (idx === -1) return;
+    e.preventDefault();
+    const next = inputs[idx + 1];
+    if (next) { next.focus(); next.select(); }
+  });
+});
 </script>
 
 <%- include('../partials/footer') %>
