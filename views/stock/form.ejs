@@ -2,7 +2,6 @@
 <%- include('../partials/nav') %>
 
 <style>
-  /* Prevent iOS Safari from zooming on input focus */
   .stock-input { font-size: 16px !important; }
 </style>
 
@@ -34,14 +33,14 @@
       <input type="hidden" name="report_type" value="<%= type %>">
       <input type="hidden" name="report_date" value="<%= reportDate %>">
 
-      <% if (type === 'products_shift') { %>
+      <% if (meta.isShift) { %>
 
         <% for (const group of grouped) { %>
           <% if (group.category) { %>
             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-3 px-1"><%= group.category %></div>
           <% } %>
 
-          <%/* ── MOBILE: card per item (hidden on md+) ── */%>
+          <%/* ── MOBILE cards ── */%>
           <div class="md:hidden space-y-3 mb-3">
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
@@ -55,22 +54,25 @@
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Otwarcie<br><span class="text-slate-400">(bez dostaw)</span></div>
                     <input type="text" name="stan_otwarcie_<%= item.id %>"
-                      value="<%= e.stan_otwarcie || '' %>"
-                      placeholder="—" inputmode="numeric"
+                      value="<%= e.stan_otwarcie || '' %>" placeholder="—"
+                      inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                      onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Dostawa<br><span class="text-slate-400">(szt.)</span></div>
                     <input type="text" name="dostawa_<%= item.id %>"
-                      value="<%= e.dostawa || '' %>"
-                      placeholder="—" inputmode="numeric"
+                      value="<%= e.dostawa || '' %>" placeholder="—"
+                      inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                      onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Stan<br><span class="text-slate-400">16:00</span></div>
                     <input type="text" name="stan_16_<%= item.id %>"
-                      value="<%= e.stan_16 || '' %>"
-                      placeholder="—" inputmode="numeric"
+                      value="<%= e.stan_16 || '' %>" placeholder="—"
+                      inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                      onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                 </div>
@@ -79,8 +81,9 @@
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Stan 18:00<br><span class="text-slate-400">(zamknięcie)</span></div>
                     <div class="relative">
                       <input type="text" name="stan_zamkniecie_<%= item.id %>"
-                        value="<%= e.stan_zamkniecie || '' %>"
-                        placeholder="—" inputmode="numeric"
+                        value="<%= e.stan_zamkniecie || '' %>" placeholder="—"
+                        inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                        onfocus="this.select()"
                         oninput="checkMin(this, <%= item.id %>)"
                         class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                       <% const szVal = parseFloat(e.stan_zamkniecie); const szBelow = item.min_qty !== null && !isNaN(szVal) && szVal < item.min_qty; %>
@@ -90,8 +93,9 @@
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Uszkodzone<br><span class="text-slate-400">(g. 18:00)</span></div>
                     <input type="text" name="uszkodzone_<%= item.id %>"
-                      value="<%= e.uszkodzone || '' %>"
-                      placeholder="—" inputmode="numeric"
+                      value="<%= e.uszkodzone || '' %>" placeholder="—"
+                      inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                      onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                 </div>
@@ -99,27 +103,17 @@
             <% } %>
           </div>
 
-          <%/* ── DESKTOP: table (hidden on mobile) ── */%>
+          <%/* ── DESKTOP table ── */%>
           <div class="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto mb-3">
             <table class="w-full text-sm" style="min-width:620px">
               <thead>
                 <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
                   <th class="text-left px-3 py-2.5 font-semibold w-44">Produkt</th>
-                  <th class="px-2 py-2.5 font-semibold text-center">
-                    <div>Otwarcie</div><div class="font-normal text-slate-400">(bez dostaw)</div>
-                  </th>
-                  <th class="px-2 py-2.5 font-semibold text-center">
-                    <div>Dostawa</div><div class="font-normal text-slate-400">(szt.)</div>
-                  </th>
-                  <th class="px-2 py-2.5 font-semibold text-center">
-                    <div>Stan 16:00</div><div class="font-normal text-slate-400">(jednodniowe)</div>
-                  </th>
-                  <th class="px-2 py-2.5 font-semibold text-center">
-                    <div>Stan 18:00</div><div class="font-normal text-slate-400">(zamknięcie)</div>
-                  </th>
-                  <th class="px-2 py-2.5 font-semibold text-center">
-                    <div>Uszkodzone</div><div class="font-normal text-slate-400">(g. 18:00)</div>
-                  </th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Otwarcie</div><div class="font-normal text-slate-400">(bez dostaw)</div></th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Dostawa</div><div class="font-normal text-slate-400">(szt.)</div></th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Stan 16:00</div><div class="font-normal text-slate-400">(jednodniowe)</div></th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Stan 18:00</div><div class="font-normal text-slate-400">(zamknięcie)</div></th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Uszkodzone</div><div class="font-normal text-slate-400">(g. 18:00)</div></th>
                 </tr>
               </thead>
               <tbody>
@@ -131,11 +125,11 @@
                       <% if (item.unit && item.unit !== '-') { %><span class="text-slate-400 ml-1"><%= item.unit %></span><% } %>
                       <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { %><br><span class="text-xs text-slate-400">poprzednio: <%= lvd.stan_zamkniecie %></span><% } %>
                     </td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="uszkodzone_<%= item.id %>" value="<%= e.uszkodzone || '' %>" placeholder="—" inputmode="numeric" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="uszkodzone_<%= item.id %>" value="<%= e.uszkodzone || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                   </tr>
                 <% } %>
               </tbody>
@@ -146,7 +140,7 @@
 
       <% } else { %>
 
-        <%/* ── Snapshot types: simple quantity list ── */%>
+        <%/* ── Snapshot types ── */%>
         <% for (const group of grouped) { %>
           <% if (group.category) { %>
             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2 px-1"><%= group.category %></div>
@@ -155,23 +149,28 @@
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-100">
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
+              <% const lv = lastValues[item.id]; %>
+              <%/* For new reports, pre-fill with last value so worker can press Enter to confirm unchanged */%>
+              <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
               <div class="flex items-center gap-3 px-4 py-3">
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-slate-800 leading-snug">
                     <%= item.name %>
                     <% if (item.unit && item.unit !== '-') { %><span class="text-xs text-slate-400 font-normal ml-1"><%= item.unit %></span><% } %>
-                    <% const lv = lastValues[item.id]; if (lv && lv.quantity) { %><br><span class="text-xs text-slate-400 font-normal">poprzednio: <%= lv.quantity %></span><% } %>
+                    <% if (!existing && lv && lv.quantity) { %><br><span class="text-xs text-slate-400 font-normal">poprzednio: <%= lv.quantity %></span><% } %>
                   </div>
                 </div>
                 <div class="shrink-0">
                   <div class="relative">
                     <input type="text" name="qty_<%= item.id %>"
-                      value="<%= e.quantity || '' %>"
+                      value="<%= inputVal %>"
                       placeholder="—"
-                      inputmode="numeric"
+                      inputmode="decimal" enterkeyhint="next"
+                      autocomplete="off"
+                      onfocus="this.select()"
                       oninput="checkMin(this, <%= item.id %>)"
                       class="stock-input w-20 h-11 text-center border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    <% const initVal = parseFloat(e.quantity); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
+                    <% const initVal = parseFloat(inputVal); const belowMin = item.min_qty !== null && !isNaN(initVal) && initVal < item.min_qty; %>
                     <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !belowMin ? 'hidden' : '' %>" title="Poniżej minimalnej ilości (<%= item.min_qty %>)">!</span>
                   </div>
                 </div>
@@ -212,22 +211,30 @@ function checkMin(input, itemId) {
   if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
 }
 
-// Enter key → jump to next visible numeric input
+// Enter/Next key → jump to next visible input
 document.addEventListener('DOMContentLoaded', () => {
   function visibleInputs() {
-    return Array.from(document.querySelectorAll('input[inputmode="numeric"]'))
+    return Array.from(document.querySelectorAll('input[inputmode="decimal"]'))
       .filter(el => el.offsetParent !== null);
   }
 
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
+  // keydown covers desktop + most Android; keyup covers some Android virtual keyboards
+  let lastHandled = 0;
+  function handleEnter(e) {
+    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+    const now = Date.now();
+    if (now - lastHandled < 100) return; // debounce double-fire
+    lastHandled = now;
     const inputs = visibleInputs();
     const idx = inputs.indexOf(document.activeElement);
     if (idx === -1) return;
     e.preventDefault();
     const next = inputs[idx + 1];
     if (next) { next.focus(); next.select(); }
-  });
+  }
+
+  document.addEventListener('keydown', handleEnter);
+  document.addEventListener('keyup', handleEnter);
 });
 </script>
 
