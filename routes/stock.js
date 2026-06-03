@@ -33,7 +33,7 @@ async function loadMeta() {
 
 function groupByCategory(items) {
   const grouped = [];
-  let lastCat = null;
+  let lastCat = undefined;
   for (const item of items) {
     if (item.category !== lastCat) {
       grouped.push({ category: item.category, items: [] });
