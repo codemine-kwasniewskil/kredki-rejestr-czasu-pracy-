@@ -205,13 +205,14 @@
                       <div class="flex items-center justify-end gap-2">
                         <a href="/stock/admin?tab=items&type=<%= activeType %>&edit=<%= item.id %>#edit"
                           class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edytuj</a>
-                        <% if (item.entry_count === 0) { %>
+                        <% if (item.nonzero_count == 0 && (user.role === 'admin' || user.role === 'location_manager')) { %>
                           <form method="POST" action="/stock/admin/items/<%= item.id %>?_method=DELETE" class="inline"
                             onsubmit="return confirm('Na pewno usunąć „<%= item.name %>"?')">
                             <input type="hidden" name="report_type" value="<%= item.report_type %>">
                             <button type="submit" class="text-xs font-medium text-red-400 hover:text-red-600 transition-colors">Usuń</button>
                           </form>
-                        <% } else { %>
+                        <% } %>
+                        <% if (item.entry_count > 0) { %>
                           <form method="POST" action="/stock/admin/items/<%= item.id %>/toggle" class="inline">
                             <input type="hidden" name="report_type" value="<%= item.report_type %>">
                             <button type="submit" class="text-xs font-medium transition-colors <%= item.active ? 'text-slate-400 hover:text-orange-500' : 'text-slate-400 hover:text-green-600' %>">

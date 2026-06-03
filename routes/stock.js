@@ -308,7 +308,16 @@ router.get('/admin', requireManager, async (req, res) => {
     const editId = req.query.edit ? parseInt(req.query.edit) : null;
 
     const items = await db.all(
-      `SELECT si.*, COUNT(sre.id) AS entry_count
+      `SELECT si.*,
+         COUNT(sre.id) AS entry_count,
+         SUM(CASE WHEN
+           (sre.quantity      IS NOT NULL AND sre.quantity      NOT IN ('','0','—')) OR
+           (sre.stan_otwarcie IS NOT NULL AND sre.stan_otwarcie NOT IN ('','0','—')) OR
+           (sre.dostawa       IS NOT NULL AND sre.dostawa       NOT IN ('','0','—')) OR
+           (sre.stan_16       IS NOT NULL AND sre.stan_16       NOT IN ('','0','—')) OR
+           (sre.stan_zamkniecie IS NOT NULL AND sre.stan_zamkniecie NOT IN ('','0','—')) OR
+           (sre.uszkodzone    IS NOT NULL AND sre.uszkodzone    NOT IN ('','0','—'))
+         THEN 1 ELSE 0 END) AS nonzero_count
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id = si.id
        WHERE si.report_type = ?
@@ -446,12 +455,23 @@ router.post('/admin/items/:id/toggle', requireManager, async (req, res) => {
   }
 });
 
-// Delete item (only if unused in any report)
+// Delete item (only if no entries with non-zero amounts)
 router.delete('/admin/items/:id', requireManager, async (req, res) => {
   try {
-    const usage = await db.get(`SELECT COUNT(*) AS cnt FROM stock_report_entries WHERE item_id=?`, [req.params.id]);
-    if (usage && usage.cnt > 0) {
-      req.flash('error', 'Nie można usunąć – produkt ma historię w raportach. Użyj „Ukryj" aby go dezaktywować.');
+    const nonzero = await db.get(
+      `SELECT COUNT(*) AS cnt FROM stock_report_entries
+       WHERE item_id=? AND (
+         (quantity      IS NOT NULL AND quantity      NOT IN ('','0','—')) OR
+         (stan_otwarcie IS NOT NULL AND stan_otwarcie NOT IN ('','0','—')) OR
+         (dostawa       IS NOT NULL AND dostawa       NOT IN ('','0','—')) OR
+         (stan_16       IS NOT NULL AND stan_16       NOT IN ('','0','—')) OR
+         (stan_zamkniecie IS NOT NULL AND stan_zamkniecie NOT IN ('','0','—')) OR
+         (uszkodzone    IS NOT NULL AND uszkodzone    NOT IN ('','0','—'))
+       )`,
+      [req.params.id]
+    );
+    if (nonzero && nonzero.cnt > 0) {
+      req.flash('error', 'Nie można usunąć – produkt ma historię z wartościami > 0. Użyj „Ukryj".');
       return res.redirect(`/stock/admin?tab=items&type=${req.body.report_type || ''}`);
     }
     const toDelete = await db.get(`SELECT name, report_type FROM stock_items WHERE id=?`, [req.params.id]);
