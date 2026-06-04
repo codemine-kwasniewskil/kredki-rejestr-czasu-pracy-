@@ -55,7 +55,7 @@
                   <% const lvs = lastValues[item.id]; %>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
+                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
                   </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
@@ -179,7 +179,7 @@
                   </div>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>poprzednio: <%= lv.quantity %></span><% } %>
+                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio: <%= lv.quantity %></span><% } %>
                   </div>
                 </div>
                 <div class="shrink-0">
