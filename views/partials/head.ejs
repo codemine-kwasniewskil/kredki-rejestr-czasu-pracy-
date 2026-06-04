@@ -46,12 +46,15 @@
     body { background-color: #F8FAFC; }
 
     /* Stock report dual-layout (mobile cards vs desktop table) */
-    .shift-mobile  { display: block; }
-    .shift-desktop { display: none;  }
+    .shift-mobile  { display: block !important; }
+    .shift-desktop { display: none  !important; }
     @media (min-width: 768px) {
-      .shift-mobile  { display: none;  }
-      .shift-desktop { display: block; }
+      .shift-mobile  { display: none  !important; }
+      .shift-desktop { display: block !important; }
     }
+
+    /* Snapshot card — explicit block so Tailwind CDN can't flip it to flex-row */
+    .snapshot-card { display: block !important; }
 
     /* Prevent iOS Safari from zooming on input focus */
     .stock-input { font-size: 16px !important; }

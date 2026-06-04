@@ -160,7 +160,7 @@
             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2 px-1"><%= group.category %></div>
           <% } %>
 
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-100">
+          <div class="snapshot-card bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-100">
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
               <% const lv = lastValues[item.id]; %>
