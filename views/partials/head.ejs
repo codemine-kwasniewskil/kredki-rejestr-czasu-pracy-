@@ -45,6 +45,17 @@
     html { background-color: #1e293b; }
     body { background-color: #F8FAFC; }
 
+    /* Stock report dual-layout (mobile cards vs desktop table) */
+    .shift-mobile  { display: block; }
+    .shift-desktop { display: none;  }
+    @media (min-width: 768px) {
+      .shift-mobile  { display: none;  }
+      .shift-desktop { display: block; }
+    }
+
+    /* Prevent iOS Safari from zooming on input focus */
+    .stock-input { font-size: 16px !important; }
+
     /* Status badges */
     .badge-draft     { background-color: #F1F5F9; color: #475569; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
     .badge-submitted { background-color: #FEF3C7; color: #B45309; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
