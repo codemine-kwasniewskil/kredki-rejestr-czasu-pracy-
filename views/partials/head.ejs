@@ -45,10 +45,10 @@
     html { background-color: #1e293b; }
     body { background-color: #F8FAFC; }
 
-    /* Stock report dual-layout (mobile cards vs desktop table) */
+    /* Stock report dual-layout: cards on phone+tablet, table on laptop+ */
     .shift-mobile  { display: block !important; }
     .shift-desktop { display: none  !important; }
-    @media (min-width: 768px) {
+    @media (min-width: 1024px) {
       .shift-mobile  { display: none  !important; }
       .shift-desktop { display: block !important; }
     }
