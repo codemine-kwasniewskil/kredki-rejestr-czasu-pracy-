@@ -1,6 +1,15 @@
 <%- include('../partials/head', { title }) %>
 <%- include('../partials/nav') %>
 
+<style>
+  .shift-mobile  { display: block; }
+  .shift-desktop { display: none;  }
+  @media (min-width: 768px) {
+    .shift-mobile  { display: none;  }
+    .shift-desktop { display: block; }
+  }
+</style>
+
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
   <div class="p-4 md:p-6 max-w-5xl mx-auto">
 
@@ -32,7 +41,7 @@
         <% } %>
 
         <%/* Mobile: cards */%>
-        <div class="md:hidden space-y-2 mb-3">
+        <div class="shift-mobile space-y-2 mb-3">
           <% for (const item of group.items) { %>
             <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone; %>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 <%= !hasData ? 'opacity-40' : '' %>">
@@ -70,7 +79,7 @@
         </div>
 
         <%/* Desktop: table */%>
-        <div class="hidden md:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto mb-3">
+        <div class="shift-desktop bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto mb-3">
           <table class="w-full text-sm" style="min-width:580px">
             <thead>
               <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
