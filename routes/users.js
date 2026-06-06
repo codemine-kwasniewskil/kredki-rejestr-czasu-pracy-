@@ -77,7 +77,7 @@ router.get('/:id/edit', requireRole('admin'), async (req, res) => {
 
 router.put('/:id', requireRole('admin'), async (req, res) => {
   try {
-    const { name, username, contact_email, phone, role, active, password, location_id } = req.body;
+    const { name, username, contact_email, phone, role, active, password, location_id, must_change_password } = req.body;
     const user = await db.get('SELECT * FROM users WHERE id=?', [req.params.id]);
     if (!user) return res.redirect('/users');
     const conflict = await db.get('SELECT id FROM users WHERE username=? AND id!=?', [username, req.params.id]);
@@ -88,16 +88,17 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     const assignedLocationId = (res.locals.user.role === 'super_admin' && location_id)
       ? parseInt(location_id)
       : (user.location_id || getLocationId(req));
+    const forcePasswordChange = must_change_password ? 1 : 0;
     if (password && password.trim()) {
       const hash = bcrypt.hashSync(password.trim(), 10);
       await db.run(
-        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=?,password_hash=?,must_change_password=1,location_id=? WHERE id=?`,
-        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, hash, assignedLocationId, req.params.id]
+        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=?,password_hash=?,must_change_password=?,location_id=? WHERE id=?`,
+        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, hash, forcePasswordChange, assignedLocationId, req.params.id]
       );
     } else {
       await db.run(
-        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=?,location_id=? WHERE id=?`,
-        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, assignedLocationId, req.params.id]
+        `UPDATE users SET name=?,username=?,contact_email=?,phone=?,role=?,active=?,must_change_password=?,location_id=? WHERE id=?`,
+        [name, username, contact_email || null, phone || null, role, active ? 1 : 0, forcePasswordChange, assignedLocationId, req.params.id]
       );
     }
     log(res.locals.user, 'Edycja użytkownika', user.name);

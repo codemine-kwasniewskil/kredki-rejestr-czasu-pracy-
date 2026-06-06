@@ -57,9 +57,14 @@
               <%= u.min_hours_per_month != null ? u.min_hours_per_month + 'h/mies.' : '—' %>
             </td>
             <td class="px-4 py-3">
-              <span class="text-xs px-2 py-1 rounded-full <%= u.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600' %>">
-                <%= u.active ? 'Aktywny' : 'Nieaktywny' %>
-              </span>
+              <div class="flex flex-col gap-1">
+                <span class="text-xs px-2 py-1 rounded-full <%= u.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600' %>">
+                  <%= u.active ? 'Aktywny' : 'Nieaktywny' %>
+                </span>
+                <% if (u.must_change_password) { %>
+                <span class="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">Zmiana hasła</span>
+                <% } %>
+              </div>
             </td>
             <td class="px-4 py-3 text-right flex items-center justify-end gap-2 flex-wrap">
               <a href="/users/<%= u.id %>/edit" class="btn btn-secondary text-xs">Edytuj</a>
@@ -204,6 +209,10 @@
       <div class="flex items-center gap-2">
         <input type="checkbox" name="active" id="activeCheck" value="1" <%= editUser.active ? 'checked' : '' %> class="rounded">
         <label for="activeCheck" class="text-sm font-medium text-slate-700">Konto aktywne</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="must_change_password" id="mustChangePasswordCheck" value="1" <%= editUser.must_change_password ? 'checked' : '' %> class="rounded">
+        <label for="mustChangePasswordCheck" class="text-sm font-medium text-slate-700">Wymagaj zmiany hasła przy logowaniu</label>
       </div>
       <div class="flex gap-3 pt-1">
         <a href="/users" class="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 text-center">Anuluj</a>
