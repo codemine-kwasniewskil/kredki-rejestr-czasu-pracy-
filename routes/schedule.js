@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { getMonday, getWeekDates, toDateString, calcHours, formatHours, prevWeekStart, nextWeekStart, formatDayHeader, formatWeekRange } = require('../utils/helpers');
 const { log } = require('../utils/logger');
 
@@ -10,17 +10,24 @@ router.get('/', requireAuth, (req, res) => {
   res.redirect(`/schedule/week/${weekStart}`);
 });
 
-router.get('/week/:weekStart', requireAuth, async (req, res) => {
+router.get('/week/:weekStart', requireAuth, requireFeature('schedule'), async (req, res) => {
   try {
     const { weekStart } = req.params;
     const weekDates = getWeekDates(weekStart);
     const { role, id: userId } = res.locals.user;
+    const locationId = getLocationId(req);
 
-    let schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [weekStart]);
+    let schedule = await db.get(
+      `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+      [weekStart, locationId]
+    );
     if (role === 'worker') {
       schedule = (schedule && schedule.status === 'approved') ? schedule : null;
     } else if (!schedule) {
-      const r = await db.run(`INSERT INTO schedules (week_start, created_by) VALUES (?,?)`, [weekStart, userId]);
+      const r = await db.run(
+        `INSERT INTO schedules (week_start, created_by, location_id) VALUES (?,?,?)`,
+        [weekStart, userId, locationId]
+      );
       schedule = await db.get('SELECT * FROM schedules WHERE id=?', [r.insertId]);
     }
 
@@ -28,9 +35,9 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
       SELECT u.id, u.name, c.min_hours_per_month, c.hourly_rate
       FROM users u
       LEFT JOIN contracts c ON c.user_id=u.id AND c.active=1
-      WHERE u.active=1 AND u.role IN ('worker','location_manager')
+      WHERE u.active=1 AND u.role IN ('worker','location_manager') AND u.location_id=?
       ORDER BY u.name
-    `);
+    `, [locationId]);
 
     const entries = schedule
       ? await db.all(`
@@ -92,8 +99,9 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
              COALESCE(se.custom_end, st.end_time) as end_time
       FROM schedule_entries se
       LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-      WHERE se.date LIKE ?
-    `, [monthPrefix + '%']);
+      JOIN schedules s ON s.id = se.schedule_id
+      WHERE se.date LIKE ? AND s.location_id=?
+    `, [monthPrefix + '%', locationId]);
 
     const workerMonthlyHours = {};
     for (const w of workers) {
@@ -106,11 +114,14 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
     const [mYear, mMonth] = monthPrefix.split('-').map(Number);
     const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
 
-    const shiftTemplates = await db.all(`SELECT * FROM shift_templates WHERE active=1 ORDER BY sort_order, start_time`);
+    const shiftTemplates = await db.all(
+      `SELECT * FROM shift_templates WHERE active=1 AND location_id=? ORDER BY sort_order, start_time`,
+      [locationId]
+    );
 
-    const isEditable = schedule && schedule.status !== 'approved' && (role === 'admin' || role === 'location_manager');
+    const isEditable = schedule && schedule.status !== 'approved' && (role === 'admin' || role === 'super_admin' || role === 'location_manager');
 
-    const adminChanges = (schedule && (role === 'location_manager' || role === 'admin'))
+    const adminChanges = (schedule && (role === 'location_manager' || role === 'admin' || role === 'super_admin'))
       ? await db.all(`
           SELECT se.*, u.name as user_name, COALESCE(st.name,'Własna') as shift_name,
                  COALESCE(se.custom_start, st.start_time) as start_time,
@@ -152,7 +163,11 @@ router.get('/week/:weekStart', requireAuth, async (req, res) => {
 
 router.post('/week/:weekStart/submit', requireRole('location_manager', 'admin'), async (req, res) => {
   try {
-    const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get(
+      `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+      [req.params.weekStart, locationId]
+    );
     if (schedule && schedule.status === 'draft') {
       await db.run(`UPDATE schedules SET status='submitted' WHERE id=?`, [schedule.id]);
       log(res.locals.user, 'Wysłanie grafiku do akceptacji', `Tydzień: ${req.params.weekStart}`);
@@ -167,7 +182,11 @@ router.post('/week/:weekStart/submit', requireRole('location_manager', 'admin'),
 
 router.post('/week/:weekStart/approve', requireRole('admin'), async (req, res) => {
   try {
-    const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get(
+      `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+      [req.params.weekStart, locationId]
+    );
     if (schedule && schedule.status !== 'approved') {
       await db.run(`UPDATE schedules SET status='approved', approved_by=? WHERE id=?`,
         [res.locals.user.id, schedule.id]);
@@ -183,7 +202,11 @@ router.post('/week/:weekStart/approve', requireRole('admin'), async (req, res) =
 
 router.post('/week/:weekStart/reject', requireRole('admin'), async (req, res) => {
   try {
-    const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get(
+      `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+      [req.params.weekStart, locationId]
+    );
     if (schedule && schedule.status === 'submitted') {
       await db.run(`UPDATE schedules SET status='rejected', rejection_notes=? WHERE id=?`,
         [req.body.notes || '', schedule.id]);
@@ -200,11 +223,15 @@ router.post('/week/:weekStart/reject', requireRole('admin'), async (req, res) =>
 router.post('/week/:weekStart/reopen', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { role } = res.locals.user;
-    const schedule = await db.get(`SELECT * FROM schedules WHERE week_start=?`, [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get(
+      `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+      [req.params.weekStart, locationId]
+    );
     const canReopen = schedule && (
       schedule.status === 'rejected' ||
       schedule.status === 'submitted' ||
-      (schedule.status === 'approved' && role === 'admin')
+      (schedule.status === 'approved' && (role === 'admin' || role === 'super_admin'))
     );
     if (canReopen) {
       await db.run(`UPDATE schedules SET status='draft', rejection_notes=NULL, approved_by=NULL WHERE id=?`, [schedule.id]);

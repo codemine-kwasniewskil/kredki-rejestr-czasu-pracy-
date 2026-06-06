@@ -2,12 +2,13 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { log } = require('../utils/logger');
 
 const requireManager = requireRole('admin', 'location_manager');
 
 router.use(requireAuth);
+router.use(requireFeature('stock'));
 
 function sessionUser(req) {
   return { id: req.session.userId, name: req.session.userName, role: req.session.userRole };
@@ -51,11 +52,12 @@ router.get('/', async (req, res) => {
     const { REPORT_META } = await loadMeta();
     const reportDate = req.query.date || today();
 
+    const locationId = getLocationId(req);
     const reports = await db.all(
       `SELECT sr.*, u.name AS submitted_by_name
        FROM stock_reports sr JOIN users u ON sr.submitted_by = u.id
-       WHERE sr.report_date = ? ORDER BY sr.report_type`,
-      [reportDate]
+       WHERE sr.report_date = ? AND sr.location_id = ? ORDER BY sr.report_type`,
+      [reportDate, locationId]
     );
     const reportsByType = {};
     for (const r of reports) reportsByType[r.report_type] = r;
@@ -63,8 +65,9 @@ router.get('/', async (req, res) => {
     const history = await db.all(
       `SELECT sr.report_date, sr.report_type, u.name AS submitted_by_name, sr.id
        FROM stock_reports sr JOIN users u ON sr.submitted_by = u.id
-       WHERE sr.report_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-       ORDER BY sr.report_date DESC, sr.report_type`
+       WHERE sr.report_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND sr.location_id = ?
+       ORDER BY sr.report_date DESC, sr.report_type`,
+      [locationId]
     );
 
     res.render('stock/index', {
@@ -88,15 +91,16 @@ router.get('/form/:type', async (req, res) => {
 
     const reportDate = req.query.date || today();
 
+    const locationId = getLocationId(req);
     const items = await db.all(
-      `SELECT * FROM stock_items WHERE report_type = ? AND active = 1 ORDER BY sort_order, id`,
-      [type]
+      `SELECT * FROM stock_items WHERE report_type = ? AND active = 1 AND location_id = ? ORDER BY sort_order, id`,
+      [type, locationId]
     );
     const existing = await db.get(
       `SELECT sr.*, u.name AS submitted_by_name
        FROM stock_reports sr JOIN users u ON sr.submitted_by = u.id
-       WHERE sr.report_date = ? AND sr.report_type = ?`,
-      [reportDate, type]
+       WHERE sr.report_date = ? AND sr.report_type = ? AND sr.location_id = ?`,
+      [reportDate, type, locationId]
     );
     const entries = {};
     if (existing) {
@@ -166,9 +170,10 @@ router.post('/save', async (req, res) => {
 
     const userId = req.session.userId;
 
+    const locationId = getLocationId(req);
     let report = await db.get(
-      `SELECT id FROM stock_reports WHERE report_date = ? AND report_type = ?`,
-      [report_date, report_type]
+      `SELECT id FROM stock_reports WHERE report_date = ? AND report_type = ? AND location_id = ?`,
+      [report_date, report_type, locationId]
     );
     const hiddenItems = (req.body.hidden_items || '').trim();
     const hiddenSaveSet = new Set(hiddenItems.split(',').filter(Boolean).map(Number));
@@ -181,14 +186,14 @@ router.post('/save', async (req, res) => {
       );
     } else {
       const result = await db.run(
-        `INSERT INTO stock_reports (report_date, report_type, submitted_by, notes, hidden_items) VALUES (?,?,?,?,?)`,
-        [report_date, report_type, userId, notes || null, hiddenItems || null]
+        `INSERT INTO stock_reports (report_date, report_type, submitted_by, notes, hidden_items, location_id) VALUES (?,?,?,?,?,?)`,
+        [report_date, report_type, userId, notes || null, hiddenItems || null, locationId]
       );
       report = { id: result.insertId };
     }
 
     const items = await db.all(
-      `SELECT id FROM stock_items WHERE report_type = ? AND active = 1`, [report_type]
+      `SELECT id FROM stock_items WHERE report_type = ? AND active = 1 AND location_id = ?`, [report_type, locationId]
     );
     // Pick last non-empty value from potential array (desktop inputs come after mobile in DOM);
     // normalize decimal separator
@@ -284,9 +289,10 @@ router.post('/quick-add-item', async (req, res) => {
     if (!QUICK_MANAGE_TYPES.includes(report_type) || !name?.trim()) {
       return res.redirect(`/stock/form/${report_type || ''}?date=${report_date || ''}`);
     }
+    const locationId = getLocationId(req);
     await db.run(
-      `INSERT INTO stock_items (report_type, name, unit, sort_order, active) VALUES (?,?,?,999,1)`,
-      [report_type, name.trim(), 'szt', 999]
+      `INSERT INTO stock_items (report_type, name, unit, sort_order, active, location_id) VALUES (?,?,?,999,1,?)`,
+      [report_type, name.trim(), 'szt', 999, locationId]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt (quick add)', `${name.trim()} | Typ: ${report_type}`);
     req.flash('success', `Produkt "${name.trim()}" dodany.`);
@@ -302,6 +308,7 @@ router.post('/quick-add-item', async (req, res) => {
 
 router.get('/admin', requireManager, async (req, res) => {
   try {
+    const locationId = getLocationId(req);
     const { reportTypes, REPORT_META } = await loadMeta();
     const tab = req.query.tab || 'items';
     const activeType = req.query.type || (reportTypes[0]?.id || 'daily_morning');
@@ -320,10 +327,10 @@ router.get('/admin', requireManager, async (req, res) => {
          THEN 1 ELSE 0 END) AS nonzero_count
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id = si.id
-       WHERE si.report_type = ?
+       WHERE si.report_type = ? AND si.location_id = ?
        GROUP BY si.id
        ORDER BY si.sort_order, si.id`,
-      [activeType]
+      [activeType, locationId]
     );
     const editItem = editId ? await db.get(`SELECT * FROM stock_items WHERE id=?`, [editId]) : null;
 
@@ -381,7 +388,9 @@ router.get('/admin', requireManager, async (req, res) => {
     const history = await db.all(
       `SELECT sr.*, u.name AS submitted_by_name
        FROM stock_reports sr JOIN users u ON sr.submitted_by=u.id
-       ORDER BY sr.report_date DESC, sr.report_type LIMIT 100`
+       WHERE sr.location_id = ?
+       ORDER BY sr.report_date DESC, sr.report_type LIMIT 100`,
+      [locationId]
     );
 
     res.render('stock/admin', {
@@ -404,11 +413,12 @@ router.post('/admin/items', requireManager, async (req, res) => {
       req.flash('error', 'Nazwa i typ raportu są wymagane.');
       return res.redirect(`/stock/admin?type=${report_type || ''}`);
     }
+    const locationId = getLocationId(req);
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     await db.run(
-      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty) VALUES (?,?,?,?,?,?,?)`,
+      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, location_id) VALUES (?,?,?,?,?,?,?,?)`,
       [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal]
+       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, locationId]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');

@@ -4,7 +4,7 @@ const router  = express.Router();
 const multer  = require('multer');
 const crypto  = require('crypto');
 const db      = require('../database/db');
-const { requireRole }         = require('../middleware/auth');
+const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { parseMbankCSV, parseCardTerminalTitle } = require('../utils/bankParser');
 const { categorizeAndSave }   = require('../utils/categorizer');
 
@@ -20,8 +20,9 @@ const upload = multer({
   },
 });
 
-// All finance routes: admin only
+// All finance routes: admin only + feature check
 router.use(requireRole('admin'));
+router.use(requireFeature('finance'));
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -111,22 +112,29 @@ async function getAllCategories() {
   return db.all('SELECT * FROM finance_categories ORDER BY display_order');
 }
 
-async function getAvailableMonths() {
+async function getAvailableMonths(locationId) {
   return db.all(`
     SELECT DISTINCT month_key
     FROM bank_transactions
+    WHERE location_id = ?
     ORDER BY month_key DESC
     LIMIT 36
-  `);
+  `, [locationId]);
 }
 
 // ─── Generate financial events for all transactions in an import file ─────────
 
-async function generateFinancialEvents(importFileId) {
+async function generateFinancialEvents(importFileId, locationId) {
   const categories  = await getAllCategories();
   const catMap      = new Map(categories.map(c => [c.id, c]));
   const catSlugMap  = new Map(categories.map(c => [c.slug, c]));
   const EXCLUDED    = new Set(['owner_transfer','internal_transfer','donation_or_private_transfer','not_relevant']);
+
+  // Resolve locationId from import file if not passed
+  if (!locationId) {
+    const importFile = await db.get('SELECT location_id FROM bank_import_files WHERE id=?', [importFileId]);
+    locationId = importFile ? importFile.location_id : 1;
+  }
 
   const transactions = await db.all(
     'SELECT * FROM bank_transactions WHERE import_file_id = ?',
@@ -158,21 +166,20 @@ async function generateFinancialEvents(importFileId) {
         await db.run(`
           INSERT INTO financial_events
             (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-             amount, gross_amount, net_amount, fee_amount, description, counterparty_name, is_relevant, status)
-          VALUES (?, ?, ?, 'bank', 'income', ?, ?, ?, ?, ?, ?, ?, 1, 'relevant')
+             amount, gross_amount, net_amount, fee_amount, description, counterparty_name, is_relevant, status, location_id)
+          VALUES (?, ?, ?, 'bank', 'income', ?, ?, ?, ?, ?, ?, ?, 1, 'relevant', ?)
         `, [tx.id, tx.booking_date, tx.month_key, tx.category_id,
             parsed.gross, parsed.gross, tx.amount, parsed.fee,
-            tx.title, tx.counterparty_name]);
+            tx.title, tx.counterparty_name, locationId]);
 
         if (feeCat && parsed.fee > 0) {
-          // Card terminal fee — same month as the income settlement, no re-dating
           await db.run(`
             INSERT INTO financial_events
               (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-               amount, description, counterparty_name, is_relevant, status)
-            VALUES (?, ?, ?, 'bank', 'cost', ?, ?, ?, ?, 1, 'relevant')
+               amount, description, counterparty_name, is_relevant, status, location_id)
+            VALUES (?, ?, ?, 'bank', 'cost', ?, ?, ?, ?, 1, 'relevant', ?)
           `, [tx.id, tx.booking_date, tx.month_key, feeCat.id,
-              -parsed.fee, 'Prowizja terminala', tx.counterparty_name]);
+              -parsed.fee, 'Prowizja terminala', tx.counterparty_name, locationId]);
         }
         continue;
       }
@@ -182,8 +189,6 @@ async function generateFinancialEvents(importFileId) {
     const eventType = tx.direction === 'income' ? 'income'
                     : (cat && cat.event_type === 'cost' ? 'cost' : 'cost');
 
-    // For cost events: employee wages are always for the previous month;
-    // other costs use the billing month found in the title (e.g. "03/2024").
     const billingMonthKey = eventType === 'cost'
       ? (cat && cat.slug === 'employee_cost'
           ? prevMonthKey(tx.month_key)
@@ -193,10 +198,10 @@ async function generateFinancialEvents(importFileId) {
     await db.run(`
       INSERT INTO financial_events
         (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-         amount, description, counterparty_name, is_relevant, status)
-      VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?)
+         amount, description, counterparty_name, is_relevant, status, location_id)
+      VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?, ?)
     `, [tx.id, tx.booking_date, billingMonthKey, eventType, tx.category_id,
-        tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status]);
+        tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status, locationId]);
   }
 }
 
@@ -206,13 +211,15 @@ router.get('/', (req, res) => res.redirect('/finance/monthly'));
 // ─── GET /finance/import ──────────────────────────────────────────────────────
 router.get('/import', async (req, res) => {
   try {
+    const locationId = getLocationId(req);
     const imports = await db.all(`
       SELECT bif.*, u.name AS imported_by_name
       FROM bank_import_files bif
       LEFT JOIN users u ON u.id = bif.imported_by_user_id
+      WHERE bif.location_id = ?
       ORDER BY bif.imported_at DESC
       LIMIT 20
-    `);
+    `, [locationId]);
     res.render('finance/import', {
       title: 'Import wyciągu bankowego',
       currentPath: '/finance/import',
@@ -232,14 +239,15 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
       return res.redirect('/finance/import');
     }
 
+    const locationId = getLocationId(req);
     const buffer   = req.file.buffer;
     const fileName = req.file.originalname;
     const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-    // Check if this exact file was already imported
+    // Check if this exact file was already imported (for this location)
     const existingImport = await db.get(
-      'SELECT id, file_name, imported_at FROM bank_import_files WHERE file_hash = ?',
-      [fileHash]
+      'SELECT id, file_name, imported_at FROM bank_import_files WHERE file_hash = ? AND location_id = ?',
+      [fileHash, locationId]
     );
 
     // Parse CSV
@@ -316,8 +324,8 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
           (file_name, bank_name, account_number, statement_period_start, statement_period_end,
            currency, opening_balance, closing_balance,
            income_total_from_statement, expense_total_from_statement,
-           transaction_count_from_statement, file_hash, imported_by_user_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+           transaction_count_from_statement, file_hash, imported_by_user_id, location_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         fileName, 'mBank', meta.account_number,
         meta.period_start, meta.period_end,
@@ -325,7 +333,7 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
         meta.opening_balance, lastBalance,
         meta.income_total, meta.expense_total,
         meta.transaction_count, fileHash,
-        req.session.userId,
+        req.session.userId, locationId,
       ]);
       importFileId = r.insertId;
     }
@@ -337,13 +345,13 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
           INSERT INTO bank_transactions
             (import_file_id, booking_date, operation_date, operation_type, title,
              counterparty_name, counterparty_account, amount, balance_after, currency,
-             direction, month_key, raw_row_number, raw_hash, is_relevant, status)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'review')
+             direction, month_key, raw_row_number, raw_hash, is_relevant, status, location_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'review',?)
         `, [
           importFileId, tx.booking_date, tx.operation_date, tx.operation_type,
           tx.title, tx.counterparty_name, tx.counterparty_account,
           tx.amount, tx.balance_after, meta.currency || 'PLN',
-          tx.direction, tx.month_key, tx.raw_row_number, tx.raw_hash,
+          tx.direction, tx.month_key, tx.raw_row_number, tx.raw_hash, locationId,
         ]);
         importedCount++;
       } catch (e) {
@@ -359,7 +367,7 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
         [importFileId]
       );
       await categorizeAndSave(newTxs, { overwrite: false });
-      await generateFinancialEvents(importFileId);
+      await generateFinancialEvents(importFileId, locationId);
     }
 
     // Card terminal analysis
@@ -380,9 +388,10 @@ router.post('/import', upload.single('csv_file'), async (req, res) => {
       SELECT bif.*, u.name AS imported_by_name
       FROM bank_import_files bif
       LEFT JOIN users u ON u.id = bif.imported_by_user_id
+      WHERE bif.location_id = ?
       ORDER BY bif.imported_at DESC
       LIMIT 20
-    `);
+    `, [locationId]);
 
     res.render('finance/import', {
       title: 'Import wyciągu bankowego',
@@ -425,7 +434,8 @@ router.get('/monthly/:monthKey', async (req, res) => {
                        'lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
     const monthLabel = MONTHS_PL[month - 1] + ' ' + year;
 
-    const availableMonths = await getAvailableMonths();
+    const locationId = getLocationId(req);
+    const availableMonths = await getAvailableMonths(locationId);
     const categories      = await getAllCategories();
 
     // Monthly summary from financial_events
@@ -466,8 +476,8 @@ router.get('/monthly/:monthKey', async (req, res) => {
         COUNT(CASE WHEN fe.status='review' AND fe.is_relevant=1 THEN 1 END)       AS review_count
       FROM financial_events fe
       LEFT JOIN finance_categories fc ON fc.id = fe.category_id
-      WHERE fe.month_key = ?
-    `, [monthKey]) || {};
+      WHERE fe.month_key = ? AND fe.location_id = ?
+    `, [monthKey, locationId]) || {};
 
     summary.real_income = (summary.revenue_total || 0) - (summary.cost_total || 0);
     summary.operating_profit_before_tax_zus =
@@ -482,8 +492,8 @@ router.get('/monthly/:monthKey', async (req, res) => {
         COALESCE(SUM(CASE WHEN direction='expense' THEN ABS(amount) ELSE 0 END), 0)  AS raw_expenses,
         COUNT(*) AS tx_count
       FROM bank_transactions
-      WHERE month_key = ?
-    `, [monthKey]) || {};
+      WHERE month_key = ? AND location_id = ?
+    `, [monthKey, locationId]) || {};
 
     summary.raw_bank_cashflow = bankSummary.raw_net_cashflow || 0;
     summary.raw_bank_income   = bankSummary.raw_income       || 0;
@@ -497,10 +507,10 @@ router.get('/monthly/:monthKey', async (req, res) => {
              COALESCE(SUM(ABS(fe.amount)), 0) AS total
       FROM financial_events fe
       JOIN finance_categories fc ON fc.id = fe.category_id
-      WHERE fe.month_key = ? AND fe.is_relevant = 1
+      WHERE fe.month_key = ? AND fe.is_relevant = 1 AND fe.location_id = ?
       GROUP BY fc.id, fc.slug, fc.name, fc.event_type
       ORDER BY fc.display_order
-    `, [monthKey]);
+    `, [monthKey, locationId]);
 
     // All transactions for this month
     const transactions = await db.all(`
@@ -510,9 +520,9 @@ router.get('/monthly/:monthKey', async (req, res) => {
              fc.event_type AS category_event_type
       FROM bank_transactions bt
       LEFT JOIN finance_categories fc ON fc.id = bt.category_id
-      WHERE bt.month_key = ?
+      WHERE bt.month_key = ? AND bt.location_id = ?
       ORDER BY bt.booking_date, bt.id
-    `, [monthKey]);
+    `, [monthKey, locationId]);
 
     // Cost transactions from OTHER months whose billing month was re-dated to this month
     const redatedCosts = await db.all(`
@@ -528,8 +538,9 @@ router.get('/monthly/:monthKey', async (req, res) => {
         AND bt.month_key != ?
         AND fe.event_type = 'cost'
         AND fe.is_relevant = 1
+        AND fe.location_id = ?
       ORDER BY bt.booking_date, bt.id
-    `, [monthKey, monthKey]);
+    `, [monthKey, monthKey, locationId]);
 
     // Payroll data for this month (employer costs from accountant lista płac)
     let payrollSummary = null;
@@ -543,8 +554,8 @@ router.get('/monthly/:monthKey', async (req, res) => {
           SUM(employer_cost)      AS total_employer_cost,
           MAX(payment_date)       AS payment_date
         FROM payroll_costs
-        WHERE period_month = ?
-      `, [monthKey]);
+        WHERE period_month = ? AND location_id = ?
+      `, [monthKey, locationId]);
       if (payrollSummary && !payrollSummary.employee_count) payrollSummary = null;
     } catch (_) { /* columns not yet added — seed not run */ }
 
@@ -564,8 +575,7 @@ router.get('/monthly/:monthKey', async (req, res) => {
 // ─── GET /finance/payroll ─────────────────────────────────────────────────────
 router.get('/payroll', async (req, res) => {
   try {
-    // Payroll costs from lista płac (accountant PDFs)
-    // Falls back to base columns if payroll_seed.js hasn't been run yet
+    const locationId = getLocationId(req);
     let payrollRows;
     try {
       payrollRows = await db.all(`
@@ -576,8 +586,9 @@ router.get('/payroll', async (req, res) => {
                pc.payment_date, pc.review_status, pc.bank_reconciled
         FROM payroll_costs pc
         LEFT JOIN users u ON u.id = pc.employee_id
+        WHERE pc.location_id = ?
         ORDER BY pc.period_month DESC, pc.employee_name_raw
-      `);
+      `, [locationId]);
     } catch (_) {
       payrollRows = await db.all(`
         SELECT pc.id, pc.period_month, pc.employee_name_raw,
@@ -588,8 +599,9 @@ router.get('/payroll', async (req, res) => {
                0 AS zus_employer, pc.employer_cost AS paid_amount, NULL AS payment_date
         FROM payroll_costs pc
         LEFT JOIN users u ON u.id = pc.employee_id
+        WHERE pc.location_id = ?
         ORDER BY pc.period_month DESC, pc.employee_name_raw
-      `);
+      `, [locationId]);
     }
 
     // Group by period_month with totals
@@ -617,9 +629,9 @@ router.get('/payroll', async (req, res) => {
       SELECT bt.month_key, bt.counterparty_name, bt.amount, bt.booking_date, bt.title
       FROM bank_transactions bt
       JOIN finance_categories fc ON fc.id = bt.category_id
-      WHERE fc.slug = 'employee_cost'
+      WHERE fc.slug = 'employee_cost' AND bt.location_id = ?
       ORDER BY bt.month_key DESC, bt.counterparty_name
-    `);
+    `, [locationId]);
     const bankByMonth = {};
     for (const p of bankPayments) {
       if (!bankByMonth[p.month_key]) bankByMonth[p.month_key] = [];
@@ -785,6 +797,8 @@ async function generateFinancialEventsForSingle(tx) {
                : tx.status === 'review'   ? 'review'
                : 'not_relevant';
 
+  const txLocationId = tx.location_id || 1;
+
   if (cat && cat.slug === 'card_terminal_sales' && tx.direction === 'income') {
     const parsed = parseCardTerminalTitle(tx.title);
     if (parsed && parsed.gross > 0) {
@@ -792,19 +806,19 @@ async function generateFinancialEventsForSingle(tx) {
       await db.run(`
         INSERT INTO financial_events
           (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-           amount, gross_amount, net_amount, fee_amount, description, counterparty_name, is_relevant, status)
-        VALUES (?, ?, ?, 'bank', 'income', ?, ?, ?, ?, ?, ?, ?, 1, 'relevant')
+           amount, gross_amount, net_amount, fee_amount, description, counterparty_name, is_relevant, status, location_id)
+        VALUES (?, ?, ?, 'bank', 'income', ?, ?, ?, ?, ?, ?, ?, 1, 'relevant', ?)
       `, [tx.id, tx.booking_date, tx.month_key, tx.category_id,
           parsed.gross, parsed.gross, tx.amount, parsed.fee,
-          tx.title, tx.counterparty_name]);
+          tx.title, tx.counterparty_name, txLocationId]);
       if (feeCat && parsed.fee > 0) {
         await db.run(`
           INSERT INTO financial_events
             (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-             amount, description, counterparty_name, is_relevant, status)
-          VALUES (?, ?, ?, 'bank', 'cost', ?, ?, ?, ?, 1, 'relevant')
+             amount, description, counterparty_name, is_relevant, status, location_id)
+          VALUES (?, ?, ?, 'bank', 'cost', ?, ?, ?, ?, 1, 'relevant', ?)
         `, [tx.id, tx.booking_date, tx.month_key, feeCat.id,
-            -parsed.fee, 'Prowizja terminala', tx.counterparty_name]);
+            -parsed.fee, 'Prowizja terminala', tx.counterparty_name, txLocationId]);
       }
       return;
     }
@@ -820,10 +834,10 @@ async function generateFinancialEventsForSingle(tx) {
   await db.run(`
     INSERT INTO financial_events
       (bank_transaction_id, event_date, month_key, source, event_type, category_id,
-       amount, description, counterparty_name, is_relevant, status)
-    VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?)
+       amount, description, counterparty_name, is_relevant, status, location_id)
+    VALUES (?, ?, ?, 'bank', ?, ?, ?, ?, ?, ?, ?, ?)
   `, [tx.id, tx.booking_date, billingMonthKey, eventType, tx.category_id,
-      tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status]);
+      tx.amount, tx.title, tx.counterparty_name, tx.is_relevant ? 1 : 0, status, txLocationId]);
 }
 
 module.exports = router;

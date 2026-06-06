@@ -1,18 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { log } = require('../utils/logger');
 
-router.get('/', requireRole('admin'), async (req, res) => {
+router.get('/', requireRole('admin'), requireFeature('contracts'), async (req, res) => {
   try {
-    const workers = await db.all(`SELECT * FROM users WHERE role IN ('worker','location_manager') AND active=1 ORDER BY name`);
+    const locationId = getLocationId(req);
+    const workers = await db.all(
+      `SELECT * FROM users WHERE role IN ('worker','location_manager') AND active=1 AND location_id=? ORDER BY name`,
+      [locationId]
+    );
     const contracts = await db.all(`
       SELECT c.*, u.name as user_name
       FROM contracts c
       JOIN users u ON u.id=c.user_id
+      WHERE u.location_id=?
       ORDER BY c.active DESC, u.name, c.start_date DESC
-    `);
+    `, [locationId]);
     res.render('contracts/index', { workers, contracts });
   } catch (err) {
     console.error(err);
@@ -27,10 +32,11 @@ router.post('/', requireRole('admin'), async (req, res) => {
       req.flash('error', 'Pracownik, godziny i data rozpoczęcia są wymagane.');
       return res.redirect('/contracts');
     }
+    const locationId = getLocationId(req);
     await db.run(`UPDATE contracts SET active=0 WHERE user_id=?`, [user_id]);
     await db.run(
-      `INSERT INTO contracts (user_id, min_hours_per_month, hourly_rate, start_date, end_date, notes) VALUES (?,?,?,?,?,?)`,
-      [user_id, parseFloat(min_hours_per_month), hourly_rate ? parseFloat(hourly_rate) : null, start_date, end_date || null, notes || null]
+      `INSERT INTO contracts (user_id, min_hours_per_month, hourly_rate, start_date, end_date, notes, location_id) VALUES (?,?,?,?,?,?,?)`,
+      [user_id, parseFloat(min_hours_per_month), hourly_rate ? parseFloat(hourly_rate) : null, start_date, end_date || null, notes || null, locationId]
     );
     const _cw = await db.get('SELECT name FROM users WHERE id=?', [user_id]);
     log(res.locals.user, 'Dodanie umowy', `${_cw ? _cw.name : user_id} | ${min_hours_per_month}h/mies.${hourly_rate ? ' | ' + parseFloat(hourly_rate).toFixed(2) + ' zł/h' : ''}`);

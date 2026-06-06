@@ -1,2 +1,45 @@
+<div id="kredki-progress"><div id="kredki-progress-bar"></div></div>
+<script>
+(function() {
+  const bar = document.getElementById('kredki-progress');
+  let timer;
+
+  function start() {
+    clearTimeout(timer);
+    bar.classList.remove('done');
+    bar.classList.add('active');
+  }
+  function finish() {
+    bar.classList.remove('active');
+    bar.classList.add('done');
+    timer = setTimeout(() => { bar.classList.remove('done'); bar.querySelector('div').style.width = '0%'; }, 300);
+  }
+
+  // Hide bar immediately on page load (this page has finished loading)
+  finish();
+
+  // Show bar on any internal navigation click (with 80ms delay to skip instant loads)
+  document.addEventListener('click', function(e) {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript') || href.startsWith('mailto')) return;
+    if (a.target === '_blank') return;
+    // Only same-origin links
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin) return;
+    } catch(_) { return; }
+    timer = setTimeout(start, 80);
+  });
+
+  // Show bar on form submit
+  document.addEventListener('submit', function(e) {
+    if (e.target.tagName === 'FORM') {
+      timer = setTimeout(start, 80);
+    }
+  });
+})();
+</script>
 </body>
 </html>

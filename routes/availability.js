@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, getLocationId, requireFeature } = require('../middleware/auth');
 const { getMonday, toDateString, getWeekDates } = require('../utils/helpers');
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireFeature('availability'), async (req, res) => {
   try {
     const { role, id: loggedInUserId } = res.locals.user;
     const today = new Date();
@@ -13,12 +13,16 @@ router.get('/', requireAuth, async (req, res) => {
 
     let allUsers = [];
     let targetUserId = loggedInUserId;
-    if (role === 'admin' || role === 'location_manager') {
-      allUsers = await db.all(`SELECT id, name, role FROM users WHERE active=1 AND role != 'admin' ORDER BY name`);
+    if (role === 'admin' || role === 'location_manager' || role === 'super_admin') {
+      const locationId = getLocationId(req);
+      allUsers = await db.all(
+        `SELECT id, name, role FROM users WHERE active=1 AND role NOT IN ('admin','super_admin') AND location_id=? ORDER BY name`,
+        [locationId]
+      );
       if (req.query.userId) {
         const qId = parseInt(req.query.userId);
         if (allUsers.some(u => u.id === qId)) targetUserId = qId;
-      } else if ((role === 'admin' || role === 'location_manager') && allUsers.length > 0) {
+      } else if (allUsers.length > 0) {
         targetUserId = allUsers[0].id;
       }
     }
@@ -26,7 +30,7 @@ router.get('/', requireAuth, async (req, res) => {
       ? res.locals.user
       : (allUsers.find(u => u.id === targetUserId) || res.locals.user);
 
-    const isManager = role === 'admin' || role === 'location_manager';
+    const isManager = role === 'admin' || role === 'location_manager' || role === 'super_admin';
     const pastWeeks = isManager ? 12 : 0;
     const rangeStart = new Date(start);
     rangeStart.setDate(start.getDate() - pastWeeks * 7);

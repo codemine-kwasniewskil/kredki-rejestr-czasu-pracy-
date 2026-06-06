@@ -1,0 +1,85 @@
+<% locals.currentPath = '/locations'; %>
+<%- include('../partials/head', { title: 'Widoczność funkcji – ' + location.name }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+  <div class="max-w-3xl mx-auto">
+
+    <div class="flex items-center gap-3 mb-6">
+      <a href="/locations" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Widoczność funkcji</h1>
+        <p class="text-sm text-slate-500"><%= location.name %></p>
+      </div>
+    </div>
+
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-4">
+      <p class="text-sm text-slate-500 mb-4">
+        Zaznaczone = funkcja <strong>widoczna</strong> dla danej roli. Odznaczenie ukrywa link z menu i blokuje bezpośredni dostęp do strony.
+        Super Admin zawsze widzi wszystko.
+      </p>
+
+      <form method="POST" action="/locations/<%= location.id %>/features">
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200">
+                <th class="text-left py-2 pr-4 font-semibold text-slate-600 w-40">Funkcja</th>
+                <% roles.forEach(role => { %>
+                <th class="text-center py-2 px-4 font-semibold text-slate-600"><%= role.label %></th>
+                <% }) %>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <% features.forEach(feature => { %>
+              <tr class="hover:bg-slate-50">
+                <td class="py-3 pr-4 font-medium text-slate-700"><%= feature.label %></td>
+                <% roles.forEach(role => { %>
+                <%
+                  const saved = featureEnabled[role.key] && featureEnabled[role.key][feature.slug];
+                  const isEnabled = saved === undefined ? true : saved;
+                  const key = role.key + '_' + feature.slug;
+                %>
+                <td class="py-3 px-4 text-center">
+                  <label class="relative inline-flex items-center justify-center cursor-pointer">
+                    <input type="hidden" name="<%= key %>" value="0">
+                    <input type="checkbox" name="<%= key %>" value="1"
+                      <%= isEnabled ? 'checked' : '' %>
+                      class="sr-only peer">
+                    <div class="w-10 h-5 bg-slate-200 peer-checked:bg-blue-500 rounded-full transition-colors relative">
+                      <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5 translate-x-0"></div>
+                    </div>
+                  </label>
+                </td>
+                <% }) %>
+              </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-5 flex gap-3 justify-end">
+          <a href="/locations" class="btn btn-secondary">Anuluj</a>
+          <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</main>
+
+<style>
+  .peer:checked ~ div > div { transform: translateX(1.25rem); }
+</style>
+
+<%- include('../partials/footer') %>

@@ -64,6 +64,20 @@
     .badge-submitted { background-color: #FEF3C7; color: #B45309; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
     .badge-approved  { background-color: #D1FAE5; color: #065F46; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
     .badge-rejected  { background-color: #FEE2E2; color: #991B1B; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+
+    /* Page-load progress bar */
+    #kredki-progress {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      height: 3px; background: transparent; pointer-events: none;
+    }
+    #kredki-progress-bar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #3B82F6, #60A5FA);
+      transition: width 0.2s ease;
+      box-shadow: 0 0 6px #3B82F6;
+    }
+    #kredki-progress.active #kredki-progress-bar { width: 85%; transition: width 8s cubic-bezier(0.1,0.05,0,1); }
+    #kredki-progress.done   #kredki-progress-bar { width: 100%; transition: width 0.15s ease; }
   </style>
 <script>
   function syncTimePicker(container) {

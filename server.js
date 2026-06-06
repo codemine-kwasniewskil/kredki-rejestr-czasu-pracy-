@@ -16,7 +16,11 @@ app.use(express.json());
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const sessionStore = new MySQLStore({ createDatabaseTable: true }, db.pool);
+// Use MySQL session store on Vercel (needed for serverless persistence).
+// Use fast in-memory store locally — avoids ~100-200ms Aiven round-trip per request.
+const sessionStore = process.env.VERCEL
+  ? new MySQLStore({ createDatabaseTable: true }, db.pool)
+  : undefined; // express-session MemoryStore (default)
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'kredki-cafe-secret-2024',
@@ -28,12 +32,73 @@ app.use(session({
 
 app.use(flash());
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   res.locals.user = req.session.userId
     ? { id: req.session.userId, name: req.session.userName, role: req.session.userRole }
     : null;
   res.locals.success = req.flash('success');
   res.locals.error = req.flash('error');
+  res.locals.features = {};
+
+  if (req.session.userId) {
+    const locationId = req.session.userRole === 'super_admin'
+      ? req.session.currentLocationId
+      : req.session.userLocationId;
+
+    // --- currentLocation: use session cache, fallback to DB once ---
+    if (locationId) {
+      if (req.session.cachedLocationId === locationId && req.session.cachedLocationName) {
+        res.locals.currentLocation = { id: locationId, name: req.session.cachedLocationName };
+      } else {
+        try {
+          const loc = await db.get('SELECT id, name FROM locations WHERE id=?', [locationId]);
+          if (loc) {
+            res.locals.currentLocation = loc;
+            req.session.cachedLocationId = loc.id;
+            req.session.cachedLocationName = loc.name;
+          } else {
+            res.locals.currentLocation = null;
+          }
+        } catch (_) { res.locals.currentLocation = null; }
+      }
+    } else {
+      res.locals.currentLocation = null;
+    }
+
+    // --- allLocations for super_admin switcher: session cache ---
+    if (req.session.userRole === 'super_admin') {
+      if (req.session.cachedAllLocations) {
+        res.locals.allLocations = req.session.cachedAllLocations;
+      } else {
+        try {
+          const locs = await db.all('SELECT id, name FROM locations WHERE active=1 ORDER BY id');
+          res.locals.allLocations = locs;
+          req.session.cachedAllLocations = locs;
+        } catch (_) { res.locals.allLocations = []; }
+      }
+    }
+
+    // --- feature flags: session cache, keyed by locationId + role ---
+    if (req.session.userRole !== 'super_admin' && locationId) {
+      const cacheKey = `${locationId}:${req.session.userRole}`;
+      if (req.session.cachedFeaturesKey === cacheKey && req.session.cachedFeatures) {
+        res.locals.features = req.session.cachedFeatures;
+      } else {
+        try {
+          const rows = await db.all(
+            'SELECT feature, enabled FROM location_features WHERE location_id=? AND role=?',
+            [locationId, req.session.userRole]
+          );
+          const features = {};
+          for (const r of rows) if (!r.enabled) features[r.feature] = false;
+          res.locals.features = features;
+          req.session.cachedFeatures = features;
+          req.session.cachedFeaturesKey = cacheKey;
+        } catch (_) { res.locals.features = {}; }
+      }
+    }
+  }
+
   next();
 });
 
@@ -48,6 +113,7 @@ app.use('/logs', require('./routes/logs'));
 app.use('/reports', require('./routes/reports'));
 app.use('/finance', require('./routes/finance'));
 app.use('/stock', require('./routes/stock'));
+app.use('/locations', require('./routes/locations'));
 
 // Auto-migrations (safe to run on every startup)
 (async () => {
@@ -202,7 +268,149 @@ app.use('/stock', require('./routes/stock'));
       }
     }
 
-    // Seed items if empty
+    // ── Multi-location migrations ──────────────────────────────────────────
+
+    // Check if locations table exists (first time running this migration)
+    const locTableExists = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='locations'`);
+    const isFirstLocationMigration = !locTableExists || locTableExists.cnt === 0;
+
+    if (isFirstLocationMigration) {
+      console.log('Running multi-location migration — creating backup first...');
+      try {
+        const { createBackup } = require('./database/backup');
+        const backupFile = await createBackup();
+        console.log(`✓ Backup saved: ${backupFile}`);
+      } catch (e) {
+        console.error('Backup failed (continuing):', e.message);
+      }
+    }
+
+    // locations table
+    await db.run(`CREATE TABLE IF NOT EXISTS locations (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      name VARCHAR(100) NOT NULL,
+      slug VARCHAR(50) UNIQUE NOT NULL,
+      address VARCHAR(255),
+      active TINYINT(1) DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    // Seed first location
+    await db.run(`INSERT IGNORE INTO locations (id, name, slug) VALUES (1, 'Kredki', 'kredki')`);
+
+    // location_features: per-(location, role, feature) visibility toggles
+    await db.run(`CREATE TABLE IF NOT EXISTS location_features (
+      location_id INT NOT NULL,
+      role        VARCHAR(50) NOT NULL,
+      feature     VARCHAR(50) NOT NULL,
+      enabled     TINYINT(1) NOT NULL DEFAULT 1,
+      PRIMARY KEY (location_id, role, feature),
+      FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
+    )`);
+
+    // Add super_admin to role ENUM
+    try {
+      await db.run(`ALTER TABLE users MODIFY COLUMN role ENUM('super_admin','admin','location_manager','worker') NOT NULL`);
+    } catch(e) {}
+
+    // must_change_password column
+    const mcpCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='must_change_password'`);
+    if (!mcpCol || mcpCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) DEFAULT 0`);
+    }
+
+    // sort_order on shift_templates
+    const soCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shift_templates' AND COLUMN_NAME='sort_order'`);
+    if (!soCol || soCol.cnt === 0) {
+      await db.run(`ALTER TABLE shift_templates ADD COLUMN sort_order INT DEFAULT 0`);
+    }
+
+    // confirmed_by_employee on schedule_entries
+    const cbeCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedule_entries' AND COLUMN_NAME='confirmed_by_employee'`);
+    if (!cbeCol || cbeCol.cnt === 0) {
+      await db.run(`ALTER TABLE schedule_entries ADD COLUMN confirmed_by_employee TINYINT(1) DEFAULT 0`);
+    }
+
+    // Add location_id to each table (non-destructive — DEFAULT 1 so existing rows auto-assign)
+    const locColMigrations = [
+      { table: 'shift_templates', def: 'INT NOT NULL DEFAULT 1' },
+      { table: 'schedules', def: 'INT NULL' },
+      { table: 'contracts', def: 'INT NOT NULL DEFAULT 1' },
+      { table: 'stock_items', def: 'INT NOT NULL DEFAULT 1' },
+      { table: 'stock_reports', def: 'INT NOT NULL DEFAULT 1' },
+      { table: 'activity_logs', def: 'INT NULL' },
+    ];
+    for (const m of locColMigrations) {
+      const check = await db.get(
+        `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='location_id'`,
+        [m.table]
+      );
+      if (!check || check.cnt === 0) {
+        await db.run(`ALTER TABLE \`${m.table}\` ADD COLUMN location_id ${m.def}`);
+        console.log(`✓ Added location_id to ${m.table}`);
+      }
+    }
+
+    // users.location_id — nullable so super_admin can have NULL
+    const usersLocCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='location_id'`);
+    if (!usersLocCol || usersLocCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN location_id INT NULL`);
+      console.log('✓ Added location_id to users');
+    }
+
+    // Backfill users: existing admins + workers get location_id=1
+    await db.run(`UPDATE users SET location_id = 1 WHERE location_id IS NULL AND role != 'super_admin'`);
+
+    // Backfill schedules: set location_id=1 for all existing rows
+    await db.run(`UPDATE schedules SET location_id = 1 WHERE location_id IS NULL`);
+
+    // Fix schedules UNIQUE constraint: week_start → (week_start, location_id)
+    const schedConstraint = await db.get(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedules' AND CONSTRAINT_NAME='week_start' AND CONSTRAINT_TYPE='UNIQUE'`
+    );
+    if (schedConstraint && schedConstraint.cnt > 0) {
+      try {
+        await db.run(`ALTER TABLE schedules DROP INDEX week_start`);
+        await db.run(`ALTER TABLE schedules ADD UNIQUE KEY uq_schedule_week_location (week_start, location_id)`);
+        console.log('✓ Fixed schedules UNIQUE constraint to (week_start, location_id)');
+      } catch(e) { console.error('Schedules constraint fix:', e.message); }
+    }
+
+    // Fix stock_reports UNIQUE constraint: (report_date, report_type) → (report_date, report_type, location_id)
+    const stockConstraint = await db.get(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_reports' AND CONSTRAINT_NAME='uq_stock_report' AND CONSTRAINT_TYPE='UNIQUE'`
+    );
+    if (stockConstraint && stockConstraint.cnt > 0) {
+      const stockLocColExists = await db.get(
+        `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_reports' AND COLUMN_NAME='location_id'`
+      );
+      if (stockLocColExists && stockLocColExists.cnt > 0) {
+        try {
+          await db.run(`ALTER TABLE stock_reports DROP INDEX uq_stock_report`);
+          await db.run(`ALTER TABLE stock_reports ADD UNIQUE KEY uq_stock_report_location (report_date, report_type, location_id)`);
+          console.log('✓ Fixed stock_reports UNIQUE constraint');
+        } catch(e) { console.error('Stock reports constraint fix:', e.message); }
+      }
+    }
+
+    // Finance tables: add location_id if they exist
+    const financeTablesWithLoc = ['bank_import_files', 'bank_transactions', 'financial_events', 'payroll_costs'];
+    for (const tbl of financeTablesWithLoc) {
+      const tblExists = await db.get(
+        `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?`, [tbl]
+      );
+      if (!tblExists || tblExists.cnt === 0) continue;
+      const colExists = await db.get(
+        `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='location_id'`, [tbl]
+      );
+      if (!colExists || colExists.cnt === 0) {
+        await db.run(`ALTER TABLE \`${tbl}\` ADD COLUMN location_id INT NOT NULL DEFAULT 1`);
+        console.log(`✓ Added location_id to ${tbl}`);
+      }
+    }
+
+    // Seed stock_items if empty
     const stockItemCount = await db.get(`SELECT COUNT(*) as cnt FROM stock_items`);
     if (stockItemCount && stockItemCount.cnt === 0) {
       const seedItems = [
@@ -215,10 +423,8 @@ app.use('/stock', require('./routes/stock'));
         ['daily_morning','Mleko','Śmietanka (0.5l)','op','~5.5 op',60],
         ['daily_morning','Mleko','Śmietanka Vege','l','~3 l',70],
         ['daily_morning','Mleko','Masala','l','~9 l',80],
-        // daily_morning – Napoje
         ['daily_morning','Napoje','Tonic Classic','l','~19.5 l',90],
         ['daily_morning','Napoje','Tonic Zero','l','~12.5 l',100],
-        // daily_morning – Kawa
         ['daily_morning','Kawa','Espresso Classic','kg','~1 kg + hopper',110],
         ['daily_morning','Kawa','Espresso Kredki','kg','~0.5 kg + hopper',120],
         ['daily_morning','Kawa','Szybki Classic (Eth Abeba)','kg','~1.06 kg',130],
@@ -228,16 +434,13 @@ app.use('/stock', require('./routes/stock'));
         ['daily_morning','Kawa','Ręczny Tanat','szt','~6 szt',170],
         ['daily_morning','Kawa','Ręczny Sheep&Raven','szt','~6 szt',180],
         ['daily_morning','Kawa','Decaf','kg','~0.8 kg',190],
-        // daily_morning – Inne
         ['daily_morning','Inne','Lód','worki','~2 worki',200],
         ['daily_morning','Inne','Kakao','kg','~3 kg',210],
         ['daily_morning','Inne','Cytryna 🍋','szt','~2 szt',220],
         ['daily_morning','Inne','Limonka','szt','~2 szt',230],
-        // biweekly – Papier i higiena
         ['biweekly','Papier i higiena','Ręczniki papierowe','szt','~24 szt',10],
         ['biweekly','Papier i higiena','Papier toaletowy','szt','~86 szt',20],
         ['biweekly','Papier i higiena','Ręczniki ZZ','szt','~36+ szt',30],
-        // biweekly – Kubki i opakowania
         ['biweekly','Kubki i opakowania','Kubki duże','op','~21 op',40],
         ['biweekly','Kubki i opakowania','Kubki małe','op','~20 op',50],
         ['biweekly','Kubki i opakowania','Przykrywki kubki duże','op','~4+ op',60],
@@ -258,7 +461,6 @@ app.use('/stock', require('./routes/stock'));
         ['biweekly','Kubki i opakowania','Talerzyki papierowe','op','~1 op',210],
         ['biweekly','Kubki i opakowania','Podstawki na dwie kawy','-','dużo',220],
         ['biweekly','Kubki i opakowania','Cukier trzcinowy','-','dużo',225],
-        // biweekly – Chemia i sprzątanie
         ['biweekly','Chemia i sprzątanie','Mydło dla gości','op','~1 op',230],
         ['biweekly','Chemia i sprzątanie','Patyczki zapachowe do łazienki','szt','~1.5 szt',240],
         ['biweekly','Chemia i sprzątanie','Cafiza ⚠️','op','~1 op',250],
@@ -274,24 +476,20 @@ app.use('/stock', require('./routes/stock'));
         ['biweekly','Chemia i sprzątanie','Rękawiczki grube','par','~5 par',350],
         ['biweekly','Chemia i sprzątanie','Gąbki','szt','~5 szt',360],
         ['biweekly','Chemia i sprzątanie','Mopy','szt','~10 szt',370],
-        // biweekly – Worki na śmieci
         ['biweekly','Worki na śmieci','Worki 80L','op','~2.5 op',380],
         ['biweekly','Worki na śmieci','Worki 60L','op','~2.5 op',390],
         ['biweekly','Worki na śmieci','Worki BIO','op','~2.5 op',400],
-        // cakes_noon
         ['cakes_noon',null,'Baskijski','szt',null,10],
         ['cakes_noon',null,'Banofee','szt',null,20],
         ['cakes_noon',null,'Cherry pie','szt',null,30],
         ['cakes_noon',null,'Ciasto matcha','szt',null,40],
         ['cakes_noon',null,'Ciasto Ruby','szt',null,50],
         ['cakes_noon',null,'Ciastko chocolate chip','szt',null,60],
-        // products_shift – Kanapki
         ['products_shift','Kanapki','Kanapka z serk. szcz. i jajkiem','szt',null,10],
         ['products_shift','Kanapki','Kanapka z twarogiem ziołowym','szt',null,20],
         ['products_shift','Kanapki','Kanapka z szynką Cotto','szt',null,30],
         ['products_shift','Kanapki','Kanapka pesto','szt',null,40],
         ['products_shift','Kanapki','Kanapka hummus','szt',null,50],
-        // products_shift – Ciasta jednodniowe
         ['products_shift','Ciasta jednodniowe','Ciastko chocolate chip','szt',null,60],
         ['products_shift','Ciasta jednodniowe','Ciasto matcha','szt',null,70],
         ['products_shift','Ciasta jednodniowe','Ciasto Ruby','szt',null,80],
@@ -317,6 +515,17 @@ app.use('/stock', require('./routes/stock'));
         );
       }
     }
+
+    // Initialize sort_order for existing templates (only when all are 0)
+    const sortCheck = await db.get('SELECT COUNT(*) as cnt FROM shift_templates WHERE sort_order > 0');
+    if (sortCheck && sortCheck.cnt === 0) {
+      const tpls = await db.all('SELECT id FROM shift_templates ORDER BY start_time');
+      for (let i = 0; i < tpls.length; i++) {
+        await db.run('UPDATE shift_templates SET sort_order=? WHERE id=?', [i, tpls[i].id]);
+      }
+      if (tpls.length) console.log('✓ Initialized shift_templates sort_order');
+    }
+
   } catch (e) {
     console.error('Auto-migration error:', e.message);
   }

@@ -1,0 +1,139 @@
+<% locals.currentPath = '/locations'; %>
+<%- include('../partials/head', { title: 'Lokalizacje' }) %>
+<%- include('../partials/nav') %>
+
+<main class="md:ml-60 min-h-screen p-6 pt-20 md:pt-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <h1 class="text-xl font-bold text-slate-800">Lokalizacje</h1>
+      <button onclick="document.getElementById('addModal').classList.remove('hidden')" class="btn btn-primary">
+        + Dodaj lokalizację
+      </button>
+    </div>
+
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto mb-8">
+      <table class="w-full">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Nazwa</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Slug</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Adres</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Użytkownicy</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Akcje</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <% locations.forEach(loc => { %>
+          <tr class="hover:bg-slate-50 <%= currentLocation && currentLocation.id === loc.id ? 'bg-blue-50' : '' %>">
+            <td class="px-4 py-3 text-sm font-medium text-slate-800">
+              <%= loc.name %>
+              <% if (currentLocation && currentLocation.id === loc.id) { %>
+                <span class="ml-2 text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">aktywna</span>
+              <% } %>
+            </td>
+            <td class="px-4 py-3 text-sm font-mono text-slate-500"><%= loc.slug %></td>
+            <td class="px-4 py-3 text-sm text-slate-500"><%= loc.address || '—' %></td>
+            <td class="px-4 py-3 text-sm text-slate-500"><%= loc.user_count %></td>
+            <td class="px-4 py-3">
+              <span class="text-xs px-2 py-1 rounded-full <%= loc.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600' %>">
+                <%= loc.active ? 'Aktywna' : 'Nieaktywna' %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+              <% if (!currentLocation || currentLocation.id !== loc.id) { %>
+              <form method="POST" action="/locations/switch">
+                <input type="hidden" name="locationId" value="<%= loc.id %>">
+                <button class="btn btn-secondary text-xs">Przełącz</button>
+              </form>
+              <% } %>
+              <a href="/locations/<%= loc.id %>/features" class="btn btn-secondary text-xs">Funkcje</a>
+              <button onclick="openEdit(<%= JSON.stringify(loc) %>)" class="btn btn-secondary text-xs">Edytuj</button>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Add modal -->
+<div id="addModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h2 class="text-base font-bold text-slate-800">Nowa lokalizacja</h2>
+      <button onclick="document.getElementById('addModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form method="POST" action="/locations" class="px-6 py-4 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa *</label>
+        <input type="text" name="name" required class="input w-full" placeholder="np. Kredki Centrum">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Slug * (tylko a-z, 0-9, - _)</label>
+        <input type="text" name="slug" required class="input w-full font-mono" placeholder="np. kredki-centrum">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Adres</label>
+        <input type="text" name="address" class="input w-full" placeholder="ul. Przykładowa 1">
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')" class="btn btn-secondary">Anuluj</button>
+        <button type="submit" class="btn btn-primary">Dodaj</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div id="editModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h2 class="text-base font-bold text-slate-800">Edytuj lokalizację</h2>
+      <button onclick="document.getElementById('editModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="editForm" method="POST" action="" class="px-6 py-4 space-y-4">
+      <input type="hidden" name="_method" value="PUT">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa *</label>
+        <input type="text" name="name" id="editName" required class="input w-full">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Adres</label>
+        <input type="text" name="address" id="editAddress" class="input w-full">
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="active" id="editActive" value="1" class="rounded">
+        <label for="editActive" class="text-sm text-slate-700">Aktywna</label>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="document.getElementById('editModal').classList.add('hidden')" class="btn btn-secondary">Anuluj</button>
+        <button type="submit" class="btn btn-primary">Zapisz</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEdit(loc) {
+  document.getElementById('editForm').action = '/locations/' + loc.id;
+  document.getElementById('editName').value = loc.name || '';
+  document.getElementById('editAddress').value = loc.address || '';
+  document.getElementById('editActive').checked = !!loc.active;
+  document.getElementById('editModal').classList.remove('hidden');
+}
+</script>
+
+<%- include('../partials/footer') %>

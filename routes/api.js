@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, getLocationId } = require('../middleware/auth');
 const { calcHours } = require('../utils/helpers');
 const { log } = require('../utils/logger');
 
@@ -345,7 +345,7 @@ router.put('/availability/:date/time', requireAuth, async (req, res) => {
   }
 });
 
-// Lock/unlock a specific month for ALL non-admin users
+// Lock/unlock a specific month for ALL non-admin users in current location
 router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { yearMonth } = req.params;
@@ -353,7 +353,8 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
     if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
       return res.status(400).json({ error: 'Nieprawidłowy format miesiąca (YYYY-MM).' });
     }
-    const users = await db.all("SELECT id FROM users WHERE active=1 AND role != 'admin'");
+    const locationId = getLocationId(req);
+    const users = await db.all("SELECT id FROM users WHERE active=1 AND role NOT IN ('admin','super_admin') AND location_id=?", [locationId]);
     if (users.length === 0) {
       return res.json({ success: true, locked: locked ? 1 : 0, count: 0 });
     }
@@ -371,7 +372,7 @@ router.put('/availability/month/:yearMonth/lock-all', requireRole('admin', 'loca
     }
     // When unlocking: also clear the global availability_locked flag so workers can actually edit
     if (!locked) {
-      await db.run("UPDATE users SET availability_locked=0 WHERE active=1 AND role != 'admin'");
+      await db.run("UPDATE users SET availability_locked=0 WHERE active=1 AND role NOT IN ('admin','super_admin') AND location_id=?", [locationId]);
     }
     log(res.locals.user, locked ? 'Zablokowanie miesiąca (wszyscy)' : 'Odblokowanie miesiąca (wszyscy)', `${yearMonth} — ${users.length} użytkowników`);
     res.json({ success: true, locked: locked ? 1 : 0, count: users.length });
@@ -397,7 +398,8 @@ router.delete('/availability/month-locks', requireRole('admin', 'location_manage
 router.put('/users/availability-lock-all', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const { locked } = req.body;
-    await db.run("UPDATE users SET availability_locked=? WHERE role != 'admin'", [locked ? 1 : 0]);
+    const locationId = getLocationId(req);
+    await db.run("UPDATE users SET availability_locked=? WHERE role NOT IN ('admin','super_admin') AND location_id=?", [locked ? 1 : 0, locationId]);
     log(res.locals.user, locked ? 'Zablokowanie dostępności (wszyscy)' : 'Odblokowanie dostępności (wszyscy)');
     res.json({ success: true, locked: locked ? 1 : 0 });
   } catch (err) {
@@ -431,16 +433,17 @@ router.put('/users/:id/availability-lock', requireRole('admin', 'location_manage
 
 router.get('/schedule/week-hours/:weekStart', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
-    const schedule = await db.get('SELECT * FROM schedules WHERE week_start=?', [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get('SELECT * FROM schedules WHERE week_start=? AND location_id=?', [req.params.weekStart, locationId]);
     if (!schedule) return res.json({ workers: [] });
 
     const workers = await db.all(`
       SELECT u.id, u.name, c.min_hours_per_month
       FROM users u
       LEFT JOIN contracts c ON c.user_id=u.id AND c.active=1
-      WHERE u.role='worker' AND u.active=1
+      WHERE u.role='worker' AND u.active=1 AND u.location_id=?
       ORDER BY u.name
-    `);
+    `, [locationId]);
 
     const entries = await db.all(`
       SELECT se.user_id,
@@ -475,13 +478,14 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
 
     const { getWeekDates, toDateString } = require('../utils/helpers');
 
+    const locationId = getLocationId(req);
     const workers = await db.all(`
       SELECT u.id, u.name, c.min_hours_per_month, c.hourly_rate
       FROM users u
       LEFT JOIN contracts c ON c.user_id = u.id AND c.active = 1
-      WHERE u.active = 1 AND u.role IN ('worker', 'location_manager')
+      WHERE u.active = 1 AND u.role IN ('worker', 'location_manager') AND u.location_id = ?
       ORDER BY u.name
-    `);
+    `, [locationId]);
     if (!workers.length) return res.json({ proposals: [] });
 
     const weekDates = getWeekDates(weekStart);
@@ -515,7 +519,7 @@ router.post('/schedule/propose', requireRole('admin', 'location_manager'), async
       monthHours[e.user_id] = (monthHours[e.user_id] || 0) + calcHours(e.start_time, e.end_time);
     }
 
-    const templates = await db.all(`SELECT * FROM shift_templates WHERE active = 1 ORDER BY start_time`);
+    const templates = await db.all(`SELECT * FROM shift_templates WHERE active = 1 AND location_id = ? ORDER BY start_time`, [locationId]);
     if (!templates.length) return res.status(400).json({ error: 'Brak aktywnych szablonów zmian.' });
 
     const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
@@ -646,7 +650,8 @@ router.post('/schedule/entry/:id/confirm', requireAuth, async (req, res) => {
 
 router.delete('/schedule/week/:weekStart/entries', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
-    const schedule = await db.get('SELECT id FROM schedules WHERE week_start=?', [req.params.weekStart]);
+    const locationId = getLocationId(req);
+    const schedule = await db.get('SELECT id FROM schedules WHERE week_start=? AND location_id=?', [req.params.weekStart, locationId]);
     if (!schedule) return res.json({ ok: false, error: 'Brak grafiku dla tego tygodnia.' });
     await db.run('DELETE FROM schedule_entries WHERE schedule_id=?', [schedule.id]);
     log(res.locals.user, 'Wyczyszczenie tygodnia', req.params.weekStart);

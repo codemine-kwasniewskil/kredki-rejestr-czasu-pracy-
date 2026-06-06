@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 
-router.get('/', requireRole('admin'), async (req, res) => {
+router.get('/', requireRole('admin'), requireFeature('logs'), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = 50;
@@ -12,8 +12,13 @@ router.get('/', requireRole('admin'), async (req, res) => {
     const dateFrom = req.query.from || '';
     const dateTo = req.query.to || '';
 
+    const locationId = getLocationId(req);
     const parts = ['1=1'];
     const params = [];
+    // Show logs for current location + system-level logs (super_admin, NULL location)
+    parts.push('(location_id = ? OR location_id IS NULL)');
+    params.push(locationId);
+
     if (search) {
       parts.push('(action LIKE ? OR details LIKE ? OR user_name LIKE ?)');
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);

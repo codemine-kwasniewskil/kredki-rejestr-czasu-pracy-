@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { calcHours, formatHours } = require('../utils/helpers');
 
-router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
+router.get('/', requireRole('admin', 'location_manager'), requireFeature('reports'), async (req, res) => {
   try {
     const today = new Date();
     const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const month = (req.query.month || defaultMonth).substring(0, 7);
     const [mYear, mMonth] = month.split('-').map(Number);
+    const locationId = getLocationId(req);
 
-    // Build list of all calendar days in the month for conflict checking
     const daysInMonth = new Date(mYear, mMonth, 0).getDate();
     const allDates = Array.from({ length: daysInMonth }, (_, i) =>
       `${month}-${String(i + 1).padStart(2, '0')}`
@@ -21,25 +21,30 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
       SELECT u.id, u.name, c.min_hours_per_month, c.hourly_rate
       FROM users u
       LEFT JOIN contracts c ON c.user_id = u.id AND c.active = 1
-      WHERE u.active = 1 AND u.role IN ('worker', 'location_manager')
+      WHERE u.active = 1 AND u.role IN ('worker', 'location_manager') AND u.location_id = ?
       ORDER BY u.name
-    `);
+    `, [locationId]);
 
-    const availRows = await db.all(
-      `SELECT user_id, date, status, start_time, end_time FROM availability WHERE date LIKE ?`,
-      [month + '%']
-    );
+    const workerIds = workers.map(w => w.id);
 
-    const schedRows = await db.all(`
-      SELECT se.user_id, se.date,
-             COALESCE(se.custom_start, st.start_time) AS start_time,
-             COALESCE(se.custom_end, st.end_time) AS end_time
-      FROM schedule_entries se
-      LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-      WHERE se.date LIKE ?
-    `, [month + '%']);
+    const availRows = workerIds.length
+      ? await db.all(
+          `SELECT user_id, date, status, start_time, end_time FROM availability WHERE user_id IN (?) AND date LIKE ?`,
+          [workerIds, month + '%']
+        )
+      : [];
 
-    // Index by user_id + date
+    const schedRows = workerIds.length
+      ? await db.all(`
+          SELECT se.user_id, se.date,
+                 COALESCE(se.custom_start, st.start_time) AS start_time,
+                 COALESCE(se.custom_end, st.end_time) AS end_time
+          FROM schedule_entries se
+          LEFT JOIN shift_templates st ON st.id = se.shift_template_id
+          WHERE se.date LIKE ? AND se.user_id IN (?)
+        `, [month + '%', workerIds])
+      : [];
+
     const availByUserDate = {};
     for (const a of availRows) {
       availByUserDate[`${a.user_id}_${a.date}`] = a;
@@ -58,7 +63,6 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
       const availDays = myAvail.filter(a => a.status === 'available').length;
       const unavailDays = myAvail.filter(a => a.status === 'unavailable').length;
 
-      // Hours declared available (only where time range is set)
       const availHoursWithTime = myAvail
         .filter(a => a.status === 'available' && a.start_time && a.end_time)
         .reduce((sum, a) => sum + calcHours(a.start_time, a.end_time), 0);
@@ -67,7 +71,6 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
       const scheduledHours = mySched.reduce((sum, s) => sum + calcHours(s.start_time, s.end_time), 0);
       const scheduledDays = mySched.length;
 
-      // Conflict detection per scheduled day
       const conflicts = [];
       for (const s of mySched) {
         const avail = availByUserDate[`${w.id}_${s.date}`];
@@ -76,7 +79,6 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
         } else if (avail.status === 'unavailable') {
           conflicts.push({ date: s.date, type: 'unavailable', shiftStart: s.start_time, shiftEnd: s.end_time });
         } else if (avail.status === 'available' && avail.start_time && avail.end_time) {
-          // Shift starts before or ends after declared availability
           const shiftStartMin = timeToMin(s.start_time);
           const shiftEndMin = timeToMin(s.end_time);
           const availStartMin = timeToMin(avail.start_time);
@@ -108,7 +110,6 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
       };
     });
 
-    // Build month options: 12 months back and 6 months forward
     const monthOptions = [];
     const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
     for (let i = 0; i < 18; i++) {
@@ -119,7 +120,6 @@ router.get('/', requireRole('admin', 'location_manager'), async (req, res) => {
     }
 
     const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
-
     const tab = req.query.tab === 'costs' ? 'costs' : 'availability';
 
     res.render('reports/index', {
@@ -136,8 +136,6 @@ function timeToMin(t) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
-
-// ── Employee hours report ──────────────────────────────────────────────────
 
 const MONTHS_PL_FULL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
 const DAYS_PL = ['Nd','Pon','Wt','Śr','Czw','Pt','Sob'];
@@ -193,12 +191,13 @@ router.get('/employee', requireRole('admin', 'location_manager'), async (req, re
     const today = new Date();
     const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const month = (req.query.month || defaultMonth).substring(0, 7);
+    const locationId = getLocationId(req);
 
     const employees = await db.all(`
       SELECT id, name FROM users
-      WHERE active=1 AND role IN ('worker','location_manager')
+      WHERE active=1 AND role IN ('worker','location_manager') AND location_id=?
       ORDER BY name
-    `);
+    `, [locationId]);
 
     const monthOptions = [];
     const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
@@ -223,9 +222,13 @@ router.get('/employee/:userId/:month', requireRole('admin', 'location_manager'),
   try {
     const data = await buildEmployeeReport(req.params.userId, req.params.month);
     if (!data) return res.status(404).render('error', { message: 'Pracownik nie znaleziony.' });
+    const locationId = getLocationId(req);
 
     const today = new Date();
-    const employees = await db.all(`SELECT id, name FROM users WHERE active=1 AND role IN ('worker','location_manager') ORDER BY name`);
+    const employees = await db.all(
+      `SELECT id, name FROM users WHERE active=1 AND role IN ('worker','location_manager') AND location_id=? ORDER BY name`,
+      [locationId]
+    );
     const monthOptions = [];
     const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
     for (let i = 0; i < 18; i++) {
