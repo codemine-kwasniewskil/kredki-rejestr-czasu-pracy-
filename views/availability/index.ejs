@@ -168,8 +168,9 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const dayYM = dateStr.substring(0, 7);
             const isMonthAdminLockedDay = lockedMonths.has(dayYM);
             const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonth === dayYM;
-            const isLocked = isPast
-              || !!(lockBeforeStr && dateStr < lockBeforeStr && !unlockedMonths.has(dayYM))
+            const isAdminUnlocked = unlockedMonths.has(dayYM);
+            const isLocked = (isPast && !isAdminUnlocked)
+              || !!(lockBeforeStr && dateStr < lockBeforeStr && !isAdminUnlocked)
               || (user.role === 'worker' && isMonthAdminLockedDay)
               || (user.role === 'worker' && isMonthAutoLockedDay);
             const canEdit = !isLocked;

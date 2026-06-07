@@ -187,10 +187,11 @@ router.put('/availability/month/:yearMonth', requireAuth, async (req, res) => {
       ? (() => { const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1); return `${nm.getFullYear()}-${String(nm.getMonth()+1).padStart(2,'0')}-01`; })()
       : null;
 
+    const isAdminRole = role === 'admin' || role === 'location_manager';
     const dates = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      if (dateStr < todayStr) continue;
+      if (dateStr < todayStr && !adminExplicitUnlock && !isAdminRole) continue;
       if (lockBeforeStr && dateStr < lockBeforeStr) continue;
       dates.push(dateStr);
     }
