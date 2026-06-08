@@ -232,9 +232,30 @@ router.post('/:id/clone', async (req, res) => {
       [newId, sourceId]
     );
 
+    // Copy users (active, non-super_admin) — generate unique username by appending new location slug
+    const bcrypt = require('bcryptjs');
+    const sourceUsers = await db.all(
+      `SELECT name, username, role, password_hash FROM users
+       WHERE location_id=? AND active=1 AND role != 'super_admin'
+       AND (registration_pending IS NULL OR registration_pending=0)`,
+      [sourceId]
+    );
+    let copiedUsers = 0;
+    for (const u of sourceUsers) {
+      const newUsername = `${u.username}_${cleanSlug}`.slice(0, 60);
+      const conflict = await db.get('SELECT id FROM users WHERE username=?', [newUsername]);
+      if (conflict) continue; // skip if username already exists
+      await db.run(
+        `INSERT INTO users (name, username, role, password_hash, active, must_change_password, location_id)
+         VALUES (?,?,?,?,1,1,?)`,
+        [u.name, newUsername, u.role, u.password_hash, newId]
+      );
+      copiedUsers++;
+    }
+
     delete req.session.cachedAllLocations;
     log(res.locals.user, 'Klonowanie lokalizacji', `${source.name} → ${name.trim()}`);
-    req.flash('success', `Lokalizacja "${name.trim()}" utworzona jako kopia "${source.name}".`);
+    req.flash('success', `Lokalizacja "${name.trim()}" utworzona jako kopia "${source.name}" (skopiowano ${copiedUsers} użytkowników).`);
     res.redirect('/locations');
   } catch (err) {
     console.error(err);
