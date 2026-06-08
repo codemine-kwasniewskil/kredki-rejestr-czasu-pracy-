@@ -263,6 +263,17 @@ const migrationsReady = (async () => {
       await db.run(`ALTER TABLE stock_reports ADD COLUMN hidden_items TEXT DEFAULT NULL`);
     }
 
+    // hopper_qty on stock_report_entries (fraction: 0.25/0.5/0.75/1.0)
+    const hopperQtyCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_report_entries' AND COLUMN_NAME='hopper_qty'`);
+    if (!hopperQtyCol || hopperQtyCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_report_entries ADD COLUMN hopper_qty DECIMAL(4,2) DEFAULT NULL`);
+    }
+    // hopper_weight on stock_items (full hopper capacity in kg, default 1.2)
+    const hopperWeightCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='hopper_weight'`);
+    if (!hopperWeightCol || hopperWeightCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN hopper_weight DECIMAL(5,2) DEFAULT 1.2`);
+    }
+
     // Standalone category/unit catalogs
     await db.run(`CREATE TABLE IF NOT EXISTS stock_categories (
       id INT AUTO_INCREMENT PRIMARY KEY,

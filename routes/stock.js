@@ -129,20 +129,20 @@ router.get('/form/:type', async (req, res) => {
     const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
     const canManageItems = QUICK_MANAGE_TYPES.includes(type);
 
-    // Last reported value per item (most recent report of this type, this location)
+    // Last reported value per item (most recent report before this date)
     const lastRows = await db.all(
-      `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie
+      `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie, sre.hopper_qty, sr.report_date AS last_date
        FROM stock_report_entries sre
        INNER JOIN (
          SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
          FROM stock_report_entries sre2
          JOIN stock_reports sr2 ON sr2.id = sre2.report_id
-         WHERE sr2.report_type = ? AND sr2.location_id = ?
+         WHERE sr2.report_type = ? AND sr2.location_id = ? AND sr2.report_date < ?
          GROUP BY sre2.item_id
        ) latest ON latest.item_id = sre.item_id
        JOIN stock_reports sr ON sr.id = sre.report_id AND sr.report_date = latest.max_date
        WHERE sr.report_type = ? AND sr.location_id = ?`,
-      [type, locationId, type, locationId]
+      [type, locationId, reportDate, type, locationId]
     );
     const lastValues = {};
     for (const row of lastRows) lastValues[row.item_id] = row;
@@ -212,6 +212,10 @@ router.post('/save', async (req, res) => {
     for (const item of items) {
       const id = item.id;
       if (hiddenSaveSet.has(id)) continue;
+      const hqRaw = req.body[`hopper_qty_${id}`];
+      const hqStr = Array.isArray(hqRaw) ? (hqRaw.find(v => v && v.trim()) || '') : (hqRaw || '');
+      const hq = hqStr.trim() ? parseFloat(hqStr) || null : null;
+
       if (meta.isShift) {
         const s_o = pick(req.body[`stan_otwarcie_${id}`]);
         const d   = pick(req.body[`dostawa_${id}`]);
@@ -219,20 +223,20 @@ router.post('/save', async (req, res) => {
         const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
         const usz = pick(req.body[`uszkodzone_${id}`]);
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone)
-           VALUES (?,?,?,?,?,?,?)
+          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty)
+           VALUES (?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE stan_otwarcie=VALUES(stan_otwarcie),dostawa=VALUES(dostawa),
-             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone)`,
-          [report.id, id, s_o, d, s16, s_z, usz]
+             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty)`,
+          [report.id, id, s_o, d, s16, s_z, usz, hq]
         );
       } else {
         const qty = pick(req.body[`qty_${id}`]);
         const n   = (req.body[`notes_${id}`] || '').trim() || null;
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes)
-           VALUES (?,?,?,?)
-           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes)`,
-          [report.id, id, qty, n]
+          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty)
+           VALUES (?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty)`,
+          [report.id, id, qty, n, hq]
         );
       }
     }
@@ -263,7 +267,7 @@ router.get('/view/:id', async (req, res) => {
     const meta = REPORT_META[report.report_type] || { label: report.report_type, icon: '📋', isShift: false };
 
     const items = await db.all(
-      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone
+      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
        WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
@@ -409,17 +413,18 @@ router.get('/admin', requireManager, async (req, res) => {
 // Add item
 router.post('/admin/items', requireManager, async (req, res) => {
   try {
-    const { report_type, category, name, unit, target_qty, sort_order, min_qty } = req.body;
+    const { report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight } = req.body;
     if (!name || !report_type) {
       req.flash('error', 'Nazwa i typ raportu są wymagane.');
       return res.redirect(`/stock/admin?type=${report_type || ''}`);
     }
     const locationId = getLocationId(req);
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
+    const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     await db.run(
-      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, location_id) VALUES (?,?,?,?,?,?,?,?)`,
+      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, location_id) VALUES (?,?,?,?,?,?,?,?,?)`,
       [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, locationId]
+       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, locationId]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');
@@ -434,12 +439,13 @@ router.post('/admin/items', requireManager, async (req, res) => {
 // Update item
 router.post('/admin/items/:id', requireManager, async (req, res) => {
   try {
-    const { report_type, category, name, unit, target_qty, sort_order, active, min_qty } = req.body;
+    const { report_type, category, name, unit, target_qty, sort_order, active, min_qty, hopper_weight } = req.body;
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
+    const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     await db.run(
-      `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=? WHERE id=?`,
+      `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=? WHERE id=?`,
       [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, req.params.id]
+       target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, req.params.id]
     );
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');

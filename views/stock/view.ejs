@@ -25,6 +25,20 @@
       <div class="mb-4 bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm"><%= success[0] %></div>
     <% } %>
 
+    <%
+    function isCoffeeCategory(cat) {
+      if (!cat) return false;
+      const c = cat.toLowerCase();
+      return c.includes('kawa') || c.includes('coffee');
+    }
+    function hopperLabel(qty) {
+      const q = parseFloat(qty);
+      if (q === 0.25) return '1/4';
+      if (q === 0.5)  return '2/4';
+      if (q === 0.75) return '3/4';
+      return '4/4';
+    }
+    %>
     <% if (report.report_type === 'products_shift') { %>
       <% for (const group of grouped) { %>
         <% if (group.category) { %>
@@ -109,14 +123,20 @@
         <div class="snapshot-card bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-50">
           <% for (const item of group.items) { %>
             <% const qVal = parseFloat(item.quantity); const qBelow = item.min_qty !== null && !isNaN(qVal) && qVal < item.min_qty; %>
-            <div class="flex items-center justify-between px-4 py-2.5 <%= qBelow ? 'bg-amber-50' : '' %>">
-              <div>
+            <% const isCoffee = isCoffeeCategory(item.category); %>
+            <div class="flex items-center justify-between px-4 py-2.5 flex-wrap gap-y-1 <%= qBelow ? 'bg-amber-50' : '' %>">
+              <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-slate-800 flex items-center gap-1.5">
                   <%= item.name %>
                   <% if (qBelow) { %><span class="text-amber-600 text-xs font-semibold">⚠️ mało</span><% } %>
                 </div>
                 <% if (item.min_qty !== null) { %>
                   <div class="text-xs text-amber-600">Min: <%= item.min_qty %></div>
+                <% } %>
+                <% if (isCoffee && item.hopper_qty) { %>
+                  <div class="text-xs text-amber-700 mt-0.5">
+                    Hopper: <%= hopperLabel(item.hopper_qty) %> &middot; <%= (parseFloat(item.hopper_qty) * (parseFloat(item.hopper_weight) || 1.2)).toFixed(2) %> kg
+                  </div>
                 <% } %>
               </div>
               <div class="flex items-center gap-2">

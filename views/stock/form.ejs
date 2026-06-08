@@ -25,6 +25,21 @@
       <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"><%= error[0] %></div>
     <% } %>
 
+    <%
+    function isCoffeeCategory(cat) {
+      if (!cat) return false;
+      const c = cat.toLowerCase();
+      return c.includes('kawa') || c.includes('coffee');
+    }
+    function hopperLabel(qty) {
+      const q = parseFloat(qty);
+      if (q === 0.25) return '1/4';
+      if (q === 0.5)  return '2/4';
+      if (q === 0.75) return '3/4';
+      return '4/4';
+    }
+    %>
+
     <form method="POST" action="/stock/save">
       <input type="hidden" name="report_type" value="<%= type %>">
       <input type="hidden" name="report_date" value="<%= reportDate %>">
@@ -41,6 +56,10 @@
           <div class="shift-mobile space-y-3 mb-3">
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
+              <% const lvs = lastValues[item.id]; %>
+              <% const isCoffee = isCoffeeCategory(item.category); %>
+              <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
+              <% const hopperVal = existing ? (e.hopper_qty || null) : (lvs && lvs.hopper_qty ? lvs.hopper_qty : null); %>
               <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                 <div class="mb-3">
                   <div class="flex items-center gap-1.5">
@@ -52,10 +71,9 @@
                       </button>
                     <% } %>
                   </div>
-                  <% const lvs = lastValues[item.id]; %>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio: <%= lvs.stan_zamkniecie %></span><% } %>
+                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lvs.last_date %>): <%= lvs.stan_zamkniecie %></span><% } %>
                   </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
@@ -107,6 +125,26 @@
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                 </div>
+                <% if (isCoffee) { %>
+                  <div class="mt-3 pt-2 border-t border-slate-100">
+                    <div class="text-xs text-slate-500 mb-1.5">Hopper <span class="text-slate-400">(<%= hopperWeight %> kg pełny)</span></div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <% for (const [val, lbl] of [[0.25,'1/4'],[0.5,'2/4'],[0.75,'3/4'],[1.0,'4/4']]) { %>
+                        <button type="button"
+                          class="hopper-btn h-9 px-3 text-sm font-medium border rounded-lg transition-colors <%= parseFloat(hopperVal) === val ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300' %>"
+                          data-hopper-item="<%= item.id %>" data-hopper-val="<%= val %>"
+                          onclick="selectHopper(<%= item.id %>, <%= val %>, <%= hopperWeight %>)">
+                          <%= lbl %>
+                        </button>
+                      <% } %>
+                      <button type="button"
+                        class="h-9 px-2 text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg hover:border-slate-400 hover:text-slate-600 transition-colors"
+                        onclick="selectHopper(<%= item.id %>, null, <%= hopperWeight %>)">✕</button>
+                      <span class="hopper-kg-<%= item.id %> text-xs text-amber-700 font-medium ml-1"><% if (hopperVal) { %><%= (parseFloat(hopperVal) * hopperWeight).toFixed(2) %> kg<% } %></span>
+                    </div>
+                    <input type="hidden" name="hopper_qty_<%= item.id %>" class="hopper-input-<%= item.id %>" value="<%= hopperVal || '' %>">
+                  </div>
+                <% } %>
               </div>
             <% } %>
           </div>
@@ -127,6 +165,9 @@
               <tbody>
                 <% for (const item of group.items) { %>
                   <% const e = entries[item.id] || {}; %>
+                  <% const isCoffee = isCoffeeCategory(item.category); %>
+                  <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
+                  <% const hopperVal = existing ? (e.hopper_qty || null) : (lastValues[item.id] && lastValues[item.id].hopper_qty ? lastValues[item.id].hopper_qty : null); %>
                   <tr class="border-b border-slate-50 last:border-0" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                     <td class="px-3 py-2 text-xs leading-tight">
                       <span class="font-medium text-slate-800"><%= item.name %></span>
@@ -137,7 +178,23 @@
                           <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
                       <% } %>
-                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { %><br><span class="text-xs text-slate-400">poprzednio: <%= lvd.stan_zamkniecie %></span><% } %>
+                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { %><br><span class="text-xs text-slate-400">poprzednio (<%= lvd.last_date %>): <%= lvd.stan_zamkniecie %></span><% } %>
+                      <% if (isCoffee) { %>
+                        <div class="flex gap-1 mt-1 flex-wrap">
+                          <% for (const [val, lbl] of [[0.25,'1/4'],[0.5,'2/4'],[0.75,'3/4'],[1.0,'4/4']]) { %>
+                            <button type="button"
+                              class="hopper-btn h-6 px-1.5 text-xs font-medium border rounded transition-colors <%= parseFloat(hopperVal) === val ? 'bg-amber-500 text-white border-amber-500' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-amber-300' %>"
+                              data-hopper-item="<%= item.id %>" data-hopper-val="<%= val %>"
+                              onclick="selectHopper(<%= item.id %>, <%= val %>, <%= hopperWeight %>)">
+                              <%= lbl %>
+                            </button>
+                          <% } %>
+                          <button type="button"
+                            class="h-6 px-1.5 text-xs text-slate-400 border border-dashed border-slate-200 rounded hover:border-slate-400 transition-colors"
+                            onclick="selectHopper(<%= item.id %>, null, <%= hopperWeight %>)">✕</button>
+                          <span class="hopper-kg-<%= item.id %> text-xs text-amber-700 font-medium"><% if (hopperVal) { %><%= (parseFloat(hopperVal) * hopperWeight).toFixed(2) %> kg<% } %></span>
+                        </div>
+                      <% } %>
                     </td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
@@ -166,7 +223,10 @@
               <% const lv = lastValues[item.id]; %>
               <%/* For new reports, pre-fill with last value so worker can press Enter to confirm unchanged */%>
               <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
-              <div class="flex items-center gap-3 px-4 py-3" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
+              <% const isCoffee = isCoffeeCategory(item.category); %>
+              <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
+              <% const hopperVal = existing ? (e.hopper_qty || null) : (lv && lv.hopper_qty ? lv.hopper_qty : null); %>
+              <div class="flex items-center gap-3 px-4 py-3 flex-wrap" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-1.5">
                     <span class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></span>
@@ -179,7 +239,7 @@
                   </div>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio: <%= lv.quantity %></span><% } %>
+                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lv.last_date %>): <%= lv.quantity %></span><% } %>
                   </div>
                 </div>
                 <div class="shrink-0">
@@ -196,6 +256,26 @@
                     <span class="min-warn absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold <%= !belowMin ? 'hidden' : '' %>" title="Poniżej minimalnej ilości (<%= item.min_qty %>)">!</span>
                   </div>
                 </div>
+                <% if (isCoffee) { %>
+                  <div class="w-full mt-0.5">
+                    <div class="text-xs text-slate-500 mb-1.5">Hopper <span class="text-slate-400">(<%= hopperWeight %> kg pełny)</span></div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <% for (const [val, lbl] of [[0.25,'1/4'],[0.5,'2/4'],[0.75,'3/4'],[1.0,'4/4']]) { %>
+                        <button type="button"
+                          class="hopper-btn h-9 px-3.5 text-sm font-medium border rounded-lg transition-colors <%= parseFloat(hopperVal) === val ? 'bg-amber-500 text-white border-amber-500' : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-amber-300' %>"
+                          data-hopper-item="<%= item.id %>" data-hopper-val="<%= val %>"
+                          onclick="selectHopper(<%= item.id %>, <%= val %>, <%= hopperWeight %>)">
+                          <%= lbl %>
+                        </button>
+                      <% } %>
+                      <button type="button"
+                        class="h-9 px-2 text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg hover:border-slate-400 hover:text-slate-600 transition-colors"
+                        onclick="selectHopper(<%= item.id %>, null, <%= hopperWeight %>)">✕</button>
+                      <span class="hopper-kg-<%= item.id %> text-xs text-amber-700 font-semibold ml-1"><% if (hopperVal) { %><%= (parseFloat(hopperVal) * hopperWeight).toFixed(2) %> kg<% } %></span>
+                    </div>
+                    <input type="hidden" name="hopper_qty_<%= item.id %>" class="hopper-input-<%= item.id %>" value="<%= hopperVal || '' %>">
+                  </div>
+                <% } %>
               </div>
             <% } %>
           </div>
@@ -285,6 +365,31 @@ function toggleHideItem(itemId) {
     applyHideState(itemId, true);
   }
   updateHiddenInput();
+}
+
+function selectHopper(itemId, val, weight) {
+  // Update all hidden inputs for this item (mobile + desktop layouts)
+  document.querySelectorAll(`.hopper-input-${itemId}`).forEach(inp => {
+    inp.value = val !== null ? val : '';
+  });
+
+  // Update button active states for all layouts
+  document.querySelectorAll(`[data-hopper-item="${itemId}"].hopper-btn`).forEach(btn => {
+    const isActive = val !== null && parseFloat(btn.dataset.hopperVal) === val;
+    btn.classList.toggle('bg-amber-500', isActive);
+    btn.classList.toggle('text-white', isActive);
+    btn.classList.toggle('border-amber-500', isActive);
+    btn.classList.toggle('bg-white', !isActive);
+    btn.classList.toggle('bg-slate-50', !isActive);
+    btn.classList.toggle('text-slate-600', !isActive);
+    btn.classList.toggle('text-slate-500', !isActive);
+    btn.classList.toggle('border-slate-200', !isActive);
+  });
+
+  // Update kg display for all layouts
+  document.querySelectorAll(`.hopper-kg-${itemId}`).forEach(el => {
+    el.textContent = val ? `${(val * weight).toFixed(2)} kg` : '';
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
