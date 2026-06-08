@@ -112,21 +112,9 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.use('/', require('./routes/auth'));
-app.use('/users', require('./routes/users'));
-app.use('/schedule', require('./routes/schedule'));
-app.use('/shifts', require('./routes/shifts'));
-app.use('/availability', require('./routes/availability'));
-app.use('/contracts', require('./routes/contracts'));
-app.use('/api', require('./routes/api'));
-app.use('/logs', require('./routes/logs'));
-app.use('/reports', require('./routes/reports'));
-app.use('/finance', require('./routes/finance'));
-app.use('/stock', require('./routes/stock'));
-app.use('/locations', require('./routes/locations'));
-
 // Auto-migrations (safe to run on every startup)
-(async () => {
+// Stored as a promise so the middleware below can await it on the first request.
+const migrationsReady = (async () => {
   try {
     // schedule_comments table
     await db.run(`CREATE TABLE IF NOT EXISTS schedule_comments (
@@ -552,6 +540,28 @@ app.use('/locations', require('./routes/locations'));
     console.error('Auto-migration error:', e.message);
   }
 })();
+
+// Gate: wait for migrations before handling any route on the first cold-start request.
+// On Vercel serverless, the IIFE above is async and can still be running when
+// the first HTTP request arrives. Awaiting the promise here ensures all ALTER TABLEs
+// have completed before any route handler can access the DB.
+app.use(async (req, res, next) => {
+  try { await migrationsReady; } catch (_) {}
+  next();
+});
+
+app.use('/', require('./routes/auth'));
+app.use('/users', require('./routes/users'));
+app.use('/schedule', require('./routes/schedule'));
+app.use('/shifts', require('./routes/shifts'));
+app.use('/availability', require('./routes/availability'));
+app.use('/contracts', require('./routes/contracts'));
+app.use('/api', require('./routes/api'));
+app.use('/logs', require('./routes/logs'));
+app.use('/reports', require('./routes/reports'));
+app.use('/finance', require('./routes/finance'));
+app.use('/stock', require('./routes/stock'));
+app.use('/locations', require('./routes/locations'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));
 
