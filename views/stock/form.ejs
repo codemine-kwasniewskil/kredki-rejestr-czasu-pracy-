@@ -274,6 +274,8 @@
                         onclick="selectHopper(<%= item.id %>, null, <%= hopperWeight %>)">✕</button>
                       <span class="hopper-kg-<%= item.id %> text-xs text-amber-700 font-semibold ml-1"><% if (hopperVal) { %><%= (parseFloat(hopperVal) * hopperWeight).toFixed(2) %> kg<% } %></span>
                     </div>
+                    <% const initQty = parseFloat((inputVal || '').replace(',', '.')); const initHopperKg = parseFloat(hopperVal || 0) * hopperWeight; const initTotal = (initQty > 0 || initHopperKg > 0) ? (initQty || 0) + initHopperKg : 0; %>
+                    <div class="hopper-total-wrap-<%= item.id %> mt-1 text-xs font-semibold text-slate-700 <%= initTotal > 0 ? '' : 'hidden' %>">Razem: <span class="hopper-total-<%= item.id %>"><%= initTotal > 0 ? initTotal.toFixed(2) + ' kg' : '' %></span></div>
                     <input type="hidden" name="hopper_qty_<%= item.id %>" class="hopper-input-<%= item.id %>" value="<%= hopperVal || '' %>">
                   </div>
                 <% } %>
@@ -327,6 +329,7 @@
 <script>
 const minQtyMap = <%- JSON.stringify(minQtyMap) %>;
 const hiddenItems = new Set(<%- JSON.stringify(hiddenSet) %>);
+const hopperWeightMap = {<% for (const g of grouped) { for (const item of g.items) { if (isCoffeeCategory(item.category, item.hopper_enabled)) { %><%= item.id %>:<%= parseFloat(item.hopper_weight) || 1.2 %>,<% } } } %>};
 
 function updateHiddenInput() {
   document.getElementById('hiddenItemsInput').value = [...hiddenItems].join(',');
@@ -368,6 +371,22 @@ function toggleHideItem(itemId) {
   updateHiddenInput();
 }
 
+function updateHopperTotal(itemId, hopperKg) {
+  const wrap = document.querySelector(`.hopper-total-wrap-${itemId}`);
+  const span = document.querySelector(`.hopper-total-${itemId}`);
+  if (!wrap || !span) return;
+  const qtyInp = Array.from(document.querySelectorAll(`input[name="qty_${itemId}"]`))
+    .find(el => el.offsetParent !== null);
+  const qty = qtyInp ? (parseFloat((qtyInp.value || '').replace(',', '.')) || 0) : 0;
+  const total = qty + hopperKg;
+  if (qty > 0 || hopperKg > 0) {
+    span.textContent = `${total.toFixed(2)} kg`;
+    wrap.classList.remove('hidden');
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
 function selectHopper(itemId, val, weight) {
   // Update all hidden inputs for this item (mobile + desktop layouts)
   document.querySelectorAll(`.hopper-input-${itemId}`).forEach(inp => {
@@ -391,6 +410,9 @@ function selectHopper(itemId, val, weight) {
   document.querySelectorAll(`.hopper-kg-${itemId}`).forEach(el => {
     el.textContent = val ? `${(val * weight).toFixed(2)} kg` : '';
   });
+
+  // Update total
+  updateHopperTotal(itemId, val ? val * weight : 0);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -424,13 +446,19 @@ document.addEventListener('input', e => {
   const valid = isValidQty(inp.value);
   applyValidStyle(inp, valid);
 
-  // min-qty badge
+  // min-qty badge + hopper total
   const itemId = inp.dataset.itemId;
   if (itemId) {
     const val = parseFloat((inp.value || '').replace(',', '.'));
     const min = minQtyMap[itemId];
     const warn = inp.parentElement.querySelector('.min-warn');
     if (warn) warn.classList.toggle('hidden', isNaN(val) || min === undefined || val >= min);
+
+    if (hopperWeightMap[itemId] !== undefined) {
+      const hopperInput = document.querySelector(`.hopper-input-${itemId}`);
+      const hopperFrac = hopperInput ? (parseFloat(hopperInput.value) || 0) : 0;
+      updateHopperTotal(itemId, hopperFrac * hopperWeightMap[itemId]);
+    }
   }
 });
 
