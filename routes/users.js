@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const db = require('../database/db');
 const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { log } = require('../utils/logger');
+const { sendMail } = require('../utils/mailer');
+const APP_URL = process.env.APP_URL || 'https://www.graficzek.pl';
 
 router.get('/', requireRole('admin'), requireFeature('users'), async (req, res) => {
   try {
@@ -151,6 +153,19 @@ router.post('/:id/approve', requireRole('super_admin'), async (req, res) => {
       [username, role, assignedLocationId || null, req.params.id]
     );
     log(res.locals.user, 'Zatwierdzenie rejestracji', `${user.name} | ${username} | ${role}`);
+
+    // Send approval email to user if they have an email address
+    if (user.email) {
+      await sendMail({
+        to: user.email,
+        subject: 'Rejestracja przyjęta – Graficzek',
+        html: `<p>Cześć ${user.name},</p>
+               <p>Twoje konto w systemie <strong>Graficzek</strong> zostało zatwierdzone. Możesz się teraz zalogować.</p>
+               <p><a href="${APP_URL}/login" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Zaloguj się →</a></p>
+               <p>Twoja nazwa użytkownika: <strong>${username}</strong><br>Przy pierwszym logowaniu zostaniesz poproszony/a o ustawienie nowego hasła.</p>`,
+      }).catch(err => console.error('[mailer] approval email failed:', err.message));
+    }
+
     req.flash('success', `Konto "${user.name}" zostało zatwierdzone.`);
     res.redirect('/users');
   } catch (err) {

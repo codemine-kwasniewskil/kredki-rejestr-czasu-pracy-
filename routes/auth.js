@@ -261,29 +261,18 @@ router.post('/register', async (req, res) => {
       [trimmedName, trimmedEmail, trimmedCompany, hash]
     );
 
-    // Await both emails before redirecting — on Vercel the function terminates
-    // immediately after res.redirect(), killing any pending async work.
-    await Promise.allSettled([
-      sendMail({
-        to: ADMIN_EMAIL,
-        subject: 'Nowa rejestracja – Graficzek',
-        html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
-               <ul>
-                 <li><strong>Imię:</strong> ${trimmedName}</li>
-                 <li><strong>Email:</strong> ${trimmedEmail}</li>
-                 <li><strong>Kawiarnia/Restauracja:</strong> ${trimmedCompany}</li>
-               </ul>
-               <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
-      }),
-      sendMail({
-        to: trimmedEmail,
-        subject: 'Rejestracja przyjęta – Graficzek',
-        html: `<p>Cześć ${trimmedName},</p>
-               <p>Twoje konto w systemie <strong>Graficzek</strong> zostało utworzone i oczekuje na zatwierdzenie przez administratora.</p>
-               <p>Gdy konto zostanie aktywowane, otrzymasz dostęp do systemu i będziesz mógł/mogła się zalogować.</p>
-               <p style="color:#6b7280;font-size:12px">Jeśli nie zakładałeś/aś konta w Graficzek, zignoruj tę wiadomość.</p>`,
-      }),
-    ]);
+    // Notify admin only — user gets their email only when admin approves
+    await sendMail({
+      to: ADMIN_EMAIL,
+      subject: 'Nowa rejestracja – Graficzek',
+      html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
+             <ul>
+               <li><strong>Imię:</strong> ${trimmedName}</li>
+               <li><strong>Email:</strong> ${trimmedEmail}</li>
+               <li><strong>Kawiarnia/Restauracja:</strong> ${trimmedCompany}</li>
+             </ul>
+             <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
+    }).catch(err => console.error('[mailer] registration notify failed:', err.message));
 
     req.flash('registered', trimmedName);
     res.redirect('/register');
