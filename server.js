@@ -611,6 +611,34 @@ const migrationsReady = (async () => {
       FOREIGN KEY (location_id) REFERENCES locations(id)
     )`);
 
+    // Per-location vendor API credentials
+    const vcidCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='order_settings' AND COLUMN_NAME='vendor_client_id'`);
+    if (!vcidCol || vcidCol.cnt === 0) {
+      await db.run(`ALTER TABLE order_settings ADD COLUMN vendor_client_id VARCHAR(50) DEFAULT NULL`);
+      await db.run(`ALTER TABLE order_settings ADD COLUMN vendor_api_key VARCHAR(200) DEFAULT NULL`);
+      // Seed Kredki (location 1) with default credentials
+      await db.run(
+        `INSERT INTO order_settings (location_id, min_order_value, vendor_client_id, vendor_api_key)
+         VALUES (1, 500.00, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           vendor_client_id = COALESCE(vendor_client_id, VALUES(vendor_client_id)),
+           vendor_api_key   = COALESCE(vendor_api_key,   VALUES(vendor_api_key))`,
+        [process.env.VENDOR_CLIENT_ID || '17456', process.env.VENDOR_API_KEY || '1186D3D1-0CD9-45BB-9FE0-0C398D22694D']
+      );
+    }
+
+    // Disable 'orders' feature for all non-Kredki locations (only on first run — no rows yet)
+    const ordersFeatureCount = await db.get(`SELECT COUNT(*) as cnt FROM location_features WHERE feature='orders'`);
+    if (ordersFeatureCount && ordersFeatureCount.cnt === 0) {
+      await db.run(
+        `INSERT IGNORE INTO location_features (location_id, role, feature, enabled)
+         SELECT l.id, r.role, 'orders', 0
+         FROM locations l
+         JOIN (SELECT 'admin' AS role UNION SELECT 'location_manager' UNION SELECT 'worker') r
+         WHERE l.id != 1`
+      );
+    }
+
   } catch (e) {
     console.error('Auto-migration error:', e.message);
   }

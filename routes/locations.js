@@ -8,6 +8,7 @@ const FEATURES = [
   { slug: 'schedule',     label: 'Grafik' },
   { slug: 'availability', label: 'Dostępność' },
   { slug: 'stock',        label: 'Raport Stanów' },
+  { slug: 'orders',       label: 'Zamówienia' },
   { slug: 'reports',      label: 'Raporty' },
   { slug: 'shifts',       label: 'Szablony zmian' },
   { slug: 'contracts',    label: 'Umowy' },
@@ -54,10 +55,19 @@ router.post('/', async (req, res) => {
       req.flash('error', 'Ten slug jest już zajęty.');
       return res.redirect('/locations');
     }
-    await db.run(
+    const newLocResult = await db.run(
       `INSERT INTO locations (name, slug, address) VALUES (?,?,?)`,
       [name.trim(), cleanSlug, address ? address.trim() : null]
     );
+    // Disable 'orders' feature by default for new locations
+    const newLocId = newLocResult.insertId;
+    const roles = ['admin', 'location_manager', 'worker'];
+    for (const role of roles) {
+      await db.run(
+        `INSERT IGNORE INTO location_features (location_id, role, feature, enabled) VALUES (?,?,'orders',0)`,
+        [newLocId, role]
+      );
+    }
     // Invalidate allLocations cache so switcher updates
     delete req.session.cachedAllLocations;
     log(res.locals.user, 'Dodanie lokalizacji', name.trim());

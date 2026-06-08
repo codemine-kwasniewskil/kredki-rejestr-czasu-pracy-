@@ -3,12 +3,9 @@ const https = require('https');
 const crypto = require('crypto');
 
 const API_HOST = 'b2b.intermlecz.pl';
-const CLIENT_ID = parseInt(process.env.VENDOR_CLIENT_ID || '17456', 10);
-const API_KEY = process.env.VENDOR_API_KEY || '1186D3D1-0CD9-45BB-9FE0-0C398D22694D';
 
-// In-memory token cache
-let cachedToken = null;
-let tokenExpiresAt = 0;
+// Token cache keyed by "clientId:apiKey" so each location gets its own token
+const tokenCache = new Map();
 
 function utcTimestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -45,17 +42,19 @@ function apiRequest(path, method, body, token) {
   });
 }
 
-async function getToken() {
-  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
+async function getToken(clientId, apiKey) {
+  const cacheKey = `${clientId}:${apiKey}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.token;
 
   const timestamp = utcTimestamp();
   const hash = crypto.createHash('md5')
-    .update(API_KEY + timestamp + String(CLIENT_ID))
+    .update(String(apiKey) + timestamp + String(clientId))
     .digest('hex');
 
   const resp = await apiRequest('/api3/token', 'POST', {
     Hash: hash,
-    ClientId: CLIENT_ID,
+    ClientId: parseInt(clientId, 10),
     Timestamp: timestamp,
   });
 
@@ -63,40 +62,41 @@ async function getToken() {
     throw new Error(`Vendor API auth failed: ${JSON.stringify(resp.body)}`);
   }
 
-  cachedToken = resp.body.AccessToken;
-  tokenExpiresAt = Date.now() + (resp.body.ExpiresIn - 60) * 1000;
-  return cachedToken;
+  const token = resp.body.AccessToken;
+  tokenCache.set(cacheKey, {
+    token,
+    expiresAt: Date.now() + (resp.body.ExpiresIn - 60) * 1000,
+  });
+  return token;
 }
 
-async function searchProducts(phrase, limit = 20) {
-  const token = await getToken();
+async function searchProducts(phrase, limit = 20, creds = {}) {
+  const { clientId, apiKey } = creds;
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  const token = await getToken(clientId, apiKey);
   const fields = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
-  const qs = new URLSearchParams({
-    field: fields,
-    where: phrase || '',
-    orderBy: 'Name',
-    order: 'asc',
-  });
+  const qs = new URLSearchParams({ field: fields, where: phrase || '', orderBy: 'Name', order: 'asc' });
   const resp = await apiRequest(`/api3/product/findProduct?${qs}`, 'GET', null, token);
   if (resp.status !== 200) throw new Error(`Vendor search failed: ${resp.status}`);
   const items = (resp.body?.Items || []).slice(0, limit);
   return { items, total: resp.body?.TotalCount || items.length };
 }
 
-async function getProductsBySku(skus) {
+async function getProductsBySku(skus, creds = {}) {
   if (!skus || skus.length === 0) return [];
-  const token = await getToken();
+  const { clientId, apiKey } = creds;
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  const token = await getToken(clientId, apiKey);
   const fields = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
-  const skuJson = JSON.stringify(skus);
-  const qs = new URLSearchParams({ field: fields, productsSku: skuJson });
+  const qs = new URLSearchParams({ field: fields, productsSku: JSON.stringify(skus) });
   const resp = await apiRequest(`/api3/product/findProduct?${qs}`, 'GET', null, token);
   if (resp.status !== 200) throw new Error(`Vendor lookup failed: ${resp.status}`);
   return resp.body?.Items || [];
 }
 
-async function placeOrder({ items, comment }) {
-  const token = await getToken();
-  // items: [{ vendor_product_key, quantity, unit }]
+async function placeOrder({ items, comment, clientId, apiKey }) {
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  const token = await getToken(clientId, apiKey);
   const lines = items
     .filter(i => i.vendor_product_key)
     .map(i => ({ Key: String(i.vendor_product_key), Quantity: Number(i.quantity) }));

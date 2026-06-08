@@ -18,9 +18,20 @@ function sessionUser(req) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+async function getOrderSettings(locationId) {
+  return db.get(`SELECT * FROM order_settings WHERE location_id=?`, [locationId]);
+}
+
 async function getMinOrderValue(locationId) {
-  const s = await db.get(`SELECT min_order_value FROM order_settings WHERE location_id=?`, [locationId]);
+  const s = await getOrderSettings(locationId);
   return s ? parseFloat(s.min_order_value) : 500;
+}
+
+async function getVendorCreds(locationId) {
+  const s = await getOrderSettings(locationId);
+  const clientId = s?.vendor_client_id || process.env.VENDOR_CLIENT_ID || '';
+  const apiKey   = s?.vendor_api_key   || process.env.VENDOR_API_KEY   || '';
+  return { clientId, apiKey };
 }
 
 async function recalcOrderTotal(orderId) {
@@ -62,7 +73,8 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     if (!q) return res.json({ items: [], total: 0 });
-    const result = await vendorApi.searchProducts(q, 30);
+    const creds = await getVendorCreds(getLocationId(req));
+    const result = await vendorApi.searchProducts(q, 30, creds);
     res.json(result);
   } catch (e) {
     console.error('Vendor search error:', e.message);
@@ -104,10 +116,12 @@ router.get('/', requireManager, async (req, res) => {
 router.get('/settings', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const minOrderValue = await getMinOrderValue(locationId);
+    const settings = await getOrderSettings(locationId);
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      minOrderValue,
+      minOrderValue: settings ? parseFloat(settings.min_order_value) : 500,
+      vendorClientId: settings?.vendor_client_id || process.env.VENDOR_CLIENT_ID || '',
+      vendorApiKey:   settings?.vendor_api_key   || process.env.VENDOR_API_KEY   || '',
     });
   } catch (e) {
     console.error(e);
@@ -118,13 +132,19 @@ router.get('/settings', requireAdmin, async (req, res) => {
 router.post('/settings', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const val = parseFloat(req.body.min_order_value) || 500;
+    const val       = parseFloat(req.body.min_order_value) || 500;
+    const clientId  = req.body.vendor_client_id?.trim() || null;
+    const apiKey    = req.body.vendor_api_key?.trim()   || null;
     await db.run(
-      `INSERT INTO order_settings (location_id, min_order_value) VALUES (?,?)
-       ON DUPLICATE KEY UPDATE min_order_value=VALUES(min_order_value)`,
-      [locationId, val]
+      `INSERT INTO order_settings (location_id, min_order_value, vendor_client_id, vendor_api_key)
+       VALUES (?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         min_order_value=VALUES(min_order_value),
+         vendor_client_id=VALUES(vendor_client_id),
+         vendor_api_key=VALUES(vendor_api_key)`,
+      [locationId, val, clientId, apiKey]
     );
-    await log(sessionUser(req), 'Zamówienia – ustawienia', `Minimalna wartość zamówienia: ${val} PLN`);
+    await log(sessionUser(req), 'Zamówienia – ustawienia', `Min: ${val} PLN | ClientId: ${clientId}`);
     req.flash('success', 'Ustawienia zapisane.');
     res.redirect('/orders/settings');
   } catch (e) {
@@ -147,7 +167,8 @@ router.get('/new', requireManager, async (req, res) => {
     const priceMap = {};
     if (skus.length > 0) {
       try {
-        const vendorItems = await vendorApi.getProductsBySku(skus);
+        const creds = await getVendorCreds(locationId);
+        const vendorItems = await vendorApi.getProductsBySku(skus, creds);
         for (const v of vendorItems) {
           priceMap[v.Sku] = {
             price: v.PriceAfterDiscountNet?.Value ?? null,
@@ -386,9 +407,11 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${order.id}`);
     }
 
+    const creds = await getVendorCreds(locationId);
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment: order.notes || `Zamówienie #${order.id} – Kredki`,
+      ...creds,
     });
 
     const vendorOrderId = vendorResult?.OrderId || vendorResult?.Id || JSON.stringify(vendorResult);
