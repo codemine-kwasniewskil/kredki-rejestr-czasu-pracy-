@@ -1,0 +1,270 @@
+<%- include('../partials/head') %>
+<%- include('../partials/nav') %>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+
+    <div class="flex items-center gap-3 mb-6">
+      <a href="/orders" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <h1 class="text-2xl font-bold text-slate-800">Nowe zamówienie</h1>
+    </div>
+
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- Vendor product search -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Szukaj produktów u dostawcy
+      </h2>
+      <div class="flex gap-2 mb-3">
+        <input type="text" id="vendorSearch" placeholder="Wpisz nazwę produktu, np. mleko, śmietanka…"
+          class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        <button type="button" onclick="doVendorSearch()" class="btn btn-primary">Szukaj</button>
+      </div>
+      <div id="vendorResults" class="hidden">
+        <div class="overflow-x-auto max-h-72 border border-slate-100 rounded-lg">
+          <table class="w-full text-sm" id="vendorResultsTable">
+            <thead class="bg-slate-50 sticky top-0">
+              <tr class="text-left text-slate-500 text-xs border-b border-slate-200">
+                <th class="px-3 py-2 font-medium">Nazwa produktu</th>
+                <th class="px-3 py-2 font-medium">SKU</th>
+                <th class="px-3 py-2 font-medium">Jedn.</th>
+                <th class="px-3 py-2 font-medium text-right">Cena netto</th>
+                <th class="px-3 py-2 font-medium text-center">Dostępny</th>
+                <th class="px-3 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="vendorResultsBody"></tbody>
+          </table>
+        </div>
+        <p id="vendorResultsCount" class="text-xs text-slate-400 mt-1"></p>
+      </div>
+      <div id="vendorError" class="hidden text-sm text-red-600 mt-2"></div>
+      <div id="vendorLoading" class="hidden text-sm text-slate-400 mt-2">Wyszukiwanie…</div>
+    </div>
+
+    <!-- Order form -->
+    <form method="POST" action="/orders" id="orderForm">
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold text-slate-700">Produkty w zamówieniu</h2>
+          <span id="itemCount" class="text-xs text-slate-400">0 pozycji</span>
+        </div>
+
+        <!-- Low-stock pre-fill -->
+        <% if (lowStock.length > 0) { %>
+        <div class="px-4 py-3 bg-amber-50 border-b border-amber-100 text-sm text-amber-800 flex items-center justify-between gap-3">
+          <span><%= lowStock.length %> produktów poniżej minimum – kliknij by dodać je automatycznie.</span>
+          <button type="button" onclick="prefillLowStock()" class="btn btn-warning text-xs flex-shrink-0">Dodaj wszystkie</button>
+        </div>
+        <% } %>
+
+        <!-- Items table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="itemsTable">
+            <thead class="bg-slate-50 border-b border-slate-100">
+              <tr class="text-left text-slate-500">
+                <th class="px-4 py-2 font-medium">Produkt</th>
+                <th class="px-4 py-2 font-medium">SKU dostawcy</th>
+                <th class="px-4 py-2 font-medium">Jedn.</th>
+                <th class="px-4 py-2 font-medium text-right">Ilość</th>
+                <th class="px-4 py-2 font-medium text-right">Cena netto</th>
+                <th class="px-4 py-2 font-medium text-right">Suma netto</th>
+                <th class="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="orderItems">
+              <tr id="emptyRow">
+                <td colspan="7" class="px-4 py-8 text-center text-slate-400">
+                  Brak produktów. Wyszukaj produkty powyżej lub dodaj z listy.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Total -->
+        <div class="px-4 py-3 border-t border-slate-100 flex justify-between items-center">
+          <div>
+            <% if (minOrderValue > 0) { %>
+              <span class="text-xs text-slate-400">Minimalna wartość zamówienia: <strong><%= minOrderValue.toFixed(2) %> PLN netto</strong></span>
+            <% } %>
+          </div>
+          <div class="text-right">
+            <span class="text-slate-500 text-sm">Suma netto:</span>
+            <span id="orderTotal" class="ml-2 text-xl font-bold text-slate-800">0,00 PLN</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Uwagi do zamówienia</label>
+        <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"></textarea>
+      </div>
+
+      <div class="flex gap-3 justify-end">
+        <a href="/orders" class="btn btn-secondary">Anuluj</a>
+        <button type="submit" class="btn btn-primary" id="saveBtn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+          Zapisz jako szkic
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+
+<!-- Low-stock data for prefill -->
+<script>
+const LOW_STOCK = <%- JSON.stringify(lowStock.map(i => ({
+  id: i.id,
+  name: i.name,
+  sku: i.vendor_product_key || '',
+  unit: i.unit || '',
+  price: priceMap[i.vendor_product_key] ? priceMap[i.vendor_product_key].price : null,
+  need: i.min_qty ? (parseFloat(i.min_qty) - (parseFloat(i.last_qty) || 0)).toFixed(2) : 1,
+}))) %>;
+
+let rowIndex = 0;
+
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return parseFloat(n).toFixed(2).replace('.', ',') + ' PLN';
+}
+
+function updateTotal() {
+  let total = 0;
+  let count = 0;
+  document.querySelectorAll('.order-row').forEach(row => {
+    const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+    const price = parseFloat(row.querySelector('.price-input').value) || 0;
+    const sub = qty * price;
+    row.querySelector('.subtotal').textContent = sub > 0 ? sub.toFixed(2).replace('.', ',') + ' PLN' : '—';
+    total += sub;
+    count++;
+  });
+  document.getElementById('orderTotal').textContent = total.toFixed(2).replace('.', ',') + ' PLN';
+  document.getElementById('itemCount').textContent = count + ' pozycj' + (count === 1 ? 'a' : count < 5 ? 'e' : 'i');
+  document.getElementById('emptyRow').style.display = count > 0 ? 'none' : '';
+}
+
+function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '' } = {}) {
+  const i = rowIndex++;
+  const emptyRow = document.getElementById('emptyRow');
+  const tr = document.createElement('tr');
+  tr.className = 'order-row border-b border-slate-100';
+  const priceVal = price !== null ? parseFloat(price).toFixed(2) : '';
+  tr.innerHTML = `
+    <td class="px-4 py-2">
+      <input type="hidden" name="item_stock_id[]" value="${stockId}">
+      <input type="text" name="item_name[]" value="${name}" required
+        class="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400 min-w-[140px]">
+    </td>
+    <td class="px-4 py-2">
+      <input type="text" name="item_sku[]" value="${sku}" placeholder="SKU"
+        class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">
+    </td>
+    <td class="px-4 py-2">
+      <input type="text" name="item_unit[]" value="${unit}" placeholder="szt."
+        class="w-16 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400">
+    </td>
+    <td class="px-4 py-2 text-right">
+      <input type="number" name="item_qty[]" value="${parseFloat(qty) || 1}" min="0.001" step="0.001" required
+        class="qty-input w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
+        oninput="updateTotal()">
+    </td>
+    <td class="px-4 py-2 text-right">
+      <input type="number" name="item_price[]" value="${priceVal}" min="0" step="0.01" placeholder="—"
+        class="price-input w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
+        oninput="updateTotal()">
+    </td>
+    <td class="px-4 py-2 text-right subtotal font-mono text-slate-600 whitespace-nowrap">—</td>
+    <td class="px-4 py-2">
+      <button type="button" onclick="this.closest('tr').remove(); updateTotal();"
+        class="text-red-400 hover:text-red-600 p-1" title="Usuń">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </td>
+  `;
+  emptyRow.parentNode.insertBefore(tr, emptyRow);
+  updateTotal();
+}
+
+function prefillLowStock() {
+  LOW_STOCK.forEach(item => {
+    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id });
+  });
+}
+
+// Vendor search
+async function doVendorSearch() {
+  const q = document.getElementById('vendorSearch').value.trim();
+  if (!q) return;
+  document.getElementById('vendorLoading').classList.remove('hidden');
+  document.getElementById('vendorError').classList.add('hidden');
+  document.getElementById('vendorResults').classList.add('hidden');
+  try {
+    const resp = await fetch('/orders/vendor/search?q=' + encodeURIComponent(q));
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderVendorResults(data.items, data.total);
+  } catch (e) {
+    document.getElementById('vendorError').textContent = 'Błąd wyszukiwania: ' + e.message;
+    document.getElementById('vendorError').classList.remove('hidden');
+  } finally {
+    document.getElementById('vendorLoading').classList.add('hidden');
+  }
+}
+
+function renderVendorResults(items, total) {
+  const tbody = document.getElementById('vendorResultsBody');
+  tbody.innerHTML = '';
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-slate-400">Brak wyników.</td></tr>';
+  } else {
+    items.forEach(p => {
+      const price = p.PriceAfterDiscountNet?.Value ?? '';
+      const inStock = p.InStock ? '✓' : '✗';
+      const stockColor = p.InStock ? 'text-green-600' : 'text-red-500';
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-slate-100 hover:bg-blue-50 cursor-pointer';
+      tr.innerHTML = `
+        <td class="px-3 py-2 text-slate-800">${p.Name || ''}</td>
+        <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
+        <td class="px-3 py-2 text-slate-500">${p.Unit || ''}</td>
+        <td class="px-3 py-2 text-right font-mono text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
+        <td class="px-3 py-2 text-center ${stockColor} font-bold">${inStock}</td>
+        <td class="px-3 py-2">
+          <button type="button" class="btn btn-secondary text-xs py-0.5"
+            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null}})'>
+            + Dodaj
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+  document.getElementById('vendorResultsCount').textContent =
+    `Pokazano ${items.length} z ${total} wyników`;
+  document.getElementById('vendorResults').classList.remove('hidden');
+}
+
+document.getElementById('vendorSearch').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); doVendorSearch(); }
+});
+
+// Add empty row button
+document.getElementById('orderForm').addEventListener('submit', e => {
+  const rows = document.querySelectorAll('.order-row');
+  if (!rows.length) { e.preventDefault(); alert('Dodaj co najmniej jeden produkt.'); }
+});
+</script>
+
+<%- include('../partials/footer') %>

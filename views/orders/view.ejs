@@ -1,0 +1,238 @@
+<%- include('../partials/head') %>
+<%- include('../partials/nav') %>
+
+<%
+  const statusLabel = { draft: 'Szkic', pending_approval: 'Oczekuje na akceptację', approved: 'Zatwierdzone', rejected: 'Odrzucone', placed: 'Złożone u dostawcy' }[order.status] || order.status;
+  const statusClass = { draft: 'badge-draft', pending_approval: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected', placed: 'badge-approved' }[order.status] || 'badge-draft';
+  const total = parseFloat(order.total_netto || 0);
+  const belowMin = total < minOrderValue;
+%>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-4xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-5">
+      <a href="/orders" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div class="flex-1">
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl font-bold text-slate-800">Zamówienie #<%= order.id %></h1>
+          <span class="<%= statusClass %>"><%= statusLabel %></span>
+        </div>
+        <p class="text-slate-400 text-sm mt-0.5">
+          Utworzone przez <strong><%= order.created_by_name %></strong>
+          · <%= order.created_at ? String(order.created_at).substring(0, 16).replace('T', ' ') : '—' %>
+          <% if (order.approved_by_name) { %>· Zatwierdzone przez <strong><%= order.approved_by_name %></strong><% } %>
+        </p>
+      </div>
+    </div>
+
+    <!-- Flash messages -->
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- Workflow steps -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <div class="flex items-center gap-0">
+        <% const steps = [
+          { key: 'draft', label: 'Szkic' },
+          { key: 'pending_approval', label: 'Weryfikacja' },
+          { key: 'approved', label: 'Zatwierdzone' },
+          { key: 'placed', label: 'Złożone' },
+        ];
+        const stepOrder = ['draft','pending_approval','approved','placed'];
+        const currentIdx = stepOrder.indexOf(order.status === 'rejected' ? 'pending_approval' : order.status);
+        %>
+        <% steps.forEach((step, idx) => {
+          const done = idx < currentIdx || (order.status === step.key);
+          const active = order.status === step.key || (order.status === 'rejected' && step.key === 'pending_approval');
+        %>
+        <div class="flex items-center <%= idx < steps.length - 1 ? 'flex-1' : '' %>">
+          <div class="flex flex-col items-center">
+            <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+              <%= active ? 'bg-blue-600 text-white' : done ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-400' %>">
+              <% if (order.status === 'rejected' && step.key === 'pending_approval') { %>✗
+              <% } else if (done && !active) { %>✓
+              <% } else { %><%= idx + 1 %><% } %>
+            </div>
+            <span class="text-xs mt-1 whitespace-nowrap
+              <%= active ? 'text-blue-600 font-semibold' : done ? 'text-green-600' : 'text-slate-400' %>">
+              <%= order.status === 'rejected' && step.key === 'pending_approval' ? 'Odrzucone' : step.label %>
+            </span>
+          </div>
+          <% if (idx < steps.length - 1) { %>
+          <div class="h-0.5 flex-1 mx-1 <%= idx < currentIdx ? 'bg-green-400' : 'bg-slate-200' %>"></div>
+          <% } %>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Reject reason -->
+    <% if (order.status === 'rejected' && order.reject_reason) { %>
+    <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+      <p class="text-sm text-red-800"><strong>Powód odrzucenia:</strong> <%= order.reject_reason %></p>
+    </div>
+    <% } %>
+
+    <!-- Vendor order confirmation -->
+    <% if (order.status === 'placed' && order.vendor_order_id) { %>
+    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-5 flex items-center gap-3">
+      <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <div>
+        <p class="text-sm font-medium text-green-800">Zamówienie złożone u dostawcy</p>
+        <p class="text-xs text-green-600">Numer zamówienia u dostawcy: <strong class="font-mono"><%= order.vendor_order_id %></strong></p>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- Items table -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+      <div class="px-4 py-3 border-b border-slate-100">
+        <h2 class="font-semibold text-slate-700">Pozycje zamówienia</h2>
+      </div>
+      <% if (items.length === 0) { %>
+        <div class="px-4 py-8 text-center text-slate-400 text-sm">Brak pozycji.</div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 border-b border-slate-100">
+            <tr class="text-left text-slate-500">
+              <th class="px-4 py-2 font-medium">Produkt</th>
+              <th class="px-4 py-2 font-medium">SKU dostawcy</th>
+              <th class="px-4 py-2 font-medium hidden sm:table-cell">Jedn.</th>
+              <th class="px-4 py-2 font-medium text-right">Ilość</th>
+              <th class="px-4 py-2 font-medium text-right hidden md:table-cell">Cena netto</th>
+              <th class="px-4 py-2 font-medium text-right">Suma netto</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <% for (const item of items) { %>
+            <tr>
+              <td class="px-4 py-2.5 font-medium text-slate-800"><%= item.product_name %></td>
+              <td class="px-4 py-2.5">
+                <% if (item.vendor_product_key) { %>
+                  <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600"><%= item.vendor_product_key %></span>
+                <% } else { %>
+                  <span class="text-slate-300 text-xs">—</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-2.5 hidden sm:table-cell text-slate-500"><%= item.unit || '—' %></td>
+              <td class="px-4 py-2.5 text-right font-mono text-slate-700"><%= parseFloat(item.quantity).toFixed(3).replace(/\.?0+$/, '') %></td>
+              <td class="px-4 py-2.5 text-right hidden md:table-cell font-mono text-slate-500">
+                <%= item.unit_price_netto !== null ? parseFloat(item.unit_price_netto).toFixed(2) + ' PLN' : '—' %>
+              </td>
+              <td class="px-4 py-2.5 text-right font-mono font-medium text-slate-700">
+                <%= item.total_netto !== null ? parseFloat(item.total_netto).toFixed(2) + ' PLN' : '—' %>
+              </td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-100 flex justify-between items-center">
+        <span class="text-sm text-slate-400">
+          Min. wartość zamówienia: <strong><%= minOrderValue.toFixed(2) %> PLN</strong>
+          <% if (belowMin && order.status !== 'placed') { %>
+            <span class="ml-2 text-red-500 font-medium">⚠ Poniżej minimum</span>
+          <% } %>
+        </span>
+        <div>
+          <span class="text-slate-500 text-sm">Suma netto:</span>
+          <span class="ml-2 text-xl font-bold <%= belowMin && order.status !== 'placed' ? 'text-red-600' : 'text-slate-800' %>">
+            <%= total.toFixed(2) %> PLN
+          </span>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- Notes -->
+    <% if (order.notes) { %>
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <p class="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wide">Uwagi</p>
+      <p class="text-sm text-slate-700"><%= order.notes %></p>
+    </div>
+    <% } %>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-3 justify-between items-center">
+      <a href="/orders" class="btn btn-secondary">← Lista zamówień</a>
+      <div class="flex flex-wrap gap-2">
+
+        <!-- DRAFT actions -->
+        <% if (order.status === 'draft') { %>
+          <form method="POST" action="/orders/<%= order.id %>/submit">
+            <button type="submit" class="btn btn-primary">Wyślij do akceptacji →</button>
+          </form>
+          <form method="POST" action="/orders/<%= order.id %>?_method=DELETE"
+            onsubmit="return confirm('Na pewno usunąć to zamówienie?')">
+            <button type="submit" class="btn btn-danger">Usuń szkic</button>
+          </form>
+        <% } %>
+
+        <!-- PENDING APPROVAL actions (admin only) -->
+        <% if (order.status === 'pending_approval' && isAdmin) { %>
+          <form method="POST" action="/orders/<%= order.id %>/approve">
+            <button type="submit" class="btn btn-success">✓ Zatwierdź</button>
+          </form>
+          <button type="button" onclick="document.getElementById('rejectModal').classList.remove('hidden')" class="btn btn-danger">✗ Odrzuć</button>
+        <% } %>
+
+        <!-- APPROVED actions (admin only) -->
+        <% if (order.status === 'approved' && isAdmin) { %>
+          <% if (belowMin) { %>
+            <span class="text-sm text-red-600 italic self-center">Wartość poniżej minimum (<%=minOrderValue.toFixed(2)%> PLN)</span>
+          <% } %>
+          <form method="POST" action="/orders/<%= order.id %>/place"
+            onsubmit="return confirm('Złożyć zamówienie u dostawcy Inter-Mlecz? Tej operacji nie można cofnąć.')">
+            <button type="submit" class="btn btn-success" <%= belowMin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : '' %>>
+              🛒 Złóż zamówienie u dostawcy
+            </button>
+          </form>
+        <% } %>
+
+        <!-- REJECTED actions -->
+        <% if (order.status === 'rejected') { %>
+          <form method="POST" action="/orders/<%= order.id %>/reopen">
+            <button type="submit" class="btn btn-warning">↩ Przywróć do szkicu</button>
+          </form>
+          <% if (isAdmin) { %>
+          <form method="POST" action="/orders/<%= order.id %>?_method=DELETE"
+            onsubmit="return confirm('Na pewno usunąć to zamówienie?')">
+            <button type="submit" class="btn btn-danger">Usuń</button>
+          </form>
+          <% } %>
+        <% } %>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Reject modal -->
+<% if (order.status === 'pending_approval' && isAdmin) { %>
+<div id="rejectModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+    <h3 class="text-lg font-bold text-slate-800 mb-3">Odrzuć zamówienie</h3>
+    <form method="POST" action="/orders/<%= order.id %>/reject">
+      <label class="block text-sm font-medium text-slate-700 mb-1">Powód odrzucenia (opcjonalnie)</label>
+      <textarea name="reject_reason" rows="3" placeholder="Wpisz powód…"
+        class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-400 resize-none mb-4"></textarea>
+      <div class="flex gap-3 justify-end">
+        <button type="button" onclick="document.getElementById('rejectModal').classList.add('hidden')" class="btn btn-secondary">Anuluj</button>
+        <button type="submit" class="btn btn-danger">Odrzuć zamówienie</button>
+      </div>
+    </form>
+  </div>
+</div>
+<% } %>
+
+<%- include('../partials/footer') %>

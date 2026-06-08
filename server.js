@@ -565,6 +565,52 @@ const migrationsReady = (async () => {
       if (tpls.length) console.log('✓ Initialized shift_templates sort_order');
     }
 
+    // ── Ordering / procurement ─────────────────────────────────────────────
+
+    // vendor_product_key: links a stock item to the supplier's SKU
+    const vpkCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='vendor_product_key'`);
+    if (!vpkCol || vpkCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN vendor_product_key VARCHAR(100) DEFAULT NULL`);
+      console.log('✓ Added vendor_product_key to stock_items');
+    }
+
+    await db.run(`CREATE TABLE IF NOT EXISTS purchase_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      location_id INT NOT NULL,
+      status ENUM('draft','pending_approval','approved','rejected','placed') DEFAULT 'draft',
+      total_netto DECIMAL(10,2) DEFAULT 0,
+      created_by INT NOT NULL,
+      approved_by INT DEFAULT NULL,
+      reject_reason VARCHAR(500) DEFAULT NULL,
+      vendor_order_id VARCHAR(200) DEFAULT NULL,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (location_id) REFERENCES locations(id),
+      FOREIGN KEY (created_by) REFERENCES users(id),
+      FOREIGN KEY (approved_by) REFERENCES users(id)
+    )`);
+
+    await db.run(`CREATE TABLE IF NOT EXISTS purchase_order_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      order_id INT NOT NULL,
+      stock_item_id INT DEFAULT NULL,
+      vendor_product_key VARCHAR(100),
+      product_name VARCHAR(200) NOT NULL,
+      unit VARCHAR(50),
+      quantity DECIMAL(10,3) NOT NULL DEFAULT 1,
+      unit_price_netto DECIMAL(10,2) DEFAULT NULL,
+      total_netto DECIMAL(10,2) DEFAULT NULL,
+      FOREIGN KEY (order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (stock_item_id) REFERENCES stock_items(id) ON DELETE SET NULL
+    )`);
+
+    await db.run(`CREATE TABLE IF NOT EXISTS order_settings (
+      location_id INT PRIMARY KEY,
+      min_order_value DECIMAL(10,2) DEFAULT 500.00,
+      FOREIGN KEY (location_id) REFERENCES locations(id)
+    )`);
+
   } catch (e) {
     console.error('Auto-migration error:', e.message);
   }
@@ -590,6 +636,7 @@ app.use('/logs', require('./routes/logs'));
 app.use('/reports', require('./routes/reports'));
 app.use('/finance', require('./routes/finance'));
 app.use('/stock', require('./routes/stock'));
+app.use('/orders', require('./routes/orders'));
 app.use('/locations', require('./routes/locations'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));

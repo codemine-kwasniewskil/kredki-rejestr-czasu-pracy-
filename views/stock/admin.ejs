@@ -161,6 +161,23 @@
                 </label>
               </div>
 
+              <div class="sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">
+                  SKU dostawcy (Inter-Mlecz)
+                  <span class="text-slate-400 font-normal ml-1">– klucz produktu w systemie zamówień</span>
+                </label>
+                <div class="flex gap-2">
+                  <input type="text" name="vendor_product_key" id="editVendorKey"
+                    value="<%= editItem.vendor_product_key || '' %>" placeholder="np. 42"
+                    class="stock-input flex-1 border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm">
+                  <button type="button" onclick="openVendorSearch('<%= editItem.name.replace(/'/g,\"\\\\'\" ) %>', 'editVendorKey')"
+                    class="btn btn-secondary py-2.5 text-xs whitespace-nowrap flex-shrink-0">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    Szukaj u dostawcy
+                  </button>
+                </div>
+              </div>
+
             </div>
             <div class="flex gap-2 mt-3">
               <button type="submit" class="btn btn-primary py-2">Zapisz zmiany</button>
@@ -400,6 +417,12 @@
               <label class="block text-xs font-medium text-slate-600 mb-1">Kolejność</label>
               <input type="number" name="sort_order" value="500" placeholder="500"
                 class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">SKU dostawcy (opcjonalnie)</label>
+              <input type="text" name="vendor_product_key" placeholder="np. 42"
+                class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm">
             </div>
 
           </div>
@@ -693,6 +716,79 @@ function autoSlug(input) {
   document.getElementById('newTypeSlug').value = slug;
 }
 
+// ── Vendor product search modal ───────────────────────────────────────────
+let _vendorTargetId = null;
+
+function openVendorSearch(prefill, targetInputId) {
+  _vendorTargetId = targetInputId;
+  document.getElementById('vsInput').value = prefill || '';
+  document.getElementById('vsBody').innerHTML = '';
+  document.getElementById('vsResults').classList.add('hidden');
+  document.getElementById('vsError').classList.add('hidden');
+  document.getElementById('vsModal').classList.remove('hidden');
+  document.getElementById('vsInput').focus();
+  if (prefill) doVendorSearch();
+}
+
+function closeVendorSearch() {
+  document.getElementById('vsModal').classList.add('hidden');
+}
+
+function selectVendorProduct(sku) {
+  if (_vendorTargetId) {
+    const el = document.getElementById(_vendorTargetId);
+    if (el) { el.value = sku; el.dispatchEvent(new Event('input')); }
+  }
+  closeVendorSearch();
+}
+
+async function doVendorSearch() {
+  const q = document.getElementById('vsInput').value.trim();
+  if (!q) return;
+  document.getElementById('vsLoading').classList.remove('hidden');
+  document.getElementById('vsError').classList.add('hidden');
+  document.getElementById('vsResults').classList.add('hidden');
+  try {
+    const resp = await fetch('/orders/vendor/search?q=' + encodeURIComponent(q));
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    const tbody = document.getElementById('vsBody');
+    tbody.innerHTML = '';
+    if (!data.items || !data.items.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-slate-400 text-sm">Brak wyników dla „' + q + '"</td></tr>';
+    } else {
+      data.items.forEach(p => {
+        const price = p.PriceAfterDiscountNet?.Value;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-100 hover:bg-blue-50 cursor-pointer';
+        tr.innerHTML = `
+          <td class="px-3 py-2 text-slate-800 text-sm">${p.Name || ''}</td>
+          <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
+          <td class="px-3 py-2 text-xs text-slate-500">${p.Unit || ''}</td>
+          <td class="px-3 py-2 text-right font-mono text-xs text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
+          <td class="px-3 py-2 text-center text-xs ${p.InStock ? 'text-green-600' : 'text-red-500'}">${p.InStock ? '✓' : '✗'}</td>
+          <td class="px-3 py-2 text-right">
+            <button type="button" onclick="selectVendorProduct(${JSON.stringify(p.Sku)})"
+              class="btn btn-primary py-0.5 text-xs">Wybierz</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById('vsCount').textContent = 'Wyniki: ' + data.items.length + ' z ' + data.total;
+    document.getElementById('vsResults').classList.remove('hidden');
+  } catch (e) {
+    document.getElementById('vsError').textContent = 'Błąd: ' + e.message;
+    document.getElementById('vsError').classList.remove('hidden');
+  } finally {
+    document.getElementById('vsLoading').classList.add('hidden');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeVendorSearch();
+});
+
 // ── Edit type panel ───────────────────────────────────────────────────────
 function openTypeEdit(id, label, icon, desc, freq, isShift, sort) {
   const panel = document.getElementById('typeEditPanel');
@@ -707,5 +803,46 @@ function openTypeEdit(id, label, icon, desc, freq, isShift, sort) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 </script>
+
+<!-- Vendor product search modal -->
+<div id="vsModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <h3 class="text-base font-bold text-slate-800">Szukaj produktu u dostawcy (Inter-Mlecz)</h3>
+      <button type="button" onclick="closeVendorSearch()" class="text-slate-400 hover:text-slate-600 p-1">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-5 py-3 border-b border-slate-100">
+      <div class="flex gap-2">
+        <input type="text" id="vsInput" placeholder="Wpisz nazwę produktu…"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();doVendorSearch();}"
+          class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        <button type="button" onclick="doVendorSearch()" class="btn btn-primary py-2">Szukaj</button>
+      </div>
+      <div id="vsLoading" class="hidden text-sm text-slate-400 mt-2">Wyszukiwanie…</div>
+      <div id="vsError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+    <div id="vsResults" class="hidden overflow-y-auto flex-1">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 sticky top-0 border-b border-slate-100">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="px-3 py-2 font-medium">Nazwa</th>
+            <th class="px-3 py-2 font-medium">SKU</th>
+            <th class="px-3 py-2 font-medium">Jedn.</th>
+            <th class="px-3 py-2 font-medium text-right">Cena netto</th>
+            <th class="px-3 py-2 font-medium text-center">Dost.</th>
+            <th class="px-3 py-2 font-medium"></th>
+          </tr>
+        </thead>
+        <tbody id="vsBody"></tbody>
+      </table>
+      <p id="vsCount" class="text-xs text-slate-400 px-3 py-2"></p>
+    </div>
+    <div class="px-5 py-3 border-t border-slate-100 flex justify-end">
+      <button type="button" onclick="closeVendorSearch()" class="btn btn-secondary text-sm">Zamknij</button>
+    </div>
+  </div>
+</div>
 
 <%- include('../partials/footer') %>
