@@ -41,7 +41,7 @@
           <div class="shift-mobile space-y-3 mb-3">
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
-              <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3" data-product-row="<%= item.id %>">
+              <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                 <div class="mb-3">
                   <div class="flex items-center gap-1.5">
                     <span class="text-sm font-semibold text-slate-800 flex-1"><%= item.name %></span>
@@ -127,7 +127,7 @@
               <tbody>
                 <% for (const item of group.items) { %>
                   <% const e = entries[item.id] || {}; %>
-                  <tr class="border-b border-slate-50 last:border-0" data-product-row="<%= item.id %>">
+                  <tr class="border-b border-slate-50 last:border-0" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                     <td class="px-3 py-2 text-xs leading-tight">
                       <span class="font-medium text-slate-800"><%= item.name %></span>
                       <% if (item.unit && item.unit !== '-') { %><span class="text-slate-400 ml-1"><%= item.unit %></span><% } %>
@@ -166,7 +166,7 @@
               <% const lv = lastValues[item.id]; %>
               <%/* For new reports, pre-fill with last value so worker can press Enter to confirm unchanged */%>
               <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
-              <div class="flex items-center gap-3 px-4 py-3" data-product-row="<%= item.id %>">
+              <div class="flex items-center gap-3 px-4 py-3" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-1.5">
                     <span class="text-sm font-medium text-slate-800 leading-snug"><%= item.name %></span>
@@ -251,6 +251,18 @@ function updateHiddenInput() {
   document.getElementById('hiddenItemsInput').value = [...hiddenItems].join(',');
 }
 
+function resortParent(parent) {
+  const rows = Array.from(parent.children).filter(el => el.hasAttribute('data-product-row'));
+  if (rows.length <= 1) return;
+  rows.sort((a, b) => {
+    const aHidden = hiddenItems.has(parseInt(a.dataset.productRow));
+    const bHidden = hiddenItems.has(parseInt(b.dataset.productRow));
+    if (aHidden !== bHidden) return aHidden ? 1 : -1;
+    return (parseInt(a.dataset.sortOrder) || 0) - (parseInt(b.dataset.sortOrder) || 0);
+  });
+  rows.forEach(row => parent.appendChild(row));
+}
+
 function applyHideState(itemId, hide) {
   document.querySelectorAll(`[data-product-row="${itemId}"]`).forEach(row => {
     row.style.opacity = hide ? '0.35' : '';
@@ -260,6 +272,7 @@ function applyHideState(itemId, hide) {
     });
     const btn = row.querySelector('.item-eye-btn');
     if (btn) btn.style.color = hide ? '#ef4444' : '';
+    resortParent(row.parentElement);
   });
 }
 
@@ -281,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inp.offsetParent === null) inp.value = '';
   });
 
-  // Apply per-report hidden items
+  // Apply per-report hidden items (also triggers resort so hidden start at bottom)
   hiddenItems.forEach(id => applyHideState(id, true));
   updateHiddenInput();
 });
