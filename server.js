@@ -145,6 +145,13 @@ const migrationsReady = (async () => {
       await db.run(`ALTER TABLE users ADD COLUMN registration_pending TINYINT(1) DEFAULT 0`);
     }
 
+    // Password reset token columns
+    const resetTokenCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='reset_token'`);
+    if (!resetTokenCol || resetTokenCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN reset_token VARCHAR(100) DEFAULT NULL`);
+      await db.run(`ALTER TABLE users ADD COLUMN reset_token_expires DATETIME DEFAULT NULL`);
+    }
+
     // username column (login identifier, replaces email in UI)
     const umCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='username'`);
     if (!umCol || umCol.cnt === 0) {

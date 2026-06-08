@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('../database/db');
 const { requireAuth, getLocationId } = require('../middleware/auth');
 const { log } = require('../utils/logger');
+const { sendMail } = require('../utils/mailer');
+
+const ADMIN_EMAIL = 'hello@graficzek.pl';
+const APP_URL = process.env.APP_URL || 'https://www.graficzek.pl';
 
 router.get('/', requireAuth, (req, res) => res.redirect('/dashboard'));
 
@@ -253,7 +258,108 @@ router.post('/register', async (req, res) => {
       `INSERT INTO users (name, email, role, active, registration_pending, must_change_password, password_hash) VALUES (?,?,'worker',0,1,0,?)`,
       [trimmedName, trimmedEmail, hash]
     );
+
+    // Notify admin
+    sendMail({
+      to: ADMIN_EMAIL,
+      subject: 'Nowa rejestracja – Graficzek',
+      html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
+             <ul><li><strong>Imię:</strong> ${trimmedName}</li><li><strong>Email:</strong> ${trimmedEmail}</li></ul>
+             <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
+    }).catch(err => console.error('Mail error (registration notify):', err.message));
+
     req.flash('success', 'Rejestracja przyjęta. Poczekaj na zatwierdzenie przez administratora.');
+    res.redirect('/login');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/forgot-password', (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  res.render('auth/forgot-password');
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase();
+    if (!email) {
+      req.flash('error', 'Podaj adres email.');
+      return res.redirect('/forgot-password');
+    }
+    // Always show success message to prevent email enumeration
+    const user = await db.get(
+      'SELECT id, name, email FROM users WHERE email=? AND active=1 AND (registration_pending IS NULL OR registration_pending=0)',
+      [email]
+    );
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const expiresStr = expires.toISOString().slice(0, 19).replace('T', ' ');
+      await db.run(
+        'UPDATE users SET reset_token=?, reset_token_expires=? WHERE id=?',
+        [token, expiresStr, user.id]
+      );
+      const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+      sendMail({
+        to: user.email,
+        subject: 'Resetowanie hasła – Graficzek',
+        html: `<p>Cześć ${user.name},</p>
+               <p>Otrzymaliśmy prośbę o resetowanie hasła do Twojego konta w Graficzek.</p>
+               <p><a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Ustaw nowe hasło →</a></p>
+               <p>Link jest ważny przez 1 godzinę. Jeśli nie prosiłeś o reset, zignoruj tę wiadomość.</p>`,
+      }).catch(err => console.error('Mail error (reset):', err.message));
+    }
+    req.flash('success', 'Jeśli konto z tym adresem istnieje, wysłaliśmy link do resetowania hasła.');
+    res.redirect('/forgot-password');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/reset-password', async (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  const { token } = req.query;
+  if (!token) return res.redirect('/forgot-password');
+  const user = await db.get(
+    'SELECT id FROM users WHERE reset_token=? AND reset_token_expires > NOW()',
+    [token]
+  );
+  if (!user) {
+    req.flash('error', 'Link jest nieprawidłowy lub wygasł. Spróbuj ponownie.');
+    return res.redirect('/forgot-password');
+  }
+  res.render('auth/reset-password', { token });
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password, password_confirm } = req.body;
+    if (!token) return res.redirect('/forgot-password');
+    const user = await db.get(
+      'SELECT id FROM users WHERE reset_token=? AND reset_token_expires > NOW()',
+      [token]
+    );
+    if (!user) {
+      req.flash('error', 'Link jest nieprawidłowy lub wygasł. Spróbuj ponownie.');
+      return res.redirect('/forgot-password');
+    }
+    if (!password || password.length < 6) {
+      req.flash('error', 'Hasło musi mieć co najmniej 6 znaków.');
+      return res.redirect(`/reset-password?token=${token}`);
+    }
+    if (password !== password_confirm) {
+      req.flash('error', 'Hasła nie są identyczne.');
+      return res.redirect(`/reset-password?token=${token}`);
+    }
+    const hash = bcrypt.hashSync(password, 10);
+    await db.run(
+      'UPDATE users SET password_hash=?, must_change_password=0, reset_token=NULL, reset_token_expires=NULL WHERE id=?',
+      [hash, user.id]
+    );
+    req.flash('success', 'Hasło zostało zmienione. Możesz się teraz zalogować.');
     res.redirect('/login');
   } catch (err) {
     console.error(err);
