@@ -11,18 +11,35 @@
     <div class="text-center mb-8">
       <div class="text-5xl mb-3">☕</div>
       <h1 class="text-2xl font-bold text-white">Graficzek</h1>
-      <p class="text-slate-400 text-sm mt-1">Rejestracja konta</p>
+      <p class="text-slate-400 text-sm mt-1"><%= locals.registeredName ? 'Rejestracja przyjęta' : 'Rejestracja konta' %></p>
     </div>
 
+    <% if (locals.registeredName) { %>
+    <!-- Success state -->
+    <div class="bg-white rounded-2xl shadow-xl p-8 text-center space-y-4">
+      <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+        <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <h2 class="text-lg font-bold text-slate-800">Konto utworzone!</h2>
+      <p class="text-sm text-slate-600">
+        Cześć <strong><%= registeredName %></strong> — Twoje konto zostało przyjęte i czeka na zatwierdzenie przez administratora.
+      </p>
+      <p class="text-sm text-slate-500">
+        Wysłaliśmy potwierdzenie na Twój adres email. Gdy konto zostanie aktywowane, możesz się zalogować.
+      </p>
+      <a href="/login" class="block w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm text-center">
+        Wróć do logowania
+      </a>
+    </div>
+
+    <% } else { %>
+    <!-- Registration form -->
     <div class="bg-white rounded-2xl shadow-xl p-8">
       <% if (error && error.length) { %>
         <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           <%= error[0] %>
-        </div>
-      <% } %>
-      <% if (success && success.length) { %>
-        <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
-          <%= success[0] %>
         </div>
       <% } %>
 
@@ -77,6 +94,8 @@
     <p class="text-center text-slate-400 text-xs mt-4">
       Masz już konto? <a href="/login" class="text-blue-400 hover:text-blue-300 underline">Zaloguj się</a>
     </p>
+    <% } %>
+
     <p class="text-center text-slate-500 text-xs mt-3">graficzek.pl &copy; 2026</p>
   </div>
 </body>

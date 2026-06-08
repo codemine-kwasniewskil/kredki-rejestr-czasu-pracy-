@@ -221,7 +221,8 @@ router.post('/login', async (req, res) => {
 
 router.get('/register', (req, res) => {
   if (req.session.userId) return res.redirect('/dashboard');
-  res.render('auth/register');
+  const registered = req.flash('registered');
+  res.render('auth/register', { registeredName: registered.length ? registered[0] : null });
 });
 
 router.post('/register', async (req, res) => {
@@ -259,7 +260,7 @@ router.post('/register', async (req, res) => {
       [trimmedName, trimmedEmail, hash]
     );
 
-    // Notify admin
+    // Email to admin
     sendMail({
       to: ADMIN_EMAIL,
       subject: 'Nowa rejestracja – Graficzek',
@@ -268,8 +269,18 @@ router.post('/register', async (req, res) => {
              <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
     }).catch(err => console.error('Mail error (registration notify):', err.message));
 
-    req.flash('success', 'Rejestracja przyjęta. Poczekaj na zatwierdzenie przez administratora.');
-    res.redirect('/login');
+    // Confirmation email to the new user
+    sendMail({
+      to: trimmedEmail,
+      subject: 'Rejestracja przyjęta – Graficzek',
+      html: `<p>Cześć ${trimmedName},</p>
+             <p>Twoje konto w systemie <strong>Graficzek</strong> zostało utworzone i oczekuje na zatwierdzenie przez administratora.</p>
+             <p>Gdy konto zostanie aktywowane, otrzymasz dostęp do systemu i będziesz mógł/mogła się zalogować.</p>
+             <p style="color:#6b7280;font-size:12px">Jeśli nie zakładałeś/aś konta w Graficzek, zignoruj tę wiadomość.</p>`,
+    }).catch(err => console.error('Mail error (registration confirm):', err.message));
+
+    req.flash('registered', trimmedName);
+    res.redirect('/register');
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });
