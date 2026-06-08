@@ -152,6 +152,12 @@ const migrationsReady = (async () => {
       await db.run(`ALTER TABLE users ADD COLUMN reset_token_expires DATETIME DEFAULT NULL`);
     }
 
+    // company_name: cafe/restaurant name provided during self-registration
+    const companyNameCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='company_name'`);
+    if (!companyNameCol || companyNameCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN company_name VARCHAR(255) DEFAULT NULL`);
+    }
+
     // username column (login identifier, replaces email in UI)
     const umCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='username'`);
     if (!umCol || umCol.cnt === 0) {

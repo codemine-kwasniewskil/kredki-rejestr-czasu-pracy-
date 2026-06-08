@@ -228,11 +228,12 @@ router.get('/register', (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     if (req.session.userId) return res.redirect('/dashboard');
-    const { name, email, password, password_confirm } = req.body;
+    const { name, email, company_name, password, password_confirm } = req.body;
     const trimmedEmail = (email || '').trim().toLowerCase();
     const trimmedName = (name || '').trim();
+    const trimmedCompany = (company_name || '').trim();
 
-    if (!trimmedName || !trimmedEmail || !password) {
+    if (!trimmedName || !trimmedEmail || !trimmedCompany || !password) {
       req.flash('error', 'Wszystkie pola są wymagane.');
       return res.redirect('/register');
     }
@@ -256,8 +257,8 @@ router.post('/register', async (req, res) => {
     }
     const hash = bcrypt.hashSync(password, 10);
     await db.run(
-      `INSERT INTO users (name, email, role, active, registration_pending, must_change_password, password_hash) VALUES (?,?,'worker',0,1,0,?)`,
-      [trimmedName, trimmedEmail, hash]
+      `INSERT INTO users (name, email, company_name, role, active, registration_pending, must_change_password, password_hash) VALUES (?,?,?,'worker',0,1,0,?)`,
+      [trimmedName, trimmedEmail, trimmedCompany, hash]
     );
 
     // Email to admin
@@ -265,7 +266,11 @@ router.post('/register', async (req, res) => {
       to: ADMIN_EMAIL,
       subject: 'Nowa rejestracja – Graficzek',
       html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
-             <ul><li><strong>Imię:</strong> ${trimmedName}</li><li><strong>Email:</strong> ${trimmedEmail}</li></ul>
+             <ul>
+               <li><strong>Imię:</strong> ${trimmedName}</li>
+               <li><strong>Email:</strong> ${trimmedEmail}</li>
+               <li><strong>Kawiarnia/Restauracja:</strong> ${trimmedCompany}</li>
+             </ul>
              <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
     }).catch(err => console.error('Mail error (registration notify):', err.message));
 
