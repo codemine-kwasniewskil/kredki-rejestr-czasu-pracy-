@@ -261,28 +261,29 @@ router.post('/register', async (req, res) => {
       [trimmedName, trimmedEmail, trimmedCompany, hash]
     );
 
-    // Email to admin
-    sendMail({
-      to: ADMIN_EMAIL,
-      subject: 'Nowa rejestracja – Graficzek',
-      html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
-             <ul>
-               <li><strong>Imię:</strong> ${trimmedName}</li>
-               <li><strong>Email:</strong> ${trimmedEmail}</li>
-               <li><strong>Kawiarnia/Restauracja:</strong> ${trimmedCompany}</li>
-             </ul>
-             <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
-    }).catch(err => console.error('Mail error (registration notify):', err.message));
-
-    // Confirmation email to the new user
-    sendMail({
-      to: trimmedEmail,
-      subject: 'Rejestracja przyjęta – Graficzek',
-      html: `<p>Cześć ${trimmedName},</p>
-             <p>Twoje konto w systemie <strong>Graficzek</strong> zostało utworzone i oczekuje na zatwierdzenie przez administratora.</p>
-             <p>Gdy konto zostanie aktywowane, otrzymasz dostęp do systemu i będziesz mógł/mogła się zalogować.</p>
-             <p style="color:#6b7280;font-size:12px">Jeśli nie zakładałeś/aś konta w Graficzek, zignoruj tę wiadomość.</p>`,
-    }).catch(err => console.error('Mail error (registration confirm):', err.message));
+    // Await both emails before redirecting — on Vercel the function terminates
+    // immediately after res.redirect(), killing any pending async work.
+    await Promise.allSettled([
+      sendMail({
+        to: ADMIN_EMAIL,
+        subject: 'Nowa rejestracja – Graficzek',
+        html: `<p>Nowy użytkownik zarejestrował się i czeka na zatwierdzenie:</p>
+               <ul>
+                 <li><strong>Imię:</strong> ${trimmedName}</li>
+                 <li><strong>Email:</strong> ${trimmedEmail}</li>
+                 <li><strong>Kawiarnia/Restauracja:</strong> ${trimmedCompany}</li>
+               </ul>
+               <p><a href="${APP_URL}/users">Przejdź do panelu →</a></p>`,
+      }),
+      sendMail({
+        to: trimmedEmail,
+        subject: 'Rejestracja przyjęta – Graficzek',
+        html: `<p>Cześć ${trimmedName},</p>
+               <p>Twoje konto w systemie <strong>Graficzek</strong> zostało utworzone i oczekuje na zatwierdzenie przez administratora.</p>
+               <p>Gdy konto zostanie aktywowane, otrzymasz dostęp do systemu i będziesz mógł/mogła się zalogować.</p>
+               <p style="color:#6b7280;font-size:12px">Jeśli nie zakładałeś/aś konta w Graficzek, zignoruj tę wiadomość.</p>`,
+      }),
+    ]);
 
     req.flash('registered', trimmedName);
     res.redirect('/register');
@@ -318,14 +319,14 @@ router.post('/forgot-password', async (req, res) => {
         [token, expiresStr, user.id]
       );
       const resetUrl = `${APP_URL}/reset-password?token=${token}`;
-      sendMail({
+      await sendMail({
         to: user.email,
         subject: 'Resetowanie hasła – Graficzek',
         html: `<p>Cześć ${user.name},</p>
                <p>Otrzymaliśmy prośbę o resetowanie hasła do Twojego konta w Graficzek.</p>
                <p><a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">Ustaw nowe hasło →</a></p>
                <p>Link jest ważny przez 1 godzinę. Jeśli nie prosiłeś o reset, zignoruj tę wiadomość.</p>`,
-      }).catch(err => console.error('Mail error (reset):', err.message));
+      }).catch(err => console.error('[mailer] reset email failed:', err.message));
     }
     req.flash('success', 'Jeśli konto z tym adresem istnieje, wysłaliśmy link do resetowania hasła.');
     res.redirect('/forgot-password');
