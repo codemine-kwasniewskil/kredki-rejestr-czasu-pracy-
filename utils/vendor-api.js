@@ -84,7 +84,7 @@ async function searchProducts(phrase, limit = 20, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
-  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, where: phrase || '', orderBy: 'Name', order: 'asc' });
+  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, where: phrase || '' });
   const resp = await apiRequest(url, 'GET', null, token);
   if (resp.status !== 200) throw new Error(`Vendor search failed: ${resp.status} — ${JSON.stringify(resp.body)}`);
   const items = (resp.body?.Items || []).slice(0, limit);
