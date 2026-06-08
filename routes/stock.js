@@ -129,7 +129,7 @@ router.get('/form/:type', async (req, res) => {
     const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
     const canManageItems = QUICK_MANAGE_TYPES.includes(type);
 
-    // Last reported value per item (most recent report of this type)
+    // Last reported value per item (most recent report of this type, this location)
     const lastRows = await db.all(
       `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie
        FROM stock_report_entries sre
@@ -137,12 +137,12 @@ router.get('/form/:type', async (req, res) => {
          SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
          FROM stock_report_entries sre2
          JOIN stock_reports sr2 ON sr2.id = sre2.report_id
-         WHERE sr2.report_type = ?
+         WHERE sr2.report_type = ? AND sr2.location_id = ?
          GROUP BY sre2.item_id
        ) latest ON latest.item_id = sre.item_id
        JOIN stock_reports sr ON sr.id = sre.report_id AND sr.report_date = latest.max_date
-       WHERE sr.report_type = ?`,
-      [type, type]
+       WHERE sr.report_type = ? AND sr.location_id = ?`,
+      [type, locationId, type, locationId]
     );
     const lastValues = {};
     for (const row of lastRows) lastValues[row.item_id] = row;
@@ -332,57 +332,58 @@ router.get('/admin', requireManager, async (req, res) => {
        ORDER BY si.sort_order, si.id`,
       [activeType, locationId]
     );
-    const editItem = editId ? await db.get(`SELECT * FROM stock_items WHERE id=?`, [editId]) : null;
+    const editItem = editId ? await db.get(`SELECT * FROM stock_items WHERE id=? AND location_id=?`, [editId, locationId]) : null;
 
-    // Categories for dropdown: merge stock_categories table + distinct from items
+    // Categories for dropdown: merge stock_categories table + distinct from items (this location)
     const categoryRows = await db.all(
       `SELECT DISTINCT name AS category FROM (
          SELECT name FROM stock_categories WHERE report_type=?
          UNION
-         SELECT category FROM stock_items WHERE report_type=? AND category IS NOT NULL
+         SELECT category FROM stock_items WHERE report_type=? AND location_id=? AND category IS NOT NULL
        ) c ORDER BY category`,
-      [activeType, activeType]
+      [activeType, activeType, locationId]
     );
     const categories = categoryRows.map(r => r.category);
 
-    // Units for dropdown: merge stock_units table + distinct from items
+    // Units for dropdown: merge stock_units table + distinct from items (this location)
     const unitRows = await db.all(
       `SELECT DISTINCT name AS unit FROM (
          SELECT name FROM stock_units
          UNION
-         SELECT unit FROM stock_items WHERE unit IS NOT NULL AND unit != '' AND unit != '-'
-       ) u ORDER BY unit`
+         SELECT unit FROM stock_items WHERE location_id=? AND unit IS NOT NULL AND unit != '' AND unit != '-'
+       ) u ORDER BY unit`,
+      [locationId]
     );
     const units = unitRows.map(r => r.unit);
 
-    // Category stats for management panel (catalog + item counts)
+    // Category stats for management panel (catalog + item counts, this location)
     const categoryStats = await db.all(
       `SELECT c.name AS category, COALESCE(ic.cnt, 0) AS cnt
        FROM (
          SELECT name FROM stock_categories WHERE report_type=?
          UNION
-         SELECT DISTINCT category FROM stock_items WHERE report_type=? AND category IS NOT NULL
+         SELECT DISTINCT category FROM stock_items WHERE report_type=? AND location_id=? AND category IS NOT NULL
        ) c
        LEFT JOIN (
-         SELECT category, COUNT(*) AS cnt FROM stock_items WHERE report_type=? AND category IS NOT NULL GROUP BY category
+         SELECT category, COUNT(*) AS cnt FROM stock_items WHERE report_type=? AND location_id=? AND category IS NOT NULL GROUP BY category
        ) ic ON ic.category = c.name
        ORDER BY c.name`,
-      [activeType, activeType, activeType]
+      [activeType, activeType, locationId, activeType, locationId]
     );
 
-    // Unit stats for management panel (catalog + item counts for this type)
+    // Unit stats for management panel (catalog + item counts, this location)
     const unitStats = await db.all(
       `SELECT u.name AS unit, COALESCE(ic.cnt, 0) AS cnt
        FROM (
          SELECT name FROM stock_units
          UNION
-         SELECT DISTINCT unit FROM stock_items WHERE unit IS NOT NULL AND unit != '' AND unit != '-'
+         SELECT DISTINCT unit FROM stock_items WHERE location_id=? AND unit IS NOT NULL AND unit != '' AND unit != '-'
        ) u
        LEFT JOIN (
-         SELECT unit, COUNT(*) AS cnt FROM stock_items WHERE report_type=? AND unit IS NOT NULL GROUP BY unit
+         SELECT unit, COUNT(*) AS cnt FROM stock_items WHERE report_type=? AND location_id=? AND unit IS NOT NULL GROUP BY unit
        ) ic ON ic.unit = u.name
        ORDER BY u.name`,
-      [activeType]
+      [locationId, activeType, locationId]
     );
 
     const history = await db.all(
