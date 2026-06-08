@@ -291,8 +291,8 @@ router.post('/quick-add-item', async (req, res) => {
     }
     const locationId = getLocationId(req);
     await db.run(
-      `INSERT INTO stock_items (report_type, name, unit, sort_order, active, location_id) VALUES (?,?,?,999,1,?)`,
-      [report_type, name.trim(), 'szt', 999, locationId]
+      `INSERT INTO stock_items (report_type, name, unit, sort_order, active, location_id) VALUES (?,?,?,?,?,?)`,
+      [report_type, name.trim(), 'szt', 999, 1, locationId]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt (quick add)', `${name.trim()} | Typ: ${report_type}`);
     req.flash('success', `Produkt "${name.trim()}" dodany.`);
