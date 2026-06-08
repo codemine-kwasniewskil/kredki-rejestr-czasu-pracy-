@@ -21,10 +21,15 @@
         <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         Szukaj produktów u dostawcy
       </h2>
-      <div class="flex gap-2 mb-3">
-        <input type="text" id="vendorSearch" placeholder="Wpisz nazwę produktu, np. mleko, śmietanka…"
-          class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-        <button type="button" onclick="doVendorSearch()" class="btn btn-primary">Szukaj</button>
+      <div class="flex gap-2 mb-3 items-center">
+        <div class="relative flex-1">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" id="vendorSearch" placeholder="Wpisz nazwę produktu – wyniki pojawiają się podczas pisania…"
+            class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        </div>
+        <div id="vendorSpinner" class="hidden flex-shrink-0">
+          <svg class="animate-spin w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+        </div>
       </div>
       <div id="vendorResults" class="hidden">
         <div class="overflow-x-auto max-h-72 border border-slate-100 rounded-lg">
@@ -203,10 +208,18 @@ function prefillLowStock() {
   });
 }
 
-// Vendor search
-async function doVendorSearch() {
-  const q = document.getElementById('vendorSearch').value.trim();
+// Vendor search — debounced on input
+let _vendorDebounce = null;
+function triggerVendorSearch(phrase) {
+  clearTimeout(_vendorDebounce);
+  if (!phrase || phrase.trim().length < 2) return;
+  _vendorDebounce = setTimeout(() => doVendorSearch(phrase.trim()), 300);
+}
+
+async function doVendorSearch(phrase) {
+  const q = phrase || document.getElementById('vendorSearch').value.trim();
   if (!q) return;
+  document.getElementById('vendorSpinner').classList.remove('hidden');
   document.getElementById('vendorLoading').classList.remove('hidden');
   document.getElementById('vendorError').classList.add('hidden');
   document.getElementById('vendorResults').classList.add('hidden');
@@ -219,6 +232,7 @@ async function doVendorSearch() {
     document.getElementById('vendorError').textContent = 'Błąd wyszukiwania: ' + e.message;
     document.getElementById('vendorError').classList.remove('hidden');
   } finally {
+    document.getElementById('vendorSpinner').classList.add('hidden');
     document.getElementById('vendorLoading').classList.add('hidden');
   }
 }
@@ -256,6 +270,7 @@ function renderVendorResults(items, total) {
   document.getElementById('vendorResults').classList.remove('hidden');
 }
 
+document.getElementById('vendorSearch').addEventListener('input', e => triggerVendorSearch(e.target.value));
 document.getElementById('vendorSearch').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); doVendorSearch(); }
 });

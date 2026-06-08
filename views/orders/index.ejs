@@ -40,40 +40,48 @@
           <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
           <h2 class="font-semibold text-amber-800">Niski stan – <%= lowStock.length %> produktów poniżej minimum</h2>
         </div>
-        <a href="/orders/new" class="btn btn-warning text-xs flex-shrink-0">
-          Utwórz zamówienie
-        </a>
+        <a href="/orders/new" class="btn btn-warning text-xs flex-shrink-0">Utwórz zamówienie</a>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="text-left text-amber-700 border-b border-amber-200">
+            <tr class="text-left text-amber-700 border-b border-amber-200 text-xs">
               <th class="pb-2 font-medium">Produkt</th>
               <th class="pb-2 font-medium hidden sm:table-cell">Kategoria</th>
-              <th class="pb-2 font-medium text-right">Aktualny stan</th>
-              <th class="pb-2 font-medium text-right">Minimum</th>
-              <th class="pb-2 font-medium hidden md:table-cell">SKU dostawcy</th>
+              <th class="pb-2 font-medium text-right">Stan</th>
+              <th class="pb-2 font-medium text-right">Min.</th>
+              <th class="pb-2 font-medium">SKU dostawcy</th>
               <th class="pb-2 font-medium hidden md:table-cell">Ostatni raport</th>
             </tr>
           </thead>
           <tbody>
             <% for (const item of lowStock) { %>
-            <tr class="border-b border-amber-100 last:border-0">
+            <tr class="border-b border-amber-100 last:border-0" id="row-<%= item.id %>">
               <td class="py-2 pr-3 font-medium text-slate-800"><%= item.name %></td>
-              <td class="py-2 pr-3 hidden sm:table-cell text-slate-500"><%= item.category || '—' %></td>
-              <td class="py-2 pr-3 text-right font-mono text-red-600 font-semibold">
+              <td class="py-2 pr-3 hidden sm:table-cell text-slate-500 text-xs"><%= item.category || '—' %></td>
+              <td class="py-2 pr-3 text-right font-mono text-red-600 font-semibold whitespace-nowrap">
                 <%= item.last_qty !== null ? parseFloat(item.last_qty).toFixed(2).replace(/\.?0+$/, '') : '—' %>
                 <span class="text-slate-400 font-normal text-xs"><%= item.unit || '' %></span>
               </td>
-              <td class="py-2 pr-3 text-right font-mono text-slate-600">
+              <td class="py-2 pr-3 text-right font-mono text-slate-600 whitespace-nowrap">
                 <%= parseFloat(item.min_qty).toFixed(2).replace(/\.?0+$/, '') %>
                 <span class="text-slate-400 text-xs"><%= item.unit || '' %></span>
               </td>
-              <td class="py-2 pr-3 hidden md:table-cell">
+              <td class="py-2 pr-3" id="sku-cell-<%= item.id %>">
                 <% if (item.vendor_product_key) { %>
-                  <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600"><%= item.vendor_product_key %></span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600"><%= item.vendor_product_key %></span>
+                    <button onclick="openSkuModal(<%= item.id %>, '<%= item.name.replace(/'/g,"\\'") %>', '<%= item.vendor_product_key %>')"
+                      class="text-slate-400 hover:text-blue-600 transition-colors" title="Zmień SKU">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                  </div>
                 <% } else { %>
-                  <a href="/stock/admin?edit=<%= item.id %>" class="text-xs text-blue-600 hover:underline">Ustaw SKU</a>
+                  <button onclick="openSkuModal(<%= item.id %>, '<%= item.name.replace(/'/g,"\\'") %>', '')"
+                    class="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition-colors font-medium">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    Przypisz SKU
+                  </button>
                 <% } %>
               </td>
               <td class="py-2 hidden md:table-cell text-slate-400 text-xs"><%= item.last_date || '—' %></td>
@@ -92,7 +100,7 @@
 
     <!-- Orders list -->
     <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+      <div class="px-4 py-3 border-b border-slate-100">
         <h2 class="font-semibold text-slate-700">Historia zamówień</h2>
       </div>
       <% if (orders.length === 0) { %>
@@ -113,21 +121,15 @@
           <tbody class="divide-y divide-slate-100">
             <% for (const o of orders) { %>
             <%
-              const statusLabel = {
-                draft: 'Szkic', pending_approval: 'Oczekuje', approved: 'Zatwierdzone',
-                rejected: 'Odrzucone', placed: 'Złożone'
-              }[o.status] || o.status;
-              const statusClass = {
-                draft: 'badge-draft', pending_approval: 'badge-submitted',
-                approved: 'badge-approved', rejected: 'badge-rejected', placed: 'badge-approved'
-              }[o.status] || 'badge-draft';
+              const statusLabel = { draft:'Szkic', pending_approval:'Oczekuje', approved:'Zatwierdzone', rejected:'Odrzucone', placed:'Złożone' }[o.status] || o.status;
+              const statusClass  = { draft:'badge-draft', pending_approval:'badge-submitted', approved:'badge-approved', rejected:'badge-rejected', placed:'badge-approved' }[o.status] || 'badge-draft';
             %>
             <tr class="hover:bg-slate-50">
               <td class="px-4 py-3 font-mono font-medium text-slate-700">#<%= o.id %></td>
               <td class="px-4 py-3"><span class="<%= statusClass %>"><%= statusLabel %></span></td>
-              <td class="px-4 py-3 hidden sm:table-cell text-slate-500"><%= o.created_at ? String(o.created_at).substring(0, 10) : '—' %></td>
+              <td class="px-4 py-3 hidden sm:table-cell text-slate-500"><%= o.created_at ? String(o.created_at).substring(0,10) : '—' %></td>
               <td class="px-4 py-3 hidden md:table-cell text-slate-500"><%= o.created_by_name %></td>
-              <td class="px-4 py-3 text-right font-mono text-slate-700"><%= parseFloat(o.total_netto || 0).toFixed(2) %> PLN</td>
+              <td class="px-4 py-3 text-right font-mono text-slate-700"><%= parseFloat(o.total_netto||0).toFixed(2) %> PLN</td>
               <td class="px-4 py-3 text-right">
                 <a href="/orders/<%= o.id %>" class="text-blue-600 hover:underline text-xs font-medium">Szczegóły →</a>
               </td>
@@ -141,5 +143,213 @@
 
   </div>
 </div>
+
+<!-- SKU Assignment Modal -->
+<div id="skuModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <div>
+        <h3 class="text-base font-bold text-slate-800">Przypisz SKU dostawcy</h3>
+        <p id="skuModalItemName" class="text-sm text-slate-500 mt-0.5"></p>
+      </div>
+      <button type="button" onclick="closeSkuModal()" class="text-slate-400 hover:text-slate-600 p-1">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Search input -->
+    <div class="px-5 py-3 border-b border-slate-100">
+      <div class="flex gap-2 items-center">
+        <div class="relative flex-1">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" id="skuSearchInput"
+            placeholder="Wpisz nazwę produktu – wyniki pojawiają się podczas pisania…"
+            class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        </div>
+        <div id="skuSearchSpinner" class="hidden">
+          <svg class="animate-spin w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+        </div>
+      </div>
+      <!-- Manual SKU entry -->
+      <div class="flex gap-2 mt-2 items-center">
+        <span class="text-xs text-slate-400 whitespace-nowrap">lub wpisz SKU ręcznie:</span>
+        <input type="text" id="skuManualInput" placeholder="np. 42"
+          class="w-28 border border-slate-200 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-400">
+        <button type="button" onclick="saveManualSku()" class="btn btn-primary py-1 text-xs">Zapisz</button>
+        <button type="button" onclick="clearSku()" class="btn btn-secondary py-1 text-xs text-red-500 hover:text-red-700">Usuń SKU</button>
+      </div>
+      <div id="skuError" class="hidden text-xs text-red-600 mt-1.5"></div>
+    </div>
+
+    <!-- Results -->
+    <div class="overflow-y-auto flex-1">
+      <div id="skuResultsEmpty" class="hidden px-5 py-8 text-center text-slate-400 text-sm">Brak wyników.</div>
+      <div id="skuResultsHint" class="px-5 py-8 text-center text-slate-400 text-sm">Wpisz nazwę produktu aby wyszukać.</div>
+      <table class="w-full text-sm hidden" id="skuResultsTable">
+        <thead class="bg-slate-50 sticky top-0 border-b border-slate-100">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="px-4 py-2 font-medium">Nazwa produktu</th>
+            <th class="px-4 py-2 font-medium">SKU</th>
+            <th class="px-4 py-2 font-medium">Jedn.</th>
+            <th class="px-4 py-2 font-medium text-right">Cena netto</th>
+            <th class="px-4 py-2 font-medium text-center">Dost.</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="skuResultsBody"></tbody>
+      </table>
+      <p id="skuResultsCount" class="hidden text-xs text-slate-400 px-4 py-2"></p>
+    </div>
+
+    <div class="px-5 py-3 border-t border-slate-100 flex justify-end">
+      <button type="button" onclick="closeSkuModal()" class="btn btn-secondary text-sm">Zamknij</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _skuItemId = null;
+let _skuDebounce = null;
+
+function openSkuModal(itemId, itemName, currentSku) {
+  _skuItemId = itemId;
+  document.getElementById('skuModalItemName').textContent = itemName;
+  document.getElementById('skuSearchInput').value = itemName;
+  document.getElementById('skuManualInput').value = currentSku || '';
+  document.getElementById('skuError').classList.add('hidden');
+  document.getElementById('skuResultsEmpty').classList.add('hidden');
+  document.getElementById('skuResultsHint').classList.remove('hidden');
+  document.getElementById('skuResultsTable').classList.add('hidden');
+  document.getElementById('skuResultsCount').classList.add('hidden');
+  document.getElementById('skuModal').classList.remove('hidden');
+  // Auto-search on open if there's a name
+  if (itemName) triggerSkuSearch(itemName);
+  document.getElementById('skuSearchInput').focus();
+}
+
+function closeSkuModal() {
+  document.getElementById('skuModal').classList.add('hidden');
+  _skuItemId = null;
+}
+
+function triggerSkuSearch(phrase) {
+  clearTimeout(_skuDebounce);
+  if (!phrase || phrase.trim().length < 2) return;
+  _skuDebounce = setTimeout(() => doSkuSearch(phrase.trim()), 300);
+}
+
+async function doSkuSearch(phrase) {
+  document.getElementById('skuSearchSpinner').classList.remove('hidden');
+  document.getElementById('skuError').classList.add('hidden');
+  document.getElementById('skuResultsEmpty').classList.add('hidden');
+  document.getElementById('skuResultsHint').classList.add('hidden');
+  try {
+    const resp = await fetch('/orders/vendor/search?q=' + encodeURIComponent(phrase));
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderSkuResults(data.items, data.total);
+  } catch (e) {
+    document.getElementById('skuError').textContent = 'Błąd wyszukiwania: ' + e.message;
+    document.getElementById('skuError').classList.remove('hidden');
+    document.getElementById('skuResultsTable').classList.add('hidden');
+  } finally {
+    document.getElementById('skuSearchSpinner').classList.add('hidden');
+  }
+}
+
+function renderSkuResults(items, total) {
+  const tbody = document.getElementById('skuResultsBody');
+  tbody.innerHTML = '';
+  if (!items || items.length === 0) {
+    document.getElementById('skuResultsTable').classList.add('hidden');
+    document.getElementById('skuResultsEmpty').classList.remove('hidden');
+    document.getElementById('skuResultsCount').classList.add('hidden');
+    return;
+  }
+  items.forEach(p => {
+    const price = p.PriceAfterDiscountNet?.Value;
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-slate-100 hover:bg-blue-50 cursor-pointer';
+    tr.innerHTML = `
+      <td class="px-4 py-2.5 text-slate-800 font-medium">${p.Name || ''}</td>
+      <td class="px-4 py-2.5 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
+      <td class="px-4 py-2.5 text-slate-500 text-xs">${p.Unit || ''}</td>
+      <td class="px-4 py-2.5 text-right font-mono text-sm text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
+      <td class="px-4 py-2.5 text-center text-sm font-bold ${p.InStock ? 'text-green-600' : 'text-red-500'}">${p.InStock ? '✓' : '✗'}</td>
+      <td class="px-4 py-2.5 text-right">
+        <button type="button" onclick="saveSku(${JSON.stringify(p.Sku)})"
+          class="btn btn-primary py-1 text-xs">Przypisz</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('skuResultsTable').classList.remove('hidden');
+  document.getElementById('skuResultsEmpty').classList.add('hidden');
+  document.getElementById('skuResultsCount').textContent = `Wyniki: ${items.length} z ${total}`;
+  document.getElementById('skuResultsCount').classList.remove('hidden');
+}
+
+async function saveSku(sku) {
+  await persistSku(sku);
+}
+
+async function saveManualSku() {
+  const sku = document.getElementById('skuManualInput').value.trim();
+  if (!sku) return;
+  await persistSku(sku);
+}
+
+async function clearSku() {
+  if (!confirm('Usunąć przypisany SKU?')) return;
+  await persistSku(null);
+}
+
+async function persistSku(sku) {
+  if (!_skuItemId) return;
+  document.getElementById('skuError').classList.add('hidden');
+  try {
+    const resp = await fetch('/orders/assign-sku', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_item_id: _skuItemId, vendor_product_key: sku }),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Błąd zapisu');
+
+    // Update the table row in-place
+    const cell = document.getElementById('sku-cell-' + _skuItemId);
+    if (cell) {
+      if (sku) {
+        cell.innerHTML = `
+          <div class="flex items-center gap-1.5">
+            <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">${sku}</span>
+            <button onclick="openSkuModal(${_skuItemId}, '', '${sku}')" class="text-slate-400 hover:text-blue-600 transition-colors" title="Zmień SKU">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+          </div>`;
+      } else {
+        cell.innerHTML = `<button onclick="openSkuModal(${_skuItemId}, '', '')" class="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition-colors font-medium">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Przypisz SKU</button>`;
+      }
+    }
+    closeSkuModal();
+  } catch (e) {
+    document.getElementById('skuError').textContent = 'Błąd: ' + e.message;
+    document.getElementById('skuError').classList.remove('hidden');
+  }
+}
+
+// Debounced live search on typing
+document.getElementById('skuSearchInput').addEventListener('input', e => {
+  triggerSkuSearch(e.target.value);
+});
+document.getElementById('skuSearchInput').addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSkuModal();
+});
+document.getElementById('skuModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('skuModal')) closeSkuModal();
+});
+</script>
 
 <%- include('../partials/footer') %>

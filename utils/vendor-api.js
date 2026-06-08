@@ -70,14 +70,23 @@ async function getToken(clientId, apiKey) {
   return token;
 }
 
+const PRODUCT_FIELDS = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
+
+function buildFindProductUrl(params) {
+  // Build query string manually — commas in 'field' must stay literal (not %2C)
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v).replace(/%2C/gi, ',')}`);
+  return `/api3/product/findProduct?${parts.join('&')}`;
+}
+
 async function searchProducts(phrase, limit = 20, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
-  const fields = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
-  const qs = new URLSearchParams({ field: fields, where: phrase || '', orderBy: 'Name', order: 'asc' });
-  const resp = await apiRequest(`/api3/product/findProduct?${qs}`, 'GET', null, token);
-  if (resp.status !== 200) throw new Error(`Vendor search failed: ${resp.status}`);
+  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, where: phrase || '', orderBy: 'Name', order: 'asc' });
+  const resp = await apiRequest(url, 'GET', null, token);
+  if (resp.status !== 200) throw new Error(`Vendor search failed: ${resp.status} — ${JSON.stringify(resp.body)}`);
   const items = (resp.body?.Items || []).slice(0, limit);
   return { items, total: resp.body?.TotalCount || items.length };
 }
@@ -87,9 +96,8 @@ async function getProductsBySku(skus, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
-  const fields = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
-  const qs = new URLSearchParams({ field: fields, productsSku: JSON.stringify(skus) });
-  const resp = await apiRequest(`/api3/product/findProduct?${qs}`, 'GET', null, token);
+  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: JSON.stringify(skus) });
+  const resp = await apiRequest(url, 'GET', null, token);
   if (resp.status !== 200) throw new Error(`Vendor lookup failed: ${resp.status}`);
   return resp.body?.Items || [];
 }

@@ -67,6 +67,25 @@ async function loadLowStockItems(locationId) {
   );
 }
 
+// ── AJAX: assign vendor SKU to a stock item ────────────────────────────────
+
+router.post('/assign-sku', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const stockItemId = parseInt(req.body.stock_item_id, 10);
+    const sku = req.body.vendor_product_key?.trim() || null;
+    if (!stockItemId) return res.status(400).json({ error: 'Brak ID produktu.' });
+    const item = await db.get(`SELECT id, name FROM stock_items WHERE id=? AND location_id=?`, [stockItemId, locationId]);
+    if (!item) return res.status(404).json({ error: 'Produkt nie istnieje.' });
+    await db.run(`UPDATE stock_items SET vendor_product_key=? WHERE id=?`, [sku, stockItemId]);
+    await log(sessionUser(req), 'Zamówienia – przypisano SKU', `${item.name} → ${sku || '(usunięto)'}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── AJAX: vendor product search ────────────────────────────────────────────
 
 router.get('/vendor/search', requireManager, async (req, res) => {
