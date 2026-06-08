@@ -266,8 +266,8 @@ router.get('/view/:id', async (req, res) => {
       `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
-       WHERE si.report_type=? AND si.active=1 ORDER BY si.sort_order, si.id`,
-      [report.id, report.report_type]
+       WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
+      [report.id, report.report_type, report.location_id]
     );
 
     res.render('stock/view', {
