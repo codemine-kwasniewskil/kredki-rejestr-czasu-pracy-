@@ -78,6 +78,16 @@ app.use(async (req, res, next) => {
       }
     }
 
+    // --- pending registrations count for admin/super_admin ---
+    if (req.session.userRole === 'super_admin' || req.session.userRole === 'admin') {
+      try {
+        const pr = await db.get('SELECT COUNT(*) as cnt FROM users WHERE registration_pending=1');
+        res.locals.pendingRegistrations = pr ? pr.cnt : 0;
+      } catch (_) { res.locals.pendingRegistrations = 0; }
+    } else {
+      res.locals.pendingRegistrations = 0;
+    }
+
     // --- feature flags: session cache, keyed by locationId + role ---
     if (req.session.userRole !== 'super_admin' && locationId) {
       const cacheKey = `${locationId}:${req.session.userRole}`;
@@ -134,6 +144,18 @@ app.use('/locations', require('./routes/locations'));
 
     // Make legacy email column nullable so new users don't need it
     try { await db.run(`ALTER TABLE users MODIFY COLUMN email VARCHAR(255) DEFAULT NULL`); } catch(e) {}
+
+    // Unique index on email (allows multiple NULLs in MySQL)
+    const emailIdx = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='idx_users_email'`);
+    if (!emailIdx || emailIdx.cnt === 0) {
+      try { await db.run(`CREATE UNIQUE INDEX idx_users_email ON users (email)`); } catch(e) {}
+    }
+
+    // registration_pending: marks self-registered users awaiting admin approval
+    const regPendingCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='registration_pending'`);
+    if (!regPendingCol || regPendingCol.cnt === 0) {
+      await db.run(`ALTER TABLE users ADD COLUMN registration_pending TINYINT(1) DEFAULT 0`);
+    }
 
     // username column (login identifier, replaces email in UI)
     const umCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='username'`);

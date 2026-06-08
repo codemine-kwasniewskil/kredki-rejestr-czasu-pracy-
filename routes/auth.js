@@ -155,10 +155,14 @@ router.get('/login', (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await db.get('SELECT * FROM users WHERE username=? AND active=1', [username]);
+    const identifier = (username || '').trim();
+    const user = await db.get(
+      'SELECT * FROM users WHERE (username=? OR (email=? AND email IS NOT NULL)) AND active=1 AND (registration_pending IS NULL OR registration_pending=0)',
+      [identifier, identifier]
+    );
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-      log({ id: null, name: username || '?', role: '?' }, 'Nieudana próba logowania', username || '');
-      req.flash('error', 'Nieprawidłowa nazwa użytkownika lub hasło.');
+      log({ id: null, name: identifier || '?', role: '?' }, 'Nieudana próba logowania', identifier || '');
+      req.flash('error', 'Nieprawidłowa nazwa użytkownika/email lub hasło.');
       return res.redirect('/login');
     }
     req.session.userId = user.id;
@@ -204,6 +208,53 @@ router.post('/login', async (req, res) => {
     log(user, 'Logowanie', user.username);
     if (user.must_change_password) return res.redirect('/change-password');
     res.redirect('/dashboard');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/register', (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  res.render('auth/register');
+});
+
+router.post('/register', async (req, res) => {
+  try {
+    if (req.session.userId) return res.redirect('/dashboard');
+    const { name, email, password, password_confirm } = req.body;
+    const trimmedEmail = (email || '').trim().toLowerCase();
+    const trimmedName = (name || '').trim();
+
+    if (!trimmedName || !trimmedEmail || !password) {
+      req.flash('error', 'Wszystkie pola są wymagane.');
+      return res.redirect('/register');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      req.flash('error', 'Nieprawidłowy format adresu email.');
+      return res.redirect('/register');
+    }
+    if (password.length < 6) {
+      req.flash('error', 'Hasło musi mieć co najmniej 6 znaków.');
+      return res.redirect('/register');
+    }
+    if (password !== password_confirm) {
+      req.flash('error', 'Hasła nie są identyczne.');
+      return res.redirect('/register');
+    }
+    const existing = await db.get('SELECT id FROM users WHERE email=?', [trimmedEmail]);
+    if (existing) {
+      req.flash('error', 'Ten adres email jest już zarejestrowany.');
+      return res.redirect('/register');
+    }
+    const hash = bcrypt.hashSync(password, 10);
+    await db.run(
+      `INSERT INTO users (name, email, role, active, registration_pending, must_change_password, password_hash) VALUES (?,?,'worker',0,1,0,?)`,
+      [trimmedName, trimmedEmail, hash]
+    );
+    req.flash('success', 'Rejestracja przyjęta. Poczekaj na zatwierdzenie przez administratora.');
+    res.redirect('/login');
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });

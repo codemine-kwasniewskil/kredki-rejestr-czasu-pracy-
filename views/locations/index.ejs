@@ -55,6 +55,7 @@
               </form>
               <% } %>
               <a href="/locations/<%= loc.id %>/features" class="btn btn-secondary text-xs">Funkcje</a>
+              <button onclick="openClone(<%= JSON.stringify({id: loc.id, name: loc.name}) %>)" class="btn btn-secondary text-xs">Klonuj</button>
               <button onclick="openEdit(<%= JSON.stringify(loc) %>)" class="btn btn-secondary text-xs">Edytuj</button>
             </td>
           </tr>
@@ -126,6 +127,34 @@
   </div>
 </div>
 
+<!-- Clone Location Modal -->
+<div id="cloneModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h2 class="text-base font-bold text-slate-800">Klonuj lokalizację</h2>
+      <button onclick="document.getElementById('cloneModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="cloneForm" method="POST" action="" class="px-6 py-4 space-y-4">
+      <p class="text-sm text-slate-600">Kopiuje: szablony zmian, stany magazynowe i ustawienia funkcji z lokalizacji <strong id="cloneSourceName"></strong>.</p>
+      <p class="text-xs text-slate-400">Nie kopiuje: grafiku, umów, użytkowników.</p>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa nowej lokalizacji *</label>
+        <input type="text" name="name" required class="input w-full" placeholder="np. Graficzek Centrum">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Slug * (tylko a-z, 0-9, - _)</label>
+        <input type="text" name="slug" required class="input w-full font-mono" placeholder="np. graficzek-centrum">
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="document.getElementById('cloneModal').classList.add('hidden')" class="btn btn-secondary">Anuluj</button>
+        <button type="submit" class="btn btn-primary">Klonuj</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function openEdit(loc) {
   document.getElementById('editForm').action = '/locations/' + loc.id;
@@ -133,6 +162,11 @@ function openEdit(loc) {
   document.getElementById('editAddress').value = loc.address || '';
   document.getElementById('editActive').checked = !!loc.active;
   document.getElementById('editModal').classList.remove('hidden');
+}
+function openClone(loc) {
+  document.getElementById('cloneForm').action = '/locations/' + loc.id + '/clone';
+  document.getElementById('cloneSourceName').textContent = loc.name;
+  document.getElementById('cloneModal').classList.remove('hidden');
 }
 </script>
 

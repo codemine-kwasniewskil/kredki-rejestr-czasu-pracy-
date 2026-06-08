@@ -173,4 +173,73 @@ router.post('/:id/features', async (req, res) => {
   }
 });
 
+// Clone a location: copies shift_templates, stock_items, location_features to a new location
+router.post('/:id/clone', async (req, res) => {
+  try {
+    const sourceId = parseInt(req.params.id, 10);
+    const source = await db.get('SELECT * FROM locations WHERE id=?', [sourceId]);
+    if (!source) {
+      req.flash('error', 'Lokalizacja źródłowa nie istnieje.');
+      return res.redirect('/locations');
+    }
+    const { name, slug } = req.body;
+    if (!name || !slug) {
+      req.flash('error', 'Nazwa i slug są wymagane.');
+      return res.redirect('/locations');
+    }
+    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const existing = await db.get('SELECT id FROM locations WHERE slug=?', [cleanSlug]);
+    if (existing) {
+      req.flash('error', 'Ten slug jest już zajęty.');
+      return res.redirect('/locations');
+    }
+
+    const result = await db.run(
+      `INSERT INTO locations (name, slug, address) VALUES (?,?,?)`,
+      [name.trim(), cleanSlug, source.address || null]
+    );
+    const newId = result.insertId;
+
+    // Copy location_features
+    await db.run(
+      `INSERT INTO location_features (location_id, role, feature, enabled)
+       SELECT ?, role, feature, enabled FROM location_features WHERE location_id=?`,
+      [newId, sourceId]
+    );
+
+    // Copy shift_templates
+    const stCols = await db.get(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shift_templates' AND COLUMN_NAME='sort_order'`
+    );
+    if (stCols && stCols.cnt > 0) {
+      await db.run(
+        `INSERT INTO shift_templates (name, start_time, end_time, color, location_id, sort_order)
+         SELECT name, start_time, end_time, color, ?, sort_order FROM shift_templates WHERE location_id=?`,
+        [newId, sourceId]
+      );
+    } else {
+      await db.run(
+        `INSERT INTO shift_templates (name, start_time, end_time, color, location_id)
+         SELECT name, start_time, end_time, color, ? FROM shift_templates WHERE location_id=?`,
+        [newId, sourceId]
+      );
+    }
+
+    // Copy stock_items
+    await db.run(
+      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, active, location_id)
+       SELECT report_type, category, name, unit, target_qty, sort_order, active, ? FROM stock_items WHERE location_id=?`,
+      [newId, sourceId]
+    );
+
+    delete req.session.cachedAllLocations;
+    log(res.locals.user, 'Klonowanie lokalizacji', `${source.name} → ${name.trim()}`);
+    req.flash('success', `Lokalizacja "${name.trim()}" utworzona jako kopia "${source.name}".`);
+    res.redirect('/locations');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
 module.exports = router;
