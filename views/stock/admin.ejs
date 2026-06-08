@@ -79,7 +79,7 @@
 
               <div>
                 <label class="block text-xs font-medium text-slate-600 mb-1">Kategoria</label>
-                <select id="editCatSel" onchange="toggleCustom('editCatSel','editCatInput','editCatHidden')"
+                <select id="editCatSel" onchange="toggleCustom('editCatSel','editCatInput','editCatHidden'); toggleHopperFields(this.value, 'hopperFieldsEdit')"
                   class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                   <option value="">-- brak --</option>
                   <% for (const cat of categories) { %>
@@ -130,13 +130,22 @@
                   class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
               </div>
 
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">
-                  Poj. hopera (kg)
-                  <span class="text-slate-400 font-normal ml-1">– dla kategorii kawa</span>
-                </label>
-                <input type="number" name="hopper_weight" value="<%= editItem.hopper_weight !== null && editItem.hopper_weight !== undefined ? editItem.hopper_weight : 1.2 %>" placeholder="1.2" min="0.1" step="0.1"
-                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <div id="hopperFieldsEdit" class="<%= (() => { const c = (editItem.category || '').toLowerCase(); return c.includes('kawa') || c.includes('coffee') ? '' : 'hidden'; })() %> contents">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">
+                    Poj. hopera (kg)
+                    <span class="text-slate-400 font-normal ml-1">– kawa</span>
+                  </label>
+                  <input type="number" name="hopper_weight" value="<%= editItem.hopper_weight !== null && editItem.hopper_weight !== undefined ? editItem.hopper_weight : 1.2 %>" placeholder="1.2" min="0.1" step="0.1"
+                    class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                </div>
+                <div class="flex items-end pb-1">
+                  <label class="flex items-center gap-2 cursor-pointer py-2.5">
+                    <input type="checkbox" name="hopper_enabled" value="1" <%= editItem.hopper_enabled ? 'checked' : '' %>
+                      class="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400">
+                    <span class="text-sm text-slate-700">Hopper aktywny</span>
+                  </label>
+                </div>
               </div>
 
               <div>
@@ -638,6 +647,15 @@ function validateRename(form) {
   const inp = form.querySelector('input[name="new_category"],input[name="new_unit"]');
   if (!inp || !inp.value.trim()) { inp?.focus(); return false; }
   return true;
+}
+
+// ── Hopper fields visibility ────────────────────────────────────────────────
+function toggleHopperFields(catValue, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const c = (catValue || '').toLowerCase();
+  const isCoffee = c.includes('kawa') || c.includes('coffee');
+  el.classList.toggle('hidden', !isCoffee);
 }
 
 // ── Category / Unit dropdown toggle ────────────────────────────────────────

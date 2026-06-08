@@ -273,6 +273,11 @@ const migrationsReady = (async () => {
     if (!hopperWeightCol || hopperWeightCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_items ADD COLUMN hopper_weight DECIMAL(5,2) DEFAULT 1.2`);
     }
+    // hopper_enabled on stock_items (opt-in per item, default 0)
+    const hopperEnabledCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='hopper_enabled'`);
+    if (!hopperEnabledCol || hopperEnabledCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN hopper_enabled TINYINT DEFAULT 0`);
+    }
 
     // Standalone category/unit catalogs
     await db.run(`CREATE TABLE IF NOT EXISTS stock_categories (

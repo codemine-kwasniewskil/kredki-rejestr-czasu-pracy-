@@ -26,7 +26,8 @@
     <% } %>
 
     <%
-    function isCoffeeCategory(cat) {
+    function isCoffeeCategory(cat, enabled) {
+      if (!enabled) return false;
       if (!cat) return false;
       const c = cat.toLowerCase();
       return c.includes('kawa') || c.includes('coffee');
@@ -57,7 +58,7 @@
             <% for (const item of group.items) { %>
               <% const e = entries[item.id] || {}; %>
               <% const lvs = lastValues[item.id]; %>
-              <% const isCoffee = isCoffeeCategory(item.category); %>
+              <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
               <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
               <% const hopperVal = existing ? (e.hopper_qty || null) : (lvs && lvs.hopper_qty ? lvs.hopper_qty : null); %>
               <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
@@ -165,7 +166,7 @@
               <tbody>
                 <% for (const item of group.items) { %>
                   <% const e = entries[item.id] || {}; %>
-                  <% const isCoffee = isCoffeeCategory(item.category); %>
+                  <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
                   <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
                   <% const hopperVal = existing ? (e.hopper_qty || null) : (lastValues[item.id] && lastValues[item.id].hopper_qty ? lastValues[item.id].hopper_qty : null); %>
                   <tr class="border-b border-slate-50 last:border-0" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
@@ -223,7 +224,7 @@
               <% const lv = lastValues[item.id]; %>
               <%/* For new reports, pre-fill with last value so worker can press Enter to confirm unchanged */%>
               <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
-              <% const isCoffee = isCoffeeCategory(item.category); %>
+              <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
               <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
               <% const hopperVal = existing ? (e.hopper_qty || null) : (lv && lv.hopper_qty ? lv.hopper_qty : null); %>
               <div class="flex items-center gap-3 px-4 py-3 flex-wrap" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">

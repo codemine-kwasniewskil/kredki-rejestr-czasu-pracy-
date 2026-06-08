@@ -26,7 +26,8 @@
     <% } %>
 
     <%
-    function isCoffeeCategory(cat) {
+    function isCoffeeCategory(cat, enabled) {
+      if (!enabled) return false;
       if (!cat) return false;
       const c = cat.toLowerCase();
       return c.includes('kawa') || c.includes('coffee');
@@ -123,7 +124,7 @@
         <div class="snapshot-card bg-white rounded-xl border border-slate-200 shadow-sm mb-3 divide-y divide-slate-50">
           <% for (const item of group.items) { %>
             <% const qVal = parseFloat(item.quantity); const qBelow = item.min_qty !== null && !isNaN(qVal) && qVal < item.min_qty; %>
-            <% const isCoffee = isCoffeeCategory(item.category); %>
+            <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
             <div class="flex items-center justify-between px-4 py-2.5 flex-wrap gap-y-1 <%= qBelow ? 'bg-amber-50' : '' %>">
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-slate-800 flex items-center gap-1.5">
