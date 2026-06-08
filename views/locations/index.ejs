@@ -157,7 +157,7 @@
 
 <script>
 function openEdit(loc) {
-  document.getElementById('editForm').action = '/locations/' + loc.id;
+  document.getElementById('editForm').action = '/locations/' + loc.id + '?_method=PUT';
   document.getElementById('editName').value = loc.name || '';
   document.getElementById('editAddress').value = loc.address || '';
   document.getElementById('editActive').checked = !!loc.active;
