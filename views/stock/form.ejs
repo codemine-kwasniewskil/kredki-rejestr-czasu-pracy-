@@ -78,10 +78,11 @@
                   </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
+                  <% const prefillOpen = !existing ? (e.stan_otwarcie || (lvs && lvs.stan_zamkniecie ? lvs.stan_zamkniecie : '')) : (e.stan_otwarcie || ''); %>
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Otwarcie<br><span class="text-slate-400">(bez dostaw)</span></div>
                     <input type="text" name="stan_otwarcie_<%= item.id %>"
-                      value="<%= e.stan_otwarcie || '' %>" placeholder="—"
+                      value="<%= prefillOpen %>" placeholder="—"
                       inputmode="decimal" enterkeyhint="next" autocomplete="off"
                       onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -168,7 +169,9 @@
                   <% const e = entries[item.id] || {}; %>
                   <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
                   <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
-                  <% const hopperVal = existing ? (e.hopper_qty || null) : (lastValues[item.id] && lastValues[item.id].hopper_qty ? lastValues[item.id].hopper_qty : null); %>
+                  <% const lvsD = lastValues[item.id]; %>
+                  <% const hopperVal = existing ? (e.hopper_qty || null) : (lvsD && lvsD.hopper_qty ? lvsD.hopper_qty : null); %>
+                  <% const prefillOpenD = !existing ? (e.stan_otwarcie || (lvsD && lvsD.stan_zamkniecie ? lvsD.stan_zamkniecie : '')) : (e.stan_otwarcie || ''); %>
                   <tr class="border-b border-slate-50 last:border-0" data-product-row="<%= item.id %>" data-sort-order="<%= item.sort_order %>">
                     <td class="px-3 py-2 text-xs leading-tight">
                       <span class="font-medium text-slate-800"><%= item.name %></span>
@@ -197,7 +200,7 @@
                         </div>
                       <% } %>
                     </td>
-                    <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= e.stan_otwarcie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= prefillOpenD %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="dostawa_<%= item.id %>" value="<%= e.dostawa || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" data-item-id="<%= item.id %>" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
@@ -223,7 +226,8 @@
               <% const e = entries[item.id] || {}; %>
               <% const lv = lastValues[item.id]; %>
               <%/* For new reports, pre-fill with last value so worker can press Enter to confirm unchanged */%>
-              <% const inputVal = existing ? (e.quantity || '') : (lv && lv.quantity ? lv.quantity : ''); %>
+              <% const lastQty = lv && (lv.quantity || lv.stan_zamkniecie); %>
+              <% const inputVal = existing ? (e.quantity || '') : (lastQty || ''); %>
               <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
               <% const hopperWeight = parseFloat(item.hopper_weight) || 1.2; %>
               <% const hopperVal = existing ? (e.hopper_qty || null) : (lv && lv.hopper_qty ? lv.hopper_qty : null); %>
@@ -240,7 +244,7 @@
                   </div>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (!existing && lv && lv.quantity) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lv.last_date %>): <%= lv.quantity %></span><% } %>
+                    <% if (!existing && lastQty) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lv.last_date %>): <%= lastQty %></span><% } %>
                   </div>
                 </div>
                 <div class="shrink-0">
