@@ -129,7 +129,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
   }
 });
 
-router.post('/:id/approve', requireRole('admin'), async (req, res) => {
+router.post('/:id/approve', requireRole('super_admin'), async (req, res) => {
   try {
     const user = await db.get('SELECT * FROM users WHERE id=? AND registration_pending=1', [req.params.id]);
     if (!user) return res.redirect('/users');
@@ -159,7 +159,7 @@ router.post('/:id/approve', requireRole('admin'), async (req, res) => {
   }
 });
 
-router.delete('/:id/pending', requireRole('admin'), async (req, res) => {
+router.delete('/:id/pending', requireRole('super_admin'), async (req, res) => {
   try {
     const user = await db.get('SELECT * FROM users WHERE id=? AND registration_pending=1', [req.params.id]);
     if (!user) return res.redirect('/users');

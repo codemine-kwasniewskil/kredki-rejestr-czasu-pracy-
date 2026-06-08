@@ -20,7 +20,7 @@
       <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"><%= error[0] %></div>
     <% } %>
 
-    <% if (pendingUsers && pendingUsers.length > 0) { %>
+    <% if (user && user.role === 'super_admin' && pendingUsers && pendingUsers.length > 0) { %>
     <div class="mb-6">
       <h2 class="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-2">
         <span class="inline-flex items-center justify-center w-5 h-5 bg-amber-500 text-white text-xs rounded-full font-bold"><%= pendingUsers.length %></span>

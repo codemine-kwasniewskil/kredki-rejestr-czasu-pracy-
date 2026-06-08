@@ -78,8 +78,8 @@ app.use(async (req, res, next) => {
       }
     }
 
-    // --- pending registrations count for admin/super_admin ---
-    if (req.session.userRole === 'super_admin' || req.session.userRole === 'admin') {
+    // --- pending registrations count for super_admin only ---
+    if (req.session.userRole === 'super_admin') {
       try {
         const pr = await db.get('SELECT COUNT(*) as cnt FROM users WHERE registration_pending=1');
         res.locals.pendingRegistrations = pr ? pr.cnt : 0;
