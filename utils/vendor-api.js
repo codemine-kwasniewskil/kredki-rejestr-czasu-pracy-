@@ -107,7 +107,7 @@ async function getProductsBySku(skus, creds = {}) {
   return results;
 }
 
-async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliveryName, address, addressId, additionalProperties }) {
+async function placeOrder({ items, comment, clientId, apiKey, paymentId, paymentName, deliveryId, deliveryName, address, addressId, additionalProperties }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
@@ -116,25 +116,37 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
     .map(i => ({
       Key: String(i.vendor_product_key),
       Quantity: Number(i.quantity),
-      ...(i.unit ? { UnitId: String(i.unit) } : {}),
+      UnitId: String(i.unit || ''),
     }));
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
   const body = {
-    Comment: comment || 'Zamówienie z systemu Kredki',
-    ...(deliveryName ? { DeliveryName: deliveryName } : {}),
-    OrderLines: { KeyType: 'Sku', Lines: lines },
-    ...(paymentName ? { PaymentName: paymentName } : {}),
-    ...(additionalProperties?.length ? { AdditionalProperties: additionalProperties } : {}),
-    Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
+    AddressId: addressId ? parseInt(addressId, 10) : 0,
+    Address: {
+      Name:            address?.Name            || '',
+      Street:          address?.Street          || '',
+      City:            address?.City            || '',
+      PostalCode:      address?.PostalCode      || '',
+      Phone:           address?.Phone           || '',
+      CountryId:       address?.CountryId       || 1,
+      RegionId:        address?.RegionId        || 0,
+      Email:           address?.Email           || '',
+      ApartmentNumber: address?.ApartmentNumber || '',
+      HouseNumber:     address?.HouseNumber     || '',
+      TaxNumber:       address?.TaxNumber       || '',
+      OneTimeAdress:   true,
+    },
+    PaymentId:            paymentId  ? parseInt(paymentId, 10)  : 0,
+    PaymentName:          paymentName  || '',
+    DeliveryId:           deliveryId ? parseInt(deliveryId, 10) : 0,
+    DeliveryName:         deliveryName || '',
+    Comment:              comment || 'Zamówienie z systemu Kredki',
+    OrderLines:           { KeyType: 'Sku', Lines: lines },
+    InpostPaczkomatCode:  '',
+    AdditionalProperties: additionalProperties || [],
+    Config:               { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
   };
-
-  if (addressId) {
-    body.AddressId = parseInt(addressId, 10);
-  } else if (address) {
-    body.Address = { ...address, OneTimeAdress: true };
-  }
 
   console.log('[placeOrder] POST /api3/order body:', JSON.stringify(body, null, 2));
   const resp = await apiRequest('/api3/order', 'POST', body, token);

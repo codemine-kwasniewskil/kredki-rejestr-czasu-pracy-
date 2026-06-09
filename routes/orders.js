@@ -432,26 +432,27 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
-            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name } = req.body;
+            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_name } = req.body;
     const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
       .filter(Boolean).join(' ').trim() || null;
     await db.run(
       `INSERT INTO order_settings
-         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
          cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
          cafe_postal_code=VALUES(cafe_postal_code), cafe_city=VALUES(cafe_city),
          cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email),
          cafe_address_id=VALUES(cafe_address_id),
-         cafe_delivery_name=VALUES(cafe_delivery_name)`,
+         cafe_delivery_name=VALUES(cafe_delivery_name),
+         cafe_payment_name=VALUES(cafe_payment_name)`,
       [locationId, cafeAddress,
        cafe_name?.trim() || null, cafe_street?.trim() || null,
        cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
        cafe_city?.trim() || null, cafe_phone?.trim() || null,
        cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null,
-       cafe_delivery_name?.trim() || null]
+       cafe_delivery_name?.trim() || null, cafe_payment_name?.trim() || null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -807,52 +808,97 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
     }
 
+    // Re-fetch vendor unit strings so they exactly match the API (e.g. "szt." not "szt")
+    try {
+      const skus = itemsWithSku.map(i => i.vendor_product_key);
+      const vendorProducts = await vendorApi.getProductsBySku(skus, creds);
+      const unitMap = new Map(vendorProducts.map(p => [String(p.Sku).trim(), p.Unit]));
+      for (const item of itemsWithSku) {
+        const vendorUnit = unitMap.get(String(item.vendor_product_key).trim());
+        if (vendorUnit) item.unit = vendorUnit;
+      }
+    } catch (e) {
+      console.error('[placeOrder] unit re-fetch error:', e.message);
+    }
+
     const settings = await getOrderSettings(locationId) || {};
 
-    // Prefer AddressId (from settings or auto-fetched from API)
+    // Fetch full address from vendor API
     let address = null;
     let addressId = settings.cafe_address_id ? parseInt(settings.cafe_address_id, 10) : null;
-    if (!addressId) {
-      try {
-        const addrs = await vendorApi.getClientAddresses(creds);
-        if (addrs.length > 0) addressId = parseInt(addrs[0].Id, 10);
-      } catch (_) {}
+    try {
+      const addrs = await vendorApi.getClientAddresses(creds);
+      if (addrs.length > 0) {
+        const a = addrs[0];
+        if (!addressId) addressId = parseInt(a.Id, 10);
+        address = {
+          Name:            a.Name            || settings.cafe_name  || '',
+          Street:          a.Street          || settings.cafe_street || '',
+          City:            a.City            || settings.cafe_city   || '',
+          PostalCode:      a.PostalCode      || settings.cafe_postal_code || '',
+          Phone:           a.Phone           || settings.cafe_phone  || '',
+          CountryId:       a.CountryId       || settings.cafe_country_id || 1,
+          RegionId:        a.RegionId        || 0,
+          Email:           a.Email           || settings.cafe_email  || '',
+          ApartmentNumber: a.ApartmentNumber || '',
+          HouseNumber:     a.HouseNumber     || settings.cafe_house_number || '',
+          TaxNumber:       a.TaxNumber       || '',
+        };
+      }
+    } catch (e) {
+      console.error('[placeOrder] getClientAddresses error:', e.message);
     }
-    // Fall back to structured address from settings if no ID found
-    if (!addressId && settings.cafe_street && settings.cafe_city && settings.cafe_postal_code) {
+    // Fall back to settings-only address if API fetch failed
+    if (!address && settings.cafe_street && settings.cafe_city) {
       address = {
-        Name: settings.cafe_name || 'Kawiarnia Kredki',
-        Street: settings.cafe_street,
-        HouseNumber: settings.cafe_house_number || '',
-        City: settings.cafe_city,
-        PostalCode: settings.cafe_postal_code,
-        Phone: settings.cafe_phone || '',
-        Email: settings.cafe_email || '',
-        CountryId: settings.cafe_country_id || 1,
+        Name:            settings.cafe_name         || '',
+        Street:          settings.cafe_street        || '',
+        City:            settings.cafe_city          || '',
+        PostalCode:      settings.cafe_postal_code   || '',
+        Phone:           settings.cafe_phone         || '',
+        CountryId:       settings.cafe_country_id   || 1,
+        RegionId:        0,
+        Email:           settings.cafe_email         || '',
+        ApartmentNumber: '',
+        HouseNumber:     settings.cafe_house_number  || '',
+        TaxNumber:       '',
       };
     }
 
-    // Resolve delivery name — validate against API list (pass addressId for context)
+    // Resolve delivery — capture both Id and Name
+    let deliveryId = null;
     let deliveryName = settings.cafe_delivery_name?.trim() || null;
     try {
       const deliveryOptions = await vendorApi.getDeliveryOptions(creds, addressId || null);
-      const names = deliveryOptions.map(d => d.Name).filter(Boolean);
-      if (names.length === 0) {
-        // keep saved value — API may require it even if delivery list is empty
-      } else if (!deliveryName || !names.includes(deliveryName)) {
-        deliveryName = names[0];
+      const opts = deliveryOptions.filter(d => d.Name);
+      console.log('[placeOrder] delivery options from API:', opts.map(d => `${d.Id}:${d.Name}`), '| configured:', deliveryName);
+      if (opts.length > 0) {
+        const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
+        deliveryId   = chosen.Id   || null;
+        deliveryName = chosen.Name || deliveryName;
       }
-    } catch (_) {}
+    } catch (e) {
+      console.error('[placeOrder] getDeliveryOptions error:', e.message);
+    }
 
-    // Build comment — include own order number here since AdditionalProperties key is unknown
+    if (!deliveryName) {
+      req.flash('error', 'Nie można określić metody dostawy. Skonfiguruj nazwę dostawy (DeliveryName) w ustawieniach zamówień.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    // Build comment
     const commentParts = [order.notes];
     if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
     const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} – Kredki`;
 
+    const paymentName = settings.cafe_payment_name?.trim() || null;
+
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment,
+      deliveryId,
       deliveryName,
+      paymentName,
       address,
       addressId,
       ...creds,
