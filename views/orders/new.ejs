@@ -92,6 +92,7 @@
               <tr class="text-left text-slate-500">
                 <th class="px-4 py-2 font-medium">Produkt</th>
                 <th class="px-4 py-2 font-medium">SKU dostawcy</th>
+                <th class="px-4 py-2 font-medium">Nazwa u dostawcy</th>
                 <th class="px-4 py-2 font-medium">Jedn.</th>
                 <th class="px-4 py-2 font-medium text-right">Ilość</th>
                 <th class="px-4 py-2 font-medium text-right">Cena netto</th>
@@ -101,7 +102,7 @@
             </thead>
             <tbody id="orderItems">
               <tr id="emptyRow">
-                <td colspan="7" class="px-4 py-8 text-center text-slate-400">
+                <td colspan="8" class="px-4 py-8 text-center text-slate-400">
                   Brak produktów. Wyszukaj produkty powyżej lub kliknij „Dodaj produkt".
                 </td>
               </tr>
@@ -255,7 +256,9 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
     <td class="px-4 py-2">
       <input type="text" name="item_sku[]" value="${escHtml(sku)}" placeholder="SKU"
         class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">
-      ${vn ? `<span class="text-xs text-slate-400 block mt-0.5 leading-tight max-w-[112px] truncate" title="${vn}">${vn}</span>` : ''}
+    </td>
+    <td class="px-4 py-2 text-slate-600 text-xs">
+      ${vn ? `<span class="leading-tight" title="${vn}">${vn}</span>` : '<span class="text-slate-300">—</span>'}
     </td>
     <td class="px-4 py-2">
       <input type="text" name="item_unit[]" value="${unit}" placeholder="szt."
@@ -270,7 +273,6 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
       <input type="number" name="item_price[]" value="${priceVal}" min="0" step="0.01" placeholder="—"
         class="price-input w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
         oninput="updateTotal()">
-      ${vn ? `<span class="text-xs text-slate-400 block mt-0.5 text-right leading-tight max-w-[96px] ml-auto truncate" title="${vn}">${vn}</span>` : ''}
     </td>
     <td class="px-4 py-2 text-right subtotal font-mono text-slate-600 whitespace-nowrap">—</td>
     <td class="px-4 py-2">
