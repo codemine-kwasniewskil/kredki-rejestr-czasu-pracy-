@@ -260,17 +260,8 @@ router.get('/vendor/delivery-options', requireManager, async (req, res) => {
     const allVendors = await loadVendors(locationId);
     const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
     if (!apiVendor) return res.json({ Items: [], error: 'Brak dostawcy API' });
-    const { getToken } = vendorApi;
-    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
-    const https = require('https');
-    const raw = await new Promise((resolve) => {
-      const opts = { hostname: 'b2b.intermlecz.pl', path: '/api3/order/delivery', method: 'GET',
-        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
-      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve(d)); });
-      r.on('error', () => resolve('{}'));
-      r.end();
-    });
-    res.json(JSON.parse(raw));
+    const items = await vendorApi.getDeliveryOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
+    res.json({ Items: items });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -839,6 +830,16 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       };
     }
 
+    // Resolve delivery name — validate saved value against API list; fall back to first available
+    let deliveryName = settings.cafe_delivery_name?.trim() || null;
+    try {
+      const deliveryOptions = await vendorApi.getDeliveryOptions(creds);
+      const names = deliveryOptions.map(d => d.Name).filter(Boolean);
+      if (names.length > 0 && (!deliveryName || !names.includes(deliveryName))) {
+        deliveryName = names[0];
+      }
+    } catch (_) {}
+
     // Build comment — include own order number here since AdditionalProperties key is unknown
     const commentParts = [order.notes];
     if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
@@ -847,7 +848,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment,
-      deliveryName: settings.cafe_delivery_name || null,
+      deliveryName,
       address,
       addressId,
       ...creds,

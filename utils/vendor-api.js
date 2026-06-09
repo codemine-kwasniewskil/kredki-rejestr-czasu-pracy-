@@ -140,6 +140,17 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
   return resp.body;
 }
 
+async function getDeliveryOptions(creds = {}) {
+  const { clientId, apiKey } = creds;
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
+  const token = await getToken(clientId, apiKey);
+  const resp = await apiRequest('/api3/order/delivery', 'GET', null, token);
+  if (resp.status !== 200) {
+    throw new Error(`Delivery API error: ${resp.status} — ${JSON.stringify(resp.body)}`);
+  }
+  return resp.body?.Items || [];
+}
+
 async function getClientAddresses(creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
@@ -151,4 +162,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, placeOrder, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, placeOrder, getDeliveryOptions, getClientAddresses };
