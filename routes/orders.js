@@ -844,11 +844,6 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       }
     } catch (_) {}
 
-    if (!deliveryName) {
-      req.flash('error', 'Wymagana nazwa dostawy (DeliveryName). Skonfiguruj ją w Ustawienia → Adres kawiarni. Skontaktuj się z Inter-Mlecz, aby poznać dostępne nazwy dostaw dla Twojego konta.');
-      return res.redirect(`/orders/${order.id}`);
-    }
-
     // Build comment — include own order number here since AdditionalProperties key is unknown
     const commentParts = [order.notes];
     if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
