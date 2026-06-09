@@ -362,7 +362,10 @@ router.get('/new', requireManager, async (req, res) => {
     const lowStock = await loadLowStockItems(locationId);
     const minOrderValue = await getMinOrderValue(locationId);
 
-    const priceMap = await buildPriceMap(lowStock, locationId).catch(() => ({}));
+    const priceMap = await buildPriceMap(lowStock, locationId).catch(e => {
+      console.error('[/new] buildPriceMap threw:', e.message, e.stack);
+      return {};
+    });
 
     const vendors = await loadVendors(locationId);
     res.render('orders/new', {

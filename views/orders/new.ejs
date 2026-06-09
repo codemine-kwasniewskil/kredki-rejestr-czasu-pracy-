@@ -16,8 +16,10 @@
     <% } %>
 
     <!-- DEBUG TEMP -->
-    <div class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded text-xs font-mono text-yellow-900 break-all">
-      priceMap: <%- JSON.stringify(priceMap) %>
+    <div class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded text-xs font-mono text-yellow-900 break-all space-y-1">
+      <div>priceMap: <%- JSON.stringify(priceMap) %></div>
+      <div>lowStock items: <%= lowStock.length %>, with SKU: <%= lowStock.filter(i => i.vendor_product_key).length %></div>
+      <div>SKUs: <%- JSON.stringify(lowStock.map(i => i.vendor_product_key).filter(Boolean)) %></div>
     </div>
 
     <!-- Vendor selector -->
