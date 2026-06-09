@@ -105,12 +105,8 @@ async function buildPriceMap(lowStock, locationId) {
   const allSkus = [...new Set(lowStock.map(i => i.vendor_product_key?.trim()).filter(Boolean))];
   if (allSkus.length === 0) return priceMap;
 
-  console.log('[buildPriceMap] looking up', allSkus.length, 'SKUs:', allSkus);
-
   const allVendors = await loadVendors(locationId);
   const apiVendors = allVendors.filter(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-
-  console.log('[buildPriceMap] api vendors:', apiVendors.map(v => ({ id: v.id, name: v.name })));
 
   if (apiVendors.length === 0) {
     // Fall back to location-level credentials
@@ -132,7 +128,6 @@ async function buildPriceMap(lowStock, locationId) {
       const remaining = allSkus.filter(s => !(s in priceMap));
       if (remaining.length === 0) break;
       const items = await vendorApi.getProductsBySku(remaining, { clientId: vendor.client_id, apiKey: vendor.api_key });
-      console.log('[buildPriceMap] vendor', vendor.name, 'returned', items.length, 'items');
       for (const v of items) {
         priceMap[String(v.Sku).trim()] = { price: v.PriceAfterDiscountNet?.Value ?? null, unit: v.Unit, inStock: v.InStock, vendorName: v.Name || null };
       }
@@ -141,7 +136,6 @@ async function buildPriceMap(lowStock, locationId) {
     }
   }
 
-  console.log('[buildPriceMap] resolved', Object.keys(priceMap).length, 'of', allSkus.length, 'SKUs');
   return priceMap;
 }
 
@@ -274,31 +268,6 @@ router.get('/vendor/search', requireManager, async (req, res) => {
     res.json(result);
   } catch (e) {
     console.error('Vendor search error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── AJAX: debug SKU lookup (temp) ─────────────────────────────────────────
-
-router.get('/vendor/debug-sku', requireManager, async (req, res) => {
-  try {
-    const locationId = getLocationId(req);
-    const allVendors = await loadVendors(locationId);
-    const apiVendors = allVendors.filter(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-    const testSku = (req.query.sku || '').trim();
-    const results = [];
-    for (const vendor of apiVendors) {
-      try {
-        const items = testSku
-          ? await vendorApi.getProductsBySku([testSku], { clientId: vendor.client_id, apiKey: vendor.api_key })
-          : [];
-        results.push({ vendor: vendor.name, vendorId: vendor.id, itemCount: items.length, items });
-      } catch (e) {
-        results.push({ vendor: vendor.name, vendorId: vendor.id, error: e.message });
-      }
-    }
-    res.json({ apiVendors: apiVendors.map(v => ({ id: v.id, name: v.name, hasClientId: !!v.client_id, hasApiKey: !!v.api_key })), testSku, results });
-  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

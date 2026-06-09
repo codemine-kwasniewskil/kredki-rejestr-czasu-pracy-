@@ -104,7 +104,6 @@ async function getProductsBySku(skus, creds = {}) {
     const match = (resp.body?.Items || []).find(p => String(p.Sku).trim() === String(sku).trim());
     if (match) results.push(match);
   }
-  console.log('[vendor-api] getProductsBySku resolved', results.length, 'of', skus.length, 'SKUs');
   return results;
 }
 
