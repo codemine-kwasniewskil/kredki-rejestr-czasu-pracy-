@@ -289,54 +289,80 @@ router.get('/vendor/search', requireManager, async (req, res) => {
 
 router.get('/vendor/api-probe', requireManager, async (req, res) => {
   try {
+    const https = require('https');
+    const qs = require('querystring');
+
+    // Step 1: web portal login to get session cookie for Swagger spec access
+    const loginResult = await new Promise((resolve) => {
+      const body = qs.stringify({ email: 'hello@kredki.store', password: 'Intkredki123@!' });
+      const opts = {
+        hostname: 'b2b.intermlecz.pl', path: '/logowanie', method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body), 'Accept': 'text/html,application/json' }
+      };
+      const r = https.request(opts, r2 => {
+        let d = '';
+        r2.on('data', c => d += c);
+        r2.on('end', () => resolve({ status: r2.statusCode, headers: r2.headers, body: d.slice(0, 300) }));
+      });
+      r.on('error', e => resolve({ status: 0, error: e.message }));
+      r.write(body); r.end();
+    });
+
+    const cookie = loginResult.headers?.['set-cookie']?.join('; ') || '';
+
+    // Step 2: fetch Swagger spec with session cookie
+    const fetchWithCookie = (path) => new Promise((resolve) => {
+      const opts = { hostname: 'b2b.intermlecz.pl', path, method: 'GET',
+        headers: { 'Accept': 'application/json', 'Cookie': cookie } };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d.slice(0, 5000) })); });
+      r.on('error', e => resolve({ status: 0, body: e.message }));
+      r.end();
+    });
+
+    const [spec1, spec2] = await Promise.all([
+      fetchWithCookie('/swagger/docs/v1'),
+      fetchWithCookie('/swagger/docs/v2'),
+    ]);
+
+    // Extract all paths from swagger spec
+    let allPaths = null;
+    for (const spec of [spec1, spec2]) {
+      try {
+        const parsed = JSON.parse(spec.body);
+        if (parsed.paths) { allPaths = Object.keys(parsed.paths); break; }
+      } catch (_) {}
+    }
+
+    // Step 3: also probe Order endpoints with API token
     const locationId = getLocationId(req);
     const allVendors = await loadVendors(locationId);
     const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-    if (!apiVendor) return res.json({ error: 'No API vendor' });
-    const { getToken } = vendorApi;
-    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
-    const https = require('https');
-    const hit = (path, method = 'GET', body = null) => new Promise((resolve) => {
-      const data = body ? JSON.stringify(body) : null;
-      const opts = {
-        hostname: 'b2b.intermlecz.pl', path, method,
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
-          'Authorization': 'bearer ' + token, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) }
-      };
-      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d.slice(0, 1000) })); });
-      r.on('error', e => resolve({ status: 0, body: e.message }));
-      if (data) r.write(data);
-      r.end();
-    });
-    const [spec, ...probes] = await Promise.all([
-      hit('/swagger/docs/v1'),
-      hit('/api3/Order/DeliveryDate'),
-      hit('/api3/Order/GetDeliveryDates'),
-      hit('/api3/Order/AvailableDates'),
-      hit('/api3/Order/AvailableDeliveryDates'),
-      hit('/api3/order/deliverydate'),
-      hit('/api3/order/availabledates'),
-      hit('/api3/Order/Calendar'),
-      hit('/api3/Order/Dates'),
-    ]);
-    const probePaths = [
-      '/api3/Order/DeliveryDate','/api3/Order/GetDeliveryDates','/api3/Order/AvailableDates',
-      '/api3/Order/AvailableDeliveryDates','/api3/order/deliverydate','/api3/order/availabledates',
-      '/api3/Order/Calendar','/api3/Order/Dates',
-    ];
-    // Extract Order-related paths from swagger spec if available
-    let swaggerPaths = null;
-    try {
-      const parsed = JSON.parse(spec.body);
-      swaggerPaths = Object.keys(parsed.paths || {}).filter(p => /order|delivery|date|calendar|address/i.test(p));
-    } catch (_) {}
+    let tokenProbes = [];
+    if (apiVendor) {
+      const { getToken } = vendorApi;
+      const token = await getToken(apiVendor.client_id, apiVendor.api_key);
+      const hitApi = (path) => new Promise((resolve) => {
+        const opts = { hostname: 'b2b.intermlecz.pl', path, method: 'GET',
+          headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
+        const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d.slice(0, 500) })); });
+        r.on('error', e => resolve({ status: 0, body: e.message }));
+        r.end();
+      });
+      const paths = ['/api3/Order/DeliveryDate','/api3/Order/AvailableDates','/api3/order/deliveryDates','/api3/Order/Dates','/api3/order/calendar'];
+      const results = await Promise.all(paths.map(p => hitApi(p)));
+      tokenProbes = paths.map((p, i) => ({ path: p, status: results[i].status, body: results[i].body }));
+    }
+
     res.json({
-      swaggerStatus: spec.status,
-      swaggerPaths,
-      probes: probes.map((p, i) => ({ path: probePaths[i], status: p.status, body: p.body }))
+      loginStatus: loginResult.status,
+      loginRedirect: loginResult.headers?.location,
+      cookieFound: !!cookie,
+      swaggerSpec1: { status: spec1.status, pathCount: allPaths?.length, paths: allPaths },
+      tokenProbes,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, stack: e.stack });
   }
 });
 
