@@ -96,12 +96,16 @@ async function getProductsBySku(skus, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
-  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: skus.join(',') });
-  console.log('[vendor-api] getProductsBySku url:', url, 'skus:', skus);
-  const resp = await apiRequest(url, 'GET', null, token);
-  console.log('[vendor-api] getProductsBySku status:', resp.status, 'items:', resp.body?.Items?.length ?? resp.body);
-  if (resp.status !== 200) throw new Error(`Vendor lookup failed: ${resp.status} — ${JSON.stringify(resp.body)}`);
-  return resp.body?.Items || [];
+  const results = [];
+  for (const sku of skus) {
+    const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: String(sku).trim() });
+    const resp = await apiRequest(url, 'GET', null, token);
+    if (resp.status !== 200) { console.error(`[vendor-api] SKU ${sku} lookup failed: ${resp.status}`); continue; }
+    const match = (resp.body?.Items || []).find(p => String(p.Sku).trim() === String(sku).trim());
+    if (match) results.push(match);
+  }
+  console.log('[vendor-api] getProductsBySku resolved', results.length, 'of', skus.length, 'SKUs');
+  return results;
 }
 
 async function placeOrder({ items, comment, clientId, apiKey }) {
