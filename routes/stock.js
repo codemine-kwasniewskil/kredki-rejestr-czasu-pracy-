@@ -398,10 +398,15 @@ router.get('/admin', requireManager, async (req, res) => {
       [locationId]
     );
 
-    const vendors = await db.all(
-      `SELECT id, name, api_type FROM vendors WHERE location_id=? AND active=1 ORDER BY sort_order, name`,
-      [locationId]
-    );
+    let vendors = [];
+    try {
+      vendors = await db.all(
+        `SELECT id, name, api_type FROM vendors WHERE location_id=? AND active=1 ORDER BY sort_order, name`,
+        [locationId]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+    }
 
     res.render('stock/admin', {
       title: 'Zarządzaj – Raport Stanów', currentPath: '/stock',

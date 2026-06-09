@@ -44,35 +44,54 @@ async function recalcOrderTotal(orderId) {
   return parseFloat(result.total);
 }
 
+const LOW_STOCK_BASE_SQL = `
+  JOIN (
+    SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
+    FROM stock_report_entries sre2
+    JOIN stock_reports sr2 ON sr2.id = sre2.report_id
+    WHERE sr2.location_id = ?
+    GROUP BY sre2.item_id
+  ) latest ON latest.item_id = si.id
+  JOIN stock_reports sr ON sr.location_id = ? AND sr.report_date = latest.max_date
+  JOIN stock_report_entries sre ON sre.item_id = si.id AND sre.report_id = sr.id
+  WHERE si.location_id = ? AND si.active = 1 AND si.min_qty IS NOT NULL
+    AND si.report_type NOT IN ('products_shift','cakes_noon')
+    AND sre.quantity IS NOT NULL AND sre.quantity NOT IN ('','—','-')
+    AND CAST(sre.quantity AS DECIMAL(10,3)) < si.min_qty
+  ORDER BY si.report_type, si.category, si.name`;
+
 async function loadLowStockItems(locationId) {
-  return db.all(
-    `SELECT si.id, si.name, si.category, si.report_type, si.unit, si.min_qty, si.vendor_product_key,
-            si.vendor_id, v.name AS vendor_name, v.api_type AS vendor_api_type,
-            CAST(sre.quantity AS DECIMAL(10,3)) AS last_qty, sr.report_date AS last_date
-     FROM stock_items si
-     LEFT JOIN vendors v ON v.id = si.vendor_id
-     JOIN (
-       SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
-       FROM stock_report_entries sre2
-       JOIN stock_reports sr2 ON sr2.id = sre2.report_id
-       WHERE sr2.location_id = ?
-       GROUP BY sre2.item_id
-     ) latest ON latest.item_id = si.id
-     JOIN stock_reports sr ON sr.location_id = ? AND sr.report_date = latest.max_date
-     JOIN stock_report_entries sre ON sre.item_id = si.id AND sre.report_id = sr.id
-     WHERE si.location_id = ? AND si.active = 1 AND si.min_qty IS NOT NULL
-       AND si.report_type NOT IN ('products_shift','cakes_noon')
-       AND sre.quantity IS NOT NULL AND sre.quantity NOT IN ('','—','-')
-       AND CAST(sre.quantity AS DECIMAL(10,3)) < si.min_qty
-     ORDER BY si.report_type, si.category, si.name`,
-    [locationId, locationId, locationId]
-  );
+  const params = [locationId, locationId, locationId];
+  try {
+    return await db.all(
+      `SELECT si.id, si.name, si.category, si.report_type, si.unit, si.min_qty, si.vendor_product_key,
+              si.vendor_id, v.name AS vendor_name, v.api_type AS vendor_api_type,
+              CAST(sre.quantity AS DECIMAL(10,3)) AS last_qty, sr.report_date AS last_date
+       FROM stock_items si LEFT JOIN vendors v ON v.id = si.vendor_id` + LOW_STOCK_BASE_SQL,
+      params
+    );
+  } catch (e) {
+    if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+    // vendors table not yet created — fall back without vendor columns
+    return (await db.all(
+      `SELECT si.id, si.name, si.category, si.report_type, si.unit, si.min_qty, si.vendor_product_key,
+              NULL AS vendor_id, NULL AS vendor_name, NULL AS vendor_api_type,
+              CAST(sre.quantity AS DECIMAL(10,3)) AS last_qty, sr.report_date AS last_date
+       FROM stock_items si` + LOW_STOCK_BASE_SQL,
+      params
+    ));
+  }
 }
 
 // ── Vendor management ──────────────────────────────────────────────────────
 
 async function loadVendors(locationId) {
-  return db.all(`SELECT * FROM vendors WHERE location_id=? ORDER BY sort_order, name`, [locationId]);
+  try {
+    return await db.all(`SELECT * FROM vendors WHERE location_id=? ORDER BY sort_order, name`, [locationId]);
+  } catch (e) {
+    if (e.code === 'ER_NO_SUCH_TABLE') return [];
+    throw e;
+  }
 }
 
 router.get('/vendors', requireManager, async (req, res) => {

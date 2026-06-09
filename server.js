@@ -639,8 +639,12 @@ const migrationsReady = (async () => {
       );
     }
 
-    // ── Vendors ────────────────────────────────────────────────────────────
+  } catch (e) {
+    console.error('Auto-migration error:', e.message);
+  }
 
+  // ── Vendors (independent block — runs even if earlier migrations threw) ──
+  try {
     await db.run(`CREATE TABLE IF NOT EXISTS vendors (
       id INT AUTO_INCREMENT PRIMARY KEY,
       location_id INT NOT NULL,
@@ -656,24 +660,25 @@ const migrationsReady = (async () => {
       FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE,
       UNIQUE KEY uq_vendor_slug_loc (location_id, slug)
     )`);
+    console.log('✓ vendors table ready');
 
-    // Seed Inter-Mlecz for Kredki using existing order_settings credentials
+    // Seed Inter-Mlecz for Kredki
     const existingIM = await db.get(`SELECT id FROM vendors WHERE location_id=1 AND slug='intermlecz'`);
     if (!existingIM) {
-      const os = await db.get(`SELECT vendor_client_id, vendor_api_key FROM order_settings WHERE location_id=1`);
+      const os = await db.get(`SELECT vendor_client_id, vendor_api_key FROM order_settings WHERE location_id=1`).catch(() => null);
       await db.run(
         `INSERT IGNORE INTO vendors (location_id, name, slug, api_type, client_id, api_key, sort_order)
          VALUES (1, 'Inter-Mlecz', 'intermlecz', 'intermlecz', ?, ?, 0)`,
         [os?.vendor_client_id || process.env.VENDOR_CLIENT_ID || '17456',
          os?.vendor_api_key   || process.env.VENDOR_API_KEY   || '1186D3D1-0CD9-45BB-9FE0-0C398D22694D']
       );
+      console.log('✓ Seeded Inter-Mlecz vendor');
     }
 
     // vendor_id on stock_items
     const vendorIdCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='vendor_id'`);
     if (!vendorIdCol || vendorIdCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_items ADD COLUMN vendor_id INT DEFAULT NULL`);
-      // Auto-assign Inter-Mlecz to items that already have a vendor_product_key
       await db.run(
         `UPDATE stock_items si
          JOIN vendors v ON v.location_id = si.location_id AND v.slug = 'intermlecz'
@@ -682,9 +687,8 @@ const migrationsReady = (async () => {
       );
       console.log('✓ Added vendor_id to stock_items');
     }
-
   } catch (e) {
-    console.error('Auto-migration error:', e.message);
+    console.error('Vendors migration error:', e.message);
   }
 })();
 
