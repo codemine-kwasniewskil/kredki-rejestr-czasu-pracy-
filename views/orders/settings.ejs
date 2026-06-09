@@ -98,16 +98,11 @@
           <div class="sm:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1">
               Nazwa dostawy (DeliveryName) <span class="text-red-500">*</span>
-              <span class="text-slate-400 font-normal ml-1">— wymagane przez API Inter-Mlecz</span>
+              <span class="text-slate-400 font-normal ml-1">— wymagane przez API Inter-Mlecz. Skontaktuj się z Inter-Mlecz, aby uzyskać poprawną wartość dla Twojego konta.</span>
             </label>
-            <div class="flex gap-2 mb-1.5">
-              <input type="text" name="cafe_delivery_name" value="<%= orderSettings.cafe_delivery_name || '' %>"
-                placeholder="np. dost.7-9 TR24 GOTÓWKA"
-                class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-              <button type="button" onclick="loadDeliveryOptions()"
-                class="btn btn-secondary text-sm flex-shrink-0">Sprawdź dostępne</button>
-            </div>
-            <div id="deliveryOptionsList"></div>
+            <input type="text" name="cafe_delivery_name" value="<%= orderSettings.cafe_delivery_name || '' %>"
+              placeholder="np. dost.7-9 TR24 GOTÓWKA"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
         </div>
         <div class="mt-3">
@@ -226,33 +221,6 @@ async function loadApiAddresses() {
   }
 }
 
-async function loadDeliveryOptions() {
-  const list = document.getElementById('deliveryOptionsList');
-  list.innerHTML = '<span class="text-xs text-slate-400">Pobieranie…</span>';
-  try {
-    const resp = await fetch('/orders/vendor/delivery-options');
-    const data = await resp.json();
-    if (data.error) { list.innerHTML = `<span class="text-xs text-red-500">Błąd: ${data.error}</span>`; return; }
-    const items = data.Items || [];
-    if (!items.length) {
-      const probes = (data.probes || []).map(p =>
-        `<div class="mt-1"><span class="font-mono text-slate-500">${p.path} [${p.method||'GET'}]</span> → HTTP ${p.status ?? 'ERR'}: <span class="font-mono break-all">${JSON.stringify(p.body ?? p.error).slice(0, 200)}</span></div>`
-      ).join('');
-      list.innerHTML = `<div class="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-        Brak dostępnych nazw dostawy. Wyniki prób:<br>${probes}
-      </div>`;
-      return;
-    }
-    list.innerHTML = `<div class="mt-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
-      <div class="font-medium text-slate-500 mb-1">Dostępne opcje — kliknij aby wybrać:</div>
-      ${items.map(d => `<div class="py-0.5"><button type="button"
-        onclick="document.querySelector('[name=cafe_delivery_name]').value=${JSON.stringify(d.Name || '')};document.getElementById('deliveryOptionsList').innerHTML=''"
-        class="text-left text-blue-700 hover:text-blue-900 hover:underline font-mono">${d.Name || '(brak nazwy)'}</button></div>`).join('')}
-    </div>`;
-  } catch (e) {
-    list.innerHTML = `<span class="text-xs text-red-500">Błąd: ${e.message}</span>`;
-  }
-}
 
 function fillKnownAddress() {
   fillFromApi({
