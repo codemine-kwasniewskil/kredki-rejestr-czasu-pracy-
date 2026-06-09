@@ -1,0 +1,261 @@
+<% locals.currentPath = '/deliveries'; %>
+<%- include('../partials/head', { title: 'Dostawy' }) %>
+<%- include('../partials/nav') %>
+
+<%
+const MONTH_NAMES = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const DAY_NAMES = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+
+function fmtDate(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  const yyyy = d.getUTCFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+const prevMonth = month === 1 ? 12 : month - 1;
+const prevYear  = month === 1 ? year - 1 : year;
+const nextMonth = month === 12 ? 1 : month + 1;
+const nextYear  = month === 12 ? year + 1 : year;
+
+const isManager = user && (user.role === 'admin' || user.role === 'location_manager' || user.role === 'super_admin');
+%>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Dostawy</h1>
+        <p class="text-sm text-slate-500 mt-0.5">Rejestr dostaw dla lokalizacji</p>
+      </div>
+      <div class="flex gap-2">
+        <% if (isManager) { %>
+        <a href="/deliveries/report" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Raport
+        </a>
+        <% } %>
+        <a href="/deliveries/new" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Dodaj dostawę
+        </a>
+      </div>
+    </div>
+
+    <!-- Flash messages -->
+    <% if (success && success.length) { %>
+    <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+    <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- View toggle tabs -->
+    <div class="flex gap-1 mb-5 bg-white border border-slate-200 rounded-lg p-1 w-fit">
+      <a href="/deliveries?view=list" class="px-4 py-1.5 text-sm rounded-md font-medium transition-colors <%= view === 'list' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100' %>">
+        Lista
+      </a>
+      <a href="/deliveries?view=calendar&year=<%= year %>&month=<%= month %>" class="px-4 py-1.5 text-sm rounded-md font-medium transition-colors <%= view === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100' %>">
+        Kalendarz
+      </a>
+    </div>
+
+    <% if (view === 'list') { %>
+    <!-- ===== LIST VIEW ===== -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <% if (deliveries.length === 0) { %>
+      <div class="text-center py-16 text-slate-400">
+        <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        <p class="font-medium">Brak dostaw</p>
+        <p class="text-sm mt-1">Dodaj pierwszą dostawę klikając "Dodaj dostawę"</p>
+      </div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50 text-left">
+              <th class="px-4 py-3 font-semibold text-slate-600">Data</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Dostawca</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Kategoria</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Opis</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Ilość</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Dodał(a)</th>
+              <% if (isManager) { %>
+              <th class="px-4 py-3 font-semibold text-slate-600"></th>
+              <% } %>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <% deliveries.forEach(d => { %>
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3 font-medium text-slate-800 whitespace-nowrap"><%= fmtDate(d.delivered_at) %></td>
+              <td class="px-4 py-3 text-slate-700"><%= d.supplier || '<span class="text-slate-400">—</span>' %></td>
+              <td class="px-4 py-3">
+                <% if (d.category) { %>
+                <span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-medium"><%= d.category %></span>
+                <% } else { %>
+                <span class="text-slate-400">—</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-3 text-slate-700 max-w-xs"><%= d.description %></td>
+              <td class="px-4 py-3 text-slate-600 whitespace-nowrap"><%= d.quantity || '—' %></td>
+              <td class="px-4 py-3 text-slate-500 whitespace-nowrap text-xs"><%= d.created_by_name || '—' %></td>
+              <% if (isManager) { %>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <a href="/deliveries/<%= d.id %>/edit" class="text-slate-400 hover:text-blue-600 transition-colors mr-2">
+                  <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </a>
+                <form method="POST" action="/deliveries/<%= d.id %>?_method=DELETE" class="inline" onsubmit="return confirm('Usunąć tę dostawę?')">
+                  <button type="submit" class="text-slate-400 hover:text-red-600 transition-colors">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </form>
+              </td>
+              <% } %>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+
+    <% } else { %>
+    <!-- ===== CALENDAR VIEW ===== -->
+
+    <!-- Month navigation -->
+    <div class="flex items-center justify-between mb-4">
+      <a href="/deliveries?view=calendar&year=<%= prevYear %>&month=<%= prevMonth %>"
+         class="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <h2 class="text-base font-semibold text-slate-800"><%= MONTH_NAMES[month-1] %> <%= year %></h2>
+      <a href="/deliveries?view=calendar&year=<%= nextYear %>&month=<%= nextMonth %>"
+         class="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+
+    <!-- Calendar grid -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+      <!-- Day headers -->
+      <div class="grid grid-cols-7 border-b border-slate-200">
+        <% DAY_NAMES.forEach(dn => { %>
+        <div class="py-2 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide"><%= dn %></div>
+        <% }) %>
+      </div>
+      <!-- Day cells -->
+      <div class="grid grid-cols-7">
+        <% calendarDays.forEach((day, idx) => { %>
+        <% const hasDel = day && calendarData[day] && calendarData[day].length > 0; %>
+        <div
+          class="min-h-[70px] border-r border-b border-slate-100 p-1.5 <%= !day ? 'bg-slate-50' : '' %> <%= hasDel ? 'cursor-pointer hover:bg-blue-50 transition-colors' : '' %>"
+          <% if (hasDel) { %>onclick="showDay(<%= day %>)"<% } %>
+        >
+          <% if (day) { %>
+          <div class="text-xs font-medium <%= hasDel ? 'text-blue-700' : 'text-slate-500' %> mb-1"><%= day %></div>
+          <% if (hasDel) { %>
+          <div class="space-y-0.5">
+            <% calendarData[day].slice(0,3).forEach(del => { %>
+            <div class="text-xs truncate px-1 py-0.5 bg-blue-100 text-blue-800 rounded font-medium">
+              <%= del.category || del.supplier || del.description.substring(0,15) %>
+            </div>
+            <% }) %>
+            <% if (calendarData[day].length > 3) { %>
+            <div class="text-xs text-blue-500 px-1">+<%= calendarData[day].length - 3 %> więcej</div>
+            <% } %>
+          </div>
+          <% } %>
+          <% } %>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Day detail panel -->
+    <div id="dayPanel" class="hidden bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <h3 id="dayPanelTitle" class="font-semibold text-slate-800 mb-3"></h3>
+      <div id="dayPanelContent"></div>
+    </div>
+
+    <!-- All deliveries for the month in a table below -->
+    <% if (deliveries.length > 0) { %>
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <span class="text-sm font-semibold text-slate-700">Wszystkie dostawy — <%= MONTH_NAMES[month-1] %> <%= year %></span>
+        <span class="ml-2 text-xs text-slate-400">(<%= deliveries.length %>)</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 text-left">
+              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Data</th>
+              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Dostawca</th>
+              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Kategoria</th>
+              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Opis</th>
+              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Ilość</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50">
+            <% deliveries.forEach(d => { %>
+            <tr class="hover:bg-slate-50 transition-colors" data-day="<%= new Date(d.delivered_at).getUTCDate() %>">
+              <td class="px-4 py-2.5 text-slate-700 whitespace-nowrap"><%= fmtDate(d.delivered_at) %></td>
+              <td class="px-4 py-2.5 text-slate-600"><%= d.supplier || '—' %></td>
+              <td class="px-4 py-2.5">
+                <% if (d.category) { %>
+                <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs"><%= d.category %></span>
+                <% } else { %><span class="text-slate-400">—</span><% } %>
+              </td>
+              <td class="px-4 py-2.5 text-slate-700 max-w-xs"><%= d.description %></td>
+              <td class="px-4 py-2.5 text-slate-600 whitespace-nowrap"><%= d.quantity || '—' %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% } %>
+
+    <% } %>
+  </div>
+</div>
+
+<% if (view === 'calendar') { %>
+<script>
+const calendarData = <%- JSON.stringify(calendarData) %>;
+const MONTH_NAMES = <%- JSON.stringify(MONTH_NAMES) %>;
+const month = <%= month %>;
+const year = <%= year %>;
+
+function showDay(day) {
+  const deliveries = calendarData[day] || [];
+  const panel = document.getElementById('dayPanel');
+  const title = document.getElementById('dayPanelTitle');
+  const content = document.getElementById('dayPanelContent');
+
+  title.textContent = `${day} ${MONTH_NAMES[month - 1]} ${year} — ${deliveries.length} dostaw${deliveries.length === 1 ? 'a' : deliveries.length < 5 ? 'y' : ''}`;
+
+  content.innerHTML = deliveries.map(d => `
+    <div class="flex flex-col sm:flex-row sm:items-start gap-2 py-2 border-b border-slate-100 last:border-0">
+      <div class="flex-1">
+        <div class="font-medium text-slate-800 text-sm">${d.description}</div>
+        <div class="text-xs text-slate-500 mt-0.5">
+          ${d.supplier ? `<span class="font-medium">${d.supplier}</span> · ` : ''}
+          ${d.category ? `<span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${d.category}</span> · ` : ''}
+          ${d.quantity ? `Ilość: <span class="font-medium">${d.quantity}</span> · ` : ''}
+          Dodał(a): ${d.created_by_name || '—'}
+        </div>
+        ${d.notes ? `<div class="text-xs text-slate-400 mt-0.5 italic">${d.notes}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  panel.classList.remove('hidden');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
+<% } %>

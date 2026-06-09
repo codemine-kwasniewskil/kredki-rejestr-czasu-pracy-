@@ -744,6 +744,23 @@ const migrationsReady = (async () => {
     }
   }
 
+  // ── deliveries table ──────────────────────────────────────────────────────
+  await db.run(`CREATE TABLE IF NOT EXISTS deliveries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    location_id INT NOT NULL,
+    delivered_at DATE NOT NULL,
+    supplier VARCHAR(200) DEFAULT NULL,
+    category VARCHAR(100) DEFAULT NULL,
+    description TEXT NOT NULL,
+    quantity VARCHAR(100) DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    created_by INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_deliveries_location_date (location_id, delivered_at)
+  )`);
+
   // ── cafe address fields on order_settings ─────────────────────────────────
   const osCols = [
     { col: 'cafe_address',      ddl: 'VARCHAR(500) DEFAULT NULL' },
@@ -792,6 +809,7 @@ app.use('/reports', require('./routes/reports'));
 app.use('/finance', require('./routes/finance'));
 app.use('/stock', require('./routes/stock'));
 app.use('/orders', require('./routes/orders'));
+app.use('/deliveries', require('./routes/deliveries'));
 app.use('/locations', require('./routes/locations'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));
