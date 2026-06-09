@@ -96,7 +96,7 @@ async function getProductsBySku(skus, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
-  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: JSON.stringify(skus) });
+  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: skus.join(',') });
   const resp = await apiRequest(url, 'GET', null, token);
   if (resp.status !== 200) throw new Error(`Vendor lookup failed: ${resp.status}`);
   return resp.body?.Items || [];
