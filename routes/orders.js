@@ -544,8 +544,10 @@ router.get('/:id(\\d+)/edit', requireManager, async (req, res) => {
       [req.params.id, locationId]
     );
     if (!order) return res.status(404).render('error', { message: 'Zamówienie nie istnieje.' });
-    if (order.status !== 'draft') {
-      req.flash('error', 'Edytować można tylko zamówienia w statusie Szkic.');
+    const isAdmin = ['admin', 'super_admin'].includes(req.session.userRole);
+    const editableStatuses = isAdmin ? ['draft', 'approved'] : ['draft'];
+    if (!editableStatuses.includes(order.status)) {
+      req.flash('error', 'Nie można edytować zamówienia w tym statusie.');
       return res.redirect(`/orders/${order.id}`);
     }
 
@@ -573,8 +575,10 @@ router.put('/:id(\\d+)', requireManager, async (req, res) => {
     const order = await db.get(
       `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
     );
-    if (!order || order.status !== 'draft') {
-      req.flash('error', 'Edytować można tylko zamówienia w statusie Szkic.');
+    const isAdminPut = ['admin', 'super_admin'].includes(req.session.userRole);
+    const editableStatusesPut = isAdminPut ? ['draft', 'approved'] : ['draft'];
+    if (!order || !editableStatusesPut.includes(order.status)) {
+      req.flash('error', 'Nie można edytować zamówienia w tym statusie.');
       return res.redirect(`/orders/${req.params.id}`);
     }
 
@@ -738,10 +742,6 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     }
 
     const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
-    if (minOrderValue > 0 && parseFloat(order.total_netto) < minOrderValue) {
-      req.flash('error', `Wartość zamówienia (${parseFloat(order.total_netto).toFixed(2)} PLN) jest poniżej minimum (${minOrderValue} PLN).`);
-      return res.redirect(`/orders/${order.id}`);
-    }
 
     const items = await db.all(
       `SELECT * FROM purchase_order_items WHERE order_id=?`, [order.id]
