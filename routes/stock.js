@@ -435,17 +435,20 @@ router.post('/admin/items/bulk-update', requireManager, async (req, res) => {
 
     if (action === 'assign_vendor') {
       const vId = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
-      await db.run(
-        `UPDATE stock_items SET vendor_id=? WHERE id IN (${ph}) AND location_id=?`,
-        [vId, ...ids, locationId]
-      );
+      try {
+        await db.run(`UPDATE stock_items SET vendor_id=? WHERE id IN (${ph}) AND location_id=?`, [vId, ...ids, locationId]);
+      } catch (e) {
+        if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      }
       await log(sessionUser(req), 'Raport Stanów – bulk dostawca', `${ids.length} produktów → vendor_id=${vId}`);
       req.flash('success', `Dostawca przypisany do ${ids.length} produktów.`);
     } else if (action === 'clear_vendor') {
-      await db.run(
-        `UPDATE stock_items SET vendor_id=NULL, vendor_product_key=NULL WHERE id IN (${ph}) AND location_id=?`,
-        [...ids, locationId]
-      );
+      try {
+        await db.run(`UPDATE stock_items SET vendor_id=NULL, vendor_product_key=NULL WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
+      } catch (e) {
+        if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+        await db.run(`UPDATE stock_items SET vendor_product_key=NULL WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
+      }
       await log(sessionUser(req), 'Raport Stanów – bulk usuń dostawcę', `${ids.length} produktów`);
       req.flash('success', `Dostawca usunięty z ${ids.length} produktów.`);
     } else if (action === 'activate') {
@@ -478,11 +481,20 @@ router.post('/admin/items', requireManager, async (req, res) => {
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
     const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
-    await db.run(
-      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, vendor_id, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, vendorId, locationId]
-    );
+    try {
+      await db.run(
+        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, vendor_id, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
+         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, vendorId, locationId]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      await db.run(
+        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, location_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
+         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, locationId]
+      );
+    }
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');
     res.redirect(`/stock/admin?type=${report_type}`);
@@ -501,11 +513,20 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
     const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
-    await db.run(
-      `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=?,vendor_id=? WHERE id=?`,
-      [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, vendorId || null, req.params.id]
-    );
+    try {
+      await db.run(
+        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=?,vendor_id=? WHERE id=?`,
+        [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
+         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, vendorId || null, req.params.id]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      await db.run(
+        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=? WHERE id=?`,
+        [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
+         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, req.params.id]
+      );
+    }
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');
     res.redirect(`/stock/admin?type=${report_type}`);

@@ -71,8 +71,8 @@ async function loadLowStockItems(locationId) {
       params
     );
   } catch (e) {
-    if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
-    // vendors table not yet created — fall back without vendor columns
+    if (e.code !== 'ER_NO_SUCH_TABLE' && e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+    // vendors table or vendor_id column not yet created — fall back without vendor columns
     return (await db.all(
       `SELECT si.id, si.name, si.category, si.report_type, si.unit, si.min_qty, si.vendor_product_key,
               NULL AS vendor_id, NULL AS vendor_name, NULL AS vendor_api_type,
@@ -186,7 +186,13 @@ router.post('/assign-sku', requireManager, async (req, res) => {
     if (!stockItemId) return res.status(400).json({ error: 'Brak ID produktu.' });
     const item = await db.get(`SELECT id, name FROM stock_items WHERE id=? AND location_id=?`, [stockItemId, locationId]);
     if (!item) return res.status(404).json({ error: 'Produkt nie istnieje.' });
-    await db.run(`UPDATE stock_items SET vendor_product_key=?, vendor_id=? WHERE id=?`, [sku, vendorId || null, stockItemId]);
+    try {
+      await db.run(`UPDATE stock_items SET vendor_product_key=?, vendor_id=? WHERE id=?`, [sku, vendorId || null, stockItemId]);
+    } catch (e) {
+      if (e.code === 'ER_BAD_FIELD_ERROR') {
+        await db.run(`UPDATE stock_items SET vendor_product_key=? WHERE id=?`, [sku, stockItemId]);
+      } else throw e;
+    }
     await log(sessionUser(req), 'Zamówienia – przypisano SKU', `${item.name} → ${sku || '(usunięto)'}`);
     res.json({ ok: true });
   } catch (e) {

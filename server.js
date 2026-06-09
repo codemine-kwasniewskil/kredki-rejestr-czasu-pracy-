@@ -643,7 +643,7 @@ const migrationsReady = (async () => {
     console.error('Auto-migration error:', e.message);
   }
 
-  // ── Vendors (independent block — runs even if earlier migrations threw) ──
+  // ── Vendors table (independent — runs even if earlier migrations threw) ───
   try {
     await db.run(`CREATE TABLE IF NOT EXISTS vendors (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -661,8 +661,12 @@ const migrationsReady = (async () => {
       UNIQUE KEY uq_vendor_slug_loc (location_id, slug)
     )`);
     console.log('✓ vendors table ready');
+  } catch (e) {
+    console.error('Vendors table migration error:', e.message);
+  }
 
-    // Seed Inter-Mlecz for Kredki
+  // ── Seed Inter-Mlecz (independent) ────────────────────────────────────────
+  try {
     const existingIM = await db.get(`SELECT id FROM vendors WHERE location_id=1 AND slug='intermlecz'`);
     if (!existingIM) {
       const os = await db.get(`SELECT vendor_client_id, vendor_api_key FROM order_settings WHERE location_id=1`).catch(() => null);
@@ -674,21 +678,26 @@ const migrationsReady = (async () => {
       );
       console.log('✓ Seeded Inter-Mlecz vendor');
     }
+  } catch (e) {
+    console.error('Inter-Mlecz seed error:', e.message);
+  }
 
-    // vendor_id on stock_items
+  // ── vendor_id column on stock_items (independent) ─────────────────────────
+  try {
     const vendorIdCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='vendor_id'`);
     if (!vendorIdCol || vendorIdCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_items ADD COLUMN vendor_id INT DEFAULT NULL`);
+      console.log('✓ Added vendor_id to stock_items');
+      // Best-effort auto-assign Inter-Mlecz to items with existing SKU
       await db.run(
         `UPDATE stock_items si
          JOIN vendors v ON v.location_id = si.location_id AND v.slug = 'intermlecz'
          SET si.vendor_id = v.id
          WHERE si.vendor_product_key IS NOT NULL AND si.vendor_product_key != ''`
-      );
-      console.log('✓ Added vendor_id to stock_items');
+      ).catch(e => console.error('vendor_id backfill error:', e.message));
     }
   } catch (e) {
-    console.error('Vendors migration error:', e.message);
+    console.error('vendor_id column migration error:', e.message);
   }
 })();
 
