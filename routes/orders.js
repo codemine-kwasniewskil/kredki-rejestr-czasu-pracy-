@@ -100,6 +100,44 @@ async function loadVendors(locationId) {
   }
 }
 
+async function buildPriceMap(lowStock, locationId) {
+  const priceMap = {};
+  const skusByVendor = {};
+  for (const i of lowStock) {
+    if (!i.vendor_product_key) continue;
+    const vid = i.vendor_id || '__location__';
+    if (!skusByVendor[vid]) skusByVendor[vid] = [];
+    skusByVendor[vid].push(i.vendor_product_key);
+  }
+  if (Object.keys(skusByVendor).length === 0) return priceMap;
+
+  const locationCreds = await getVendorCreds(locationId);
+  const allVendors = await loadVendors(locationId);
+  const vendorCredMap = Object.fromEntries(
+    allVendors.map(v => [v.id, { clientId: v.client_id, apiKey: v.api_key, apiType: v.api_type }])
+  );
+  for (const [vid, skus] of Object.entries(skusByVendor)) {
+    try {
+      const vc = vendorCredMap[vid];
+      const creds = (vc?.apiType === 'intermlecz' && vc.clientId && vc.apiKey)
+        ? { clientId: vc.clientId, apiKey: vc.apiKey }
+        : locationCreds;
+      const vendorItems = await vendorApi.getProductsBySku(skus, creds);
+      for (const v of vendorItems) {
+        priceMap[v.Sku] = {
+          price: v.PriceAfterDiscountNet?.Value ?? null,
+          unit: v.Unit,
+          inStock: v.InStock,
+          vendorName: v.Name || null,
+        };
+      }
+    } catch (e) {
+      console.error(`Price fetch failed for vendor ${vid} (continuing):`, e.message);
+    }
+  }
+  return priceMap;
+}
+
 router.get('/vendors', requireManager, (req, res) => {
   const qs = req.query.edit ? `?edit=${req.query.edit}` : '';
   res.redirect('/orders/settings' + qs);
@@ -242,6 +280,7 @@ router.get('/', requireManager, async (req, res) => {
 
     const lowStock = await loadLowStockItems(locationId);
     const vendors  = await loadVendors(locationId);
+    const priceMap = await buildPriceMap(lowStock, locationId).catch(() => ({}));
 
     const orders = await db.all(
       `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name, v.name AS vendor_name
@@ -256,7 +295,7 @@ router.get('/', requireManager, async (req, res) => {
 
     res.render('orders/index', {
       title: 'Zamówienia', currentPath: '/orders',
-      lowStock, orders, minOrderValue, vendors,
+      lowStock, orders, minOrderValue, vendors, priceMap,
     });
   } catch (e) {
     console.error(e);
@@ -291,42 +330,7 @@ router.get('/new', requireManager, async (req, res) => {
     const lowStock = await loadLowStockItems(locationId);
     const minOrderValue = await getMinOrderValue(locationId);
 
-    // Enrich with current vendor prices — group low-stock items by vendor_id
-    // and use per-vendor credentials, falling back to location-level creds
-    const priceMap = {};
-    const skusByVendor = {};
-    for (const i of lowStock) {
-      if (!i.vendor_product_key) continue;
-      const vid = i.vendor_id || '__location__';
-      if (!skusByVendor[vid]) skusByVendor[vid] = [];
-      skusByVendor[vid].push(i.vendor_product_key);
-    }
-    if (Object.keys(skusByVendor).length > 0) {
-      const locationCreds = await getVendorCreds(locationId);
-      const allVendors = await loadVendors(locationId);
-      const vendorCredMap = Object.fromEntries(
-        allVendors.map(v => [v.id, { clientId: v.client_id, apiKey: v.api_key, apiType: v.api_type }])
-      );
-      for (const [vid, skus] of Object.entries(skusByVendor)) {
-        try {
-          const vc = vendorCredMap[vid];
-          const creds = (vc?.apiType === 'intermlecz' && vc.clientId && vc.apiKey)
-            ? { clientId: vc.clientId, apiKey: vc.apiKey }
-            : locationCreds;
-          const vendorItems = await vendorApi.getProductsBySku(skus, creds);
-          for (const v of vendorItems) {
-            priceMap[v.Sku] = {
-              price: v.PriceAfterDiscountNet?.Value ?? null,
-              unit: v.Unit,
-              inStock: v.InStock,
-              vendorName: v.Name || null,
-            };
-          }
-        } catch (e) {
-          console.error(`Price fetch failed for vendor ${vid} (continuing):`, e.message);
-        }
-      }
-    }
+    const priceMap = await buildPriceMap(lowStock, locationId).catch(() => ({}));
 
     const vendors = await loadVendors(locationId);
     res.render('orders/new', {
