@@ -235,11 +235,7 @@ async function loadDeliveryOptions() {
     if (data.error) { list.innerHTML = `<span class="text-xs text-red-500">Błąd: ${data.error}</span>`; return; }
     const items = data.Items || [];
     if (!items.length) {
-      list.innerHTML = `<div class="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-        Brak dostępnych opcji dostawy (HTTP ${data._status}).<br>
-        <span class="font-medium">Surowa odpowiedź API:</span>
-        <pre class="mt-1 whitespace-pre-wrap break-all text-slate-700">${JSON.stringify(data._raw, null, 2)}</pre>
-      </div>`;
+      list.innerHTML = '<span class="text-xs text-slate-500">API nie zwraca opcji dostawy — pole DeliveryName zostanie pominięte przy składaniu zamówienia.</span>';
       return;
     }
     list.innerHTML = `<div class="mt-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
