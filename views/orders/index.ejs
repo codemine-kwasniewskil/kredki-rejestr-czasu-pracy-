@@ -330,7 +330,8 @@ function renderSkuResults(items, total) {
       <td class="px-4 py-2.5 text-right font-mono text-sm text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
       <td class="px-4 py-2.5 text-center text-sm font-bold ${p.InStock ? 'text-green-600' : 'text-red-500'}">${p.InStock ? '✓' : '✗'}</td>
       <td class="px-4 py-2.5 text-right">
-        <button type="button" onclick="saveSku(${JSON.stringify(p.Sku)})"
+        <button type="button" data-sku="${(p.Sku||'').replace(/"/g,'&quot;')}"
+          onclick="saveSku(this.dataset.sku)"
           class="btn btn-primary py-1 text-xs">Przypisz</button>
       </td>
     `;

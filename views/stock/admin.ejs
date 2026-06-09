@@ -920,7 +920,8 @@ async function doVendorSearch(phrase) {
           <td class="px-3 py-2 text-right font-mono text-xs text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
           <td class="px-3 py-2 text-center text-xs ${p.InStock ? 'text-green-600' : 'text-red-500'}">${p.InStock ? '✓' : '✗'}</td>
           <td class="px-3 py-2 text-right">
-            <button type="button" onclick="selectVendorProduct(${JSON.stringify(p.Sku)})"
+            <button type="button" data-sku="${(p.Sku||'').replace(/"/g,'&quot;')}"
+              onclick="selectVendorProduct(this.dataset.sku)"
               class="btn btn-primary py-0.5 text-xs">Wybierz</button>
           </td>
         `;
