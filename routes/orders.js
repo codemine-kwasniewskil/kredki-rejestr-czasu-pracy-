@@ -130,8 +130,7 @@ async function buildPriceMap(lowStock, locationId) {
     try {
       const creds = await getVendorCreds(locationId);
       const items = await vendorApi.getProductsBySku(allSkus, creds);
-      for (const v of items) {
-        for (const v of items) priceMap[String(v.Sku).trim()] = extractPriceEntry(v);
+      for (const v of items) priceMap[String(v.Sku).trim()] = extractPriceEntry(v);
     } catch (e) {
       console.error('[buildPriceMap] location creds fallback failed:', e.message);
     }
