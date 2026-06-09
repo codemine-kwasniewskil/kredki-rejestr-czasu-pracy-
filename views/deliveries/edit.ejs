@@ -18,22 +18,10 @@
 
     <form method="POST" action="/deliveries/<%= delivery.id %>?_method=PUT" class="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1.5">Data dostawy <span class="text-red-500">*</span></label>
-          <input type="date" name="delivered_at" value="<%= delivery.delivered_at %>" required
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1.5">Kategoria</label>
-          <select name="category" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white">
-            <option value="">— wybierz —</option>
-            <% CATEGORIES.forEach(cat => { %>
-            <option value="<%= cat %>" <%= delivery.category === cat ? 'selected' : '' %>><%= cat %></option>
-            <% }) %>
-          </select>
-        </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">Data dostawy <span class="text-red-500">*</span></label>
+        <input type="date" name="delivered_at" value="<%= delivery.delivered_at %>" required
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
       </div>
 
       <div>

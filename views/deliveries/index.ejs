@@ -80,7 +80,6 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
             <tr class="border-b border-slate-200 bg-slate-50 text-left">
               <th class="px-4 py-3 font-semibold text-slate-600">Data</th>
               <th class="px-4 py-3 font-semibold text-slate-600">Dostawca</th>
-              <th class="px-4 py-3 font-semibold text-slate-600">Kategoria</th>
               <th class="px-4 py-3 font-semibold text-slate-600">Opis</th>
               <th class="px-4 py-3 font-semibold text-slate-600">Ilość</th>
               <th class="px-4 py-3 font-semibold text-slate-600">Dodał(a)</th>
@@ -94,13 +93,6 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
             <tr class="hover:bg-slate-50 transition-colors">
               <td class="px-4 py-3 font-medium text-slate-800 whitespace-nowrap"><%= fmtDate(d.delivered_at) %></td>
               <td class="px-4 py-3 text-slate-700"><%= d.supplier || '<span class="text-slate-400">—</span>' %></td>
-              <td class="px-4 py-3">
-                <% if (d.category) { %>
-                <span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-medium"><%= d.category %></span>
-                <% } else { %>
-                <span class="text-slate-400">—</span>
-                <% } %>
-              </td>
               <td class="px-4 py-3 text-slate-700 max-w-xs"><%= d.description %></td>
               <td class="px-4 py-3 text-slate-600 whitespace-nowrap"><%= d.quantity || '—' %></td>
               <td class="px-4 py-3 text-slate-500 whitespace-nowrap text-xs"><%= d.created_by_name || '—' %></td>
@@ -162,7 +154,7 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
           <div class="space-y-0.5">
             <% calendarData[day].slice(0,3).forEach(del => { %>
             <div class="text-xs truncate px-1 py-0.5 bg-blue-100 text-blue-800 rounded font-medium">
-              <%= del.category || del.supplier || del.description.substring(0,15) %>
+              <%= del.supplier || del.description.substring(0,15) %>
             </div>
             <% }) %>
             <% if (calendarData[day].length > 3) { %>
@@ -195,7 +187,6 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
             <tr class="border-b border-slate-100 text-left">
               <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Data</th>
               <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Dostawca</th>
-              <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Kategoria</th>
               <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Opis</th>
               <th class="px-4 py-2.5 font-semibold text-slate-600 text-xs">Ilość</th>
             </tr>
@@ -205,11 +196,6 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
             <tr class="hover:bg-slate-50 transition-colors" data-day="<%= new Date(d.delivered_at).getUTCDate() %>">
               <td class="px-4 py-2.5 text-slate-700 whitespace-nowrap"><%= fmtDate(d.delivered_at) %></td>
               <td class="px-4 py-2.5 text-slate-600"><%= d.supplier || '—' %></td>
-              <td class="px-4 py-2.5">
-                <% if (d.category) { %>
-                <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs"><%= d.category %></span>
-                <% } else { %><span class="text-slate-400">—</span><% } %>
-              </td>
               <td class="px-4 py-2.5 text-slate-700 max-w-xs"><%= d.description %></td>
               <td class="px-4 py-2.5 text-slate-600 whitespace-nowrap"><%= d.quantity || '—' %></td>
             </tr>
@@ -245,7 +231,6 @@ function showDay(day) {
         <div class="font-medium text-slate-800 text-sm">${d.description}</div>
         <div class="text-xs text-slate-500 mt-0.5">
           ${d.supplier ? `<span class="font-medium">${d.supplier}</span> · ` : ''}
-          ${d.category ? `<span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${d.category}</span> · ` : ''}
           ${d.quantity ? `Ilość: <span class="font-medium">${d.quantity}</span> · ` : ''}
           Dodał(a): ${d.created_by_name || '—'}
         </div>

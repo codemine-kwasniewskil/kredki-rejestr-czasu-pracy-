@@ -6,18 +6,6 @@ const { log } = require('../utils/logger');
 
 const requireManager = [requireAuth, requireRole('admin', 'location_manager', 'super_admin')];
 
-const CATEGORIES = [
-  'Mleko / Nabiał',
-  'Kawa / Herbata',
-  'Syropy',
-  'Alkohol',
-  'Słodycze / Ciasta',
-  'Opakowania',
-  'Środki czystości',
-  'Zaopatrzenie ogólne',
-  'Inne',
-];
-
 // GET / — list or calendar view
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -77,7 +65,6 @@ router.get('/', requireAuth, async (req, res) => {
       calendarDays,
       year,
       month,
-      CATEGORIES,
     });
   } catch (err) {
     console.error(err);
@@ -90,7 +77,6 @@ router.get('/new', requireAuth, (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   res.render('deliveries/new', {
     currentPath: '/deliveries',
-    CATEGORIES,
     today,
   });
 });
@@ -99,7 +85,7 @@ router.get('/new', requireAuth, (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { delivered_at, supplier, category, description, quantity, notes } = req.body;
+    const { delivered_at, supplier, description, quantity, notes } = req.body;
 
     if (!delivered_at || !description || !description.trim()) {
       req.flash('error', 'Data i opis dostawy są wymagane.');
@@ -107,13 +93,12 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     await db.run(`
-      INSERT INTO deliveries (location_id, delivered_at, supplier, category, description, quantity, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO deliveries (location_id, delivered_at, supplier, description, quantity, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
       locationId,
       delivered_at,
       supplier || null,
-      category || null,
       description.trim(),
       quantity || null,
       notes || null,
@@ -146,7 +131,6 @@ router.get('/report', requireManager, async (req, res) => {
     const from = req.query.from || fromDefault;
     const to = req.query.to || toDefault;
     const supplierFilter = req.query.supplier || '';
-    const categoryFilter = req.query.category || '';
 
     const whereClauses = ['d.location_id = ?', 'd.delivered_at BETWEEN ? AND ?'];
     const params = [locationId, from, to];
@@ -154,10 +138,6 @@ router.get('/report', requireManager, async (req, res) => {
     if (supplierFilter) {
       whereClauses.push('d.supplier LIKE ?');
       params.push(`%${supplierFilter}%`);
-    }
-    if (categoryFilter) {
-      whereClauses.push('d.category = ?');
-      params.push(categoryFilter);
     }
 
     const deliveries = await db.all(`
@@ -174,22 +154,13 @@ router.get('/report', requireManager, async (req, res) => {
       ORDER BY supplier
     `, [locationId]);
 
-    const statsByCategory = {};
-    for (const d of deliveries) {
-      const cat = d.category || 'Inne';
-      statsByCategory[cat] = (statsByCategory[cat] || 0) + 1;
-    }
-
     res.render('deliveries/report', {
       currentPath: '/deliveries',
       deliveries,
       supplierRows,
-      statsByCategory,
-      CATEGORIES,
       from,
       to,
       supplierFilter,
-      categoryFilter,
     });
   } catch (err) {
     console.error(err);
@@ -209,14 +180,12 @@ router.get('/:id/edit', requireManager, async (req, res) => {
       req.flash('error', 'Dostawa nie znaleziona.');
       return res.redirect('/deliveries');
     }
-    // Format date for input[type=date]
     const deliveredAt = delivery.delivered_at
       ? new Date(delivery.delivered_at).toISOString().split('T')[0]
       : '';
     res.render('deliveries/edit', {
       currentPath: '/deliveries',
       delivery: { ...delivery, delivered_at: deliveredAt },
-      CATEGORIES,
     });
   } catch (err) {
     console.error(err);
@@ -228,16 +197,15 @@ router.get('/:id/edit', requireManager, async (req, res) => {
 router.put('/:id', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { delivered_at, supplier, category, description, quantity, notes } = req.body;
+    const { delivered_at, supplier, description, quantity, notes } = req.body;
 
     await db.run(`
       UPDATE deliveries
-      SET delivered_at=?, supplier=?, category=?, description=?, quantity=?, notes=?, updated_at=NOW()
+      SET delivered_at=?, supplier=?, description=?, quantity=?, notes=?, updated_at=NOW()
       WHERE id=? AND location_id=?
     `, [
       delivered_at,
       supplier || null,
-      category || null,
       description,
       quantity || null,
       notes || null,

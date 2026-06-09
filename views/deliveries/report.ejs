@@ -29,7 +29,7 @@ function fmtDate(dateVal) {
 
     <!-- Filters -->
     <form method="GET" action="/deliveries/report" class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Od</label>
           <input type="date" name="from" value="<%= from %>"
@@ -39,15 +39,6 @@ function fmtDate(dateVal) {
           <label class="block text-xs font-semibold text-slate-600 mb-1">Do</label>
           <input type="date" name="to" value="<%= to %>"
                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Kategoria</label>
-          <select name="category" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white">
-            <option value="">Wszystkie</option>
-            <% CATEGORIES.forEach(cat => { %>
-            <option value="<%= cat %>" <%= categoryFilter === cat ? 'selected' : '' %>><%= cat %></option>
-            <% }) %>
-          </select>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Dostawca</label>
@@ -69,17 +60,10 @@ function fmtDate(dateVal) {
       </div>
     </form>
 
-    <!-- Summary stats by category -->
-    <% if (Object.keys(statsByCategory).length > 0) { %>
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
-      <% Object.entries(statsByCategory).sort((a,b) => b[1]-a[1]).forEach(([cat, cnt]) => { %>
-      <div class="bg-white border border-slate-200 rounded-xl px-4 py-3">
-        <div class="text-xs text-slate-500 font-medium truncate"><%= cat %></div>
-        <div class="text-2xl font-bold text-slate-800 mt-0.5"><%= cnt %></div>
-        <div class="text-xs text-slate-400">dostaw<% if (cnt === 1) { %>a<% } else if (cnt < 5) { %>y<% } %></div>
-      </div>
-      <% }) %>
-      <div class="bg-blue-600 border border-blue-700 rounded-xl px-4 py-3">
+    <!-- Total count card -->
+    <% if (deliveries.length > 0) { %>
+    <div class="mb-5">
+      <div class="inline-block bg-blue-600 border border-blue-700 rounded-xl px-4 py-3">
         <div class="text-xs text-blue-100 font-medium">Łącznie</div>
         <div class="text-2xl font-bold text-white mt-0.5"><%= deliveries.length %></div>
         <div class="text-xs text-blue-200">dostaw<% if (deliveries.length === 1) { %>a<% } else if (deliveries.length < 5) { %>y<% } %></div>
@@ -105,7 +89,6 @@ function fmtDate(dateVal) {
             <tr class="border-b border-slate-100 text-left">
               <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Data</th>
               <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Dostawca</th>
-              <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Kategoria</th>
               <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Opis</th>
               <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Ilość</th>
               <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Dodał(a)</th>
@@ -118,11 +101,6 @@ function fmtDate(dateVal) {
             <tr class="hover:bg-slate-50 transition-colors">
               <td class="px-4 py-3 font-medium text-slate-800 whitespace-nowrap"><%= fmtDate(d.delivered_at) %></td>
               <td class="px-4 py-3 text-slate-700 whitespace-nowrap"><%= d.supplier || '—' %></td>
-              <td class="px-4 py-3">
-                <% if (d.category) { %>
-                <span class="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-medium"><%= d.category %></span>
-                <% } else { %><span class="text-slate-400">—</span><% } %>
-              </td>
               <td class="px-4 py-3 text-slate-700 max-w-xs"><%= d.description %></td>
               <td class="px-4 py-3 text-slate-600 whitespace-nowrap"><%= d.quantity || '—' %></td>
               <td class="px-4 py-3 text-slate-500 whitespace-nowrap text-xs"><%= d.created_by_name || '—' %></td>
