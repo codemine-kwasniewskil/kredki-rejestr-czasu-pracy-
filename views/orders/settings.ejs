@@ -1,14 +1,26 @@
 <%- include('../partials/head') %>
 <%- include('../partials/nav') %>
 
+<%
+  const API_TYPES = {
+    intermlecz: { label: 'Inter-Mlecz (SolEx B2B API)', color: 'bg-blue-100 text-blue-700' },
+    manual:     { label: 'Ręczne (bez API)',              color: 'bg-slate-100 text-slate-600' },
+    frisco:     { label: 'Frisco (wkrótce)',              color: 'bg-orange-100 text-orange-600' },
+    zabka:      { label: 'Żabka (wkrótce)',               color: 'bg-green-100 text-green-700' },
+  };
+%>
+
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
-  <div class="max-w-xl mx-auto px-4 py-6">
+  <div class="max-w-3xl mx-auto px-4 py-6">
 
     <div class="flex items-center gap-3 mb-6">
       <a href="/orders" class="text-slate-400 hover:text-slate-600">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </a>
-      <h1 class="text-2xl font-bold text-slate-800">Ustawienia zamówień</h1>
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800">Ustawienia zamówień</h1>
+        <p class="text-slate-500 text-sm mt-0.5">Dostawcy i minimum logistyczne</p>
+      </div>
     </div>
 
     <% if (success && success.length) { %>
@@ -18,50 +30,78 @@
       <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
     <% } %>
 
-    <div class="bg-white border border-slate-200 rounded-xl p-6">
-      <form method="POST" action="/orders/settings">
-
-        <div class="mb-6">
-          <label class="block text-sm font-semibold text-slate-700 mb-1">
-            Minimalna wartość zamówienia (PLN netto)
-          </label>
-          <p class="text-xs text-slate-400 mb-2">
-            Zamówienie musi przekroczyć tę kwotę zanim będzie mogło być złożone u dostawcy.
-          </p>
-          <div class="flex items-center gap-2">
-            <input type="number" name="min_order_value" value="<%= minOrderValue %>"
-              min="0" step="1" required
-              class="w-40 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 text-right font-mono">
-            <span class="text-slate-500 text-sm">PLN netto</span>
-          </div>
-        </div>
-
-        <div class="mb-6">
-          <p class="text-sm font-semibold text-slate-700 mb-3">Dane dostawcy (Inter-Mlecz B2B)</p>
-          <p class="text-xs text-slate-400 mb-3">
-            API: <span class="font-mono">b2b.intermlecz.pl</span> — dane logowania do API, nie do panelu B2B.
-          </p>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Client ID</label>
-              <input type="text" name="vendor_client_id" value="<%= vendorClientId %>"
-                placeholder="np. 17456"
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+    <!-- Vendors list -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-700">Dostawcy</h2>
+        <span class="text-xs text-slate-400"><%= vendors.length %> dostawców</span>
+      </div>
+      <% if (vendors.length === 0) { %>
+        <div class="px-4 py-10 text-center text-slate-400 text-sm">Brak dostawców. Dodaj pierwszego poniżej.</div>
+      <% } else { %>
+      <div class="divide-y divide-slate-100">
+        <% for (const v of vendors) { %>
+        <div class="px-4 py-3 flex items-center gap-3 <%= !v.active ? 'opacity-50' : '' %>">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-medium text-slate-800"><%= v.name %></span>
+              <% const at = API_TYPES[v.api_type] || { label: v.api_type, color: 'bg-slate-100 text-slate-600' }; %>
+              <span class="text-xs px-2 py-0.5 rounded-full font-medium <%= at.color %>"><%= at.label %></span>
+              <% if (!v.active) { %>
+                <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Nieaktywny</span>
+              <% } %>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">API Key</label>
-              <input type="text" name="vendor_api_key" value="<%= vendorApiKey %>"
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-              <p class="text-xs text-slate-400 mt-1">GUID wielkimi literami (jak w dokumentacji API).</p>
+            <div class="flex items-center gap-4 mt-0.5 flex-wrap">
+              <% if (v.min_order_value !== null && v.min_order_value !== undefined) { %>
+                <span class="text-xs text-slate-500">Min. zamówienie: <strong class="font-mono text-slate-700"><%= parseFloat(v.min_order_value).toFixed(2) %> PLN</strong></span>
+              <% } else { %>
+                <span class="text-xs text-slate-400">Brak min. zamówienia</span>
+              <% } %>
+              <% if (v.api_type === 'intermlecz' && v.client_id) { %>
+                <span class="text-xs text-slate-400">Client ID: <span class="font-mono"><%= v.client_id %></span></span>
+              <% } %>
+              <% if (v.website) { %>
+                <span class="text-xs text-slate-400"><%= v.website %></span>
+              <% } %>
             </div>
           </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <a href="/orders/settings?edit=<%= v.id %>#edit" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edytuj</a>
+            <form method="POST" action="/orders/vendors/<%= v.id %>?_method=DELETE"
+              onsubmit="return confirm('Usunąć dostawcę „<%= v.name %>"?')">
+              <button type="submit" class="text-red-400 hover:text-red-600 text-xs font-medium">Usuń</button>
+            </form>
+          </div>
         </div>
+        <% } %>
+      </div>
+      <% } %>
+    </div>
 
-        <div class="flex gap-3 justify-end">
-          <a href="/orders" class="btn btn-secondary">Anuluj</a>
-          <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+    <!-- Edit vendor form (inline) -->
+    <% if (editVendor) { %>
+    <div id="edit" class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-5">
+      <h2 class="font-semibold text-blue-800 mb-4">Edytuj: <%= editVendor.name %></h2>
+      <form method="POST" action="/orders/vendors/<%= editVendor.id %>">
+        <%- include('./_vendor_form', { v: editVendor, API_TYPES }) %>
+        <div class="flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">Zapisz</button>
+          <a href="/orders/settings" class="btn btn-secondary">Anuluj</a>
+        </div>
+      </form>
+    </div>
+    <% } %>
+
+    <!-- Add new vendor -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5">
+      <h2 class="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Dodaj nowego dostawcę
+      </h2>
+      <form method="POST" action="/orders/vendors">
+        <%- include('./_vendor_form', { v: null, API_TYPES }) %>
+        <div class="mt-4">
+          <button type="submit" class="btn btn-success">Dodaj dostawcę</button>
         </div>
       </form>
     </div>

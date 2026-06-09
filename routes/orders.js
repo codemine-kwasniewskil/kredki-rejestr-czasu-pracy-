@@ -22,9 +22,15 @@ async function getOrderSettings(locationId) {
   return db.get(`SELECT * FROM order_settings WHERE location_id=?`, [locationId]);
 }
 
-async function getMinOrderValue(locationId) {
+async function getMinOrderValue(locationId, vendorId = null) {
+  if (vendorId) {
+    try {
+      const v = await db.get(`SELECT min_order_value FROM vendors WHERE id=? AND location_id=?`, [vendorId, locationId]);
+      if (v?.min_order_value !== null && v?.min_order_value !== undefined) return parseFloat(v.min_order_value);
+    } catch (_) {}
+  }
   const s = await getOrderSettings(locationId);
-  return s ? parseFloat(s.min_order_value) : 500;
+  return s ? parseFloat(s.min_order_value) : 0;
 }
 
 async function getVendorCreds(locationId) {
@@ -94,61 +100,52 @@ async function loadVendors(locationId) {
   }
 }
 
-router.get('/vendors', requireManager, async (req, res) => {
-  try {
-    const locationId = getLocationId(req);
-    const vendors = await loadVendors(locationId);
-    const editId = req.query.edit ? parseInt(req.query.edit) : null;
-    const editVendor = editId ? vendors.find(v => v.id === editId) : null;
-    res.render('orders/vendors', {
-      title: 'Dostawcy', currentPath: '/orders',
-      vendors, editVendor,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).render('error', { message: 'Błąd serwera.' });
-  }
+router.get('/vendors', requireManager, (req, res) => {
+  const qs = req.query.edit ? `?edit=${req.query.edit}` : '';
+  res.redirect('/orders/settings' + qs);
 });
 
 router.post('/vendors', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, api_type, client_id, api_key, website } = req.body;
-    if (!name?.trim()) { req.flash('error', 'Nazwa jest wymagana.'); return res.redirect('/orders/vendors'); }
+    const { name, api_type, client_id, api_key, website, min_order_value } = req.body;
+    if (!name?.trim()) { req.flash('error', 'Nazwa jest wymagana.'); return res.redirect('/orders/settings'); }
     const slug = name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50) || `vendor-${Date.now()}`;
+    const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
     await db.run(
-      `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website) VALUES (?,?,?,?,?,?,?)`,
+      `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website, min_order_value) VALUES (?,?,?,?,?,?,?,?)`,
       [locationId, name.trim(), slug, api_type || 'manual',
-       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null]
+       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null, minVal]
     );
     await log(sessionUser(req), 'Dostawcy – dodano', name.trim());
     req.flash('success', `Dostawca "${name.trim()}" dodany.`);
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   } catch (e) {
     console.error(e);
     req.flash('error', e.code === 'ER_DUP_ENTRY' ? 'Dostawca o tym slugu już istnieje.' : 'Błąd zapisu.');
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   }
 });
 
 router.post('/vendors/:id', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, api_type, client_id, api_key, website, active } = req.body;
+    const { name, api_type, client_id, api_key, website, active, min_order_value } = req.body;
+    const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
     await db.run(
-      `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=? WHERE id=? AND location_id=?`,
+      `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=?, min_order_value=? WHERE id=? AND location_id=?`,
       [name?.trim(), api_type || 'manual',
        client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null,
-       active === '1' ? 1 : 0, req.params.id, locationId]
+       active === '1' ? 1 : 0, minVal, req.params.id, locationId]
     );
     await log(sessionUser(req), 'Dostawcy – zaktualizowano', name?.trim());
     req.flash('success', 'Dostawca zaktualizowany.');
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   } catch (e) {
     console.error(e);
     req.flash('error', 'Błąd aktualizacji.');
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   }
 });
 
@@ -161,17 +158,17 @@ router.delete('/vendors/:id', requireAdmin, async (req, res) => {
     );
     if (inUse && inUse.cnt > 0) {
       req.flash('error', `Nie można usunąć – ${inUse.cnt} produktów korzysta z tego dostawcy.`);
-      return res.redirect('/orders/vendors');
+      return res.redirect('/orders/settings');
     }
     const v = await db.get(`SELECT name FROM vendors WHERE id=? AND location_id=?`, [req.params.id, locationId]);
     await db.run(`DELETE FROM vendors WHERE id=? AND location_id=?`, [req.params.id, locationId]);
     await log(sessionUser(req), 'Dostawcy – usunięto', v?.name);
     req.flash('success', 'Dostawca usunięty.');
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   } catch (e) {
     console.error(e);
     req.flash('error', 'Błąd usuwania.');
-    res.redirect('/orders/vendors');
+    res.redirect('/orders/settings');
   }
 });
 
@@ -245,10 +242,11 @@ router.get('/', requireManager, async (req, res) => {
     const vendors  = await loadVendors(locationId);
 
     const orders = await db.all(
-      `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name
+      `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name, v.name AS vendor_name
        FROM purchase_orders po
        JOIN users u ON u.id = po.created_by
        LEFT JOIN users a ON a.id = po.approved_by
+       LEFT JOIN vendors v ON v.id = po.vendor_id
        WHERE po.location_id = ?
        ORDER BY po.updated_at DESC LIMIT 50`,
       [locationId]
@@ -269,12 +267,12 @@ router.get('/', requireManager, async (req, res) => {
 router.get('/settings', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const settings = await getOrderSettings(locationId);
+    const vendors = await loadVendors(locationId);
+    const editId = req.query.edit ? parseInt(req.query.edit) : null;
+    const editVendor = editId ? vendors.find(v => v.id === editId) : null;
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      minOrderValue: settings ? parseFloat(settings.min_order_value) : 500,
-      vendorClientId: settings?.vendor_client_id || process.env.VENDOR_CLIENT_ID || '',
-      vendorApiKey:   settings?.vendor_api_key   || process.env.VENDOR_API_KEY   || '',
+      vendors, editVendor,
     });
   } catch (e) {
     console.error(e);
@@ -282,30 +280,6 @@ router.get('/settings', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/settings', requireAdmin, async (req, res) => {
-  try {
-    const locationId = getLocationId(req);
-    const val       = parseFloat(req.body.min_order_value) || 500;
-    const clientId  = req.body.vendor_client_id?.trim() || null;
-    const apiKey    = req.body.vendor_api_key?.trim()   || null;
-    await db.run(
-      `INSERT INTO order_settings (location_id, min_order_value, vendor_client_id, vendor_api_key)
-       VALUES (?,?,?,?)
-       ON DUPLICATE KEY UPDATE
-         min_order_value=VALUES(min_order_value),
-         vendor_client_id=VALUES(vendor_client_id),
-         vendor_api_key=VALUES(vendor_api_key)`,
-      [locationId, val, clientId, apiKey]
-    );
-    await log(sessionUser(req), 'Zamówienia – ustawienia', `Min: ${val} PLN | ClientId: ${clientId}`);
-    req.flash('success', 'Ustawienia zapisane.');
-    res.redirect('/orders/settings');
-  } catch (e) {
-    console.error(e);
-    req.flash('error', 'Błąd zapisu ustawień.');
-    res.redirect('/orders/settings');
-  }
-});
 
 // ── New order form ─────────────────────────────────────────────────────────
 
@@ -334,9 +308,10 @@ router.get('/new', requireManager, async (req, res) => {
       }
     }
 
+    const vendors = await loadVendors(locationId);
     res.render('orders/new', {
       title: 'Nowe zamówienie', currentPath: '/orders',
-      lowStock, priceMap, minOrderValue,
+      lowStock, priceMap, minOrderValue, vendors,
     });
   } catch (e) {
     console.error(e);
@@ -350,7 +325,7 @@ router.post('/', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const userId = req.session.userId;
-    const { notes } = req.body;
+    const { notes, vendor_id } = req.body;
 
     // Parse items from flat form fields: item_stock_id[], item_name[], item_sku[], item_qty[], item_unit[], item_price[]
     const stockIds   = [].concat(req.body.item_stock_id  || []);
@@ -366,8 +341,8 @@ router.post('/', requireManager, async (req, res) => {
     }
 
     const result = await db.run(
-      `INSERT INTO purchase_orders (location_id, created_by, notes, status, total_netto) VALUES (?,?,?,'draft',0)`,
-      [locationId, userId, notes?.trim() || null]
+      `INSERT INTO purchase_orders (location_id, created_by, vendor_id, notes, status, total_netto) VALUES (?,?,?,?,'draft',0)`,
+      [locationId, userId, parseInt(vendor_id) || null, notes?.trim() || null]
     );
     const orderId = result.insertId;
 
@@ -402,10 +377,12 @@ router.get('/:id(\\d+)', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const order = await db.get(
-      `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name
+      `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name,
+              v.name AS vendor_name, v.api_type AS vendor_api_type
        FROM purchase_orders po
        JOIN users u ON u.id = po.created_by
        LEFT JOIN users a ON a.id = po.approved_by
+       LEFT JOIN vendors v ON v.id = po.vendor_id
        WHERE po.id = ? AND po.location_id = ?`,
       [req.params.id, locationId]
     );
@@ -416,7 +393,7 @@ router.get('/:id(\\d+)', requireManager, async (req, res) => {
       [order.id]
     );
 
-    const minOrderValue = await getMinOrderValue(locationId);
+    const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
     const isAdmin = ['admin', 'super_admin'].includes(req.session.userRole);
 
     res.render('orders/view', {
@@ -426,6 +403,98 @@ router.get('/:id(\\d+)', requireManager, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+// ── Edit order form ────────────────────────────────────────────────────────
+
+router.get('/:id(\\d+)/edit', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT po.*, u.name AS created_by_name,
+              v.name AS vendor_name, v.api_type AS vendor_api_type
+       FROM purchase_orders po
+       JOIN users u ON u.id = po.created_by
+       LEFT JOIN vendors v ON v.id = po.vendor_id
+       WHERE po.id = ? AND po.location_id = ?`,
+      [req.params.id, locationId]
+    );
+    if (!order) return res.status(404).render('error', { message: 'Zamówienie nie istnieje.' });
+    if (order.status !== 'draft') {
+      req.flash('error', 'Edytować można tylko zamówienia w statusie Szkic.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    const items = await db.all(
+      `SELECT * FROM purchase_order_items WHERE order_id = ? ORDER BY id`,
+      [order.id]
+    );
+    const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
+
+    res.render('orders/edit', {
+      title: `Edytuj zamówienie #${order.id}`, currentPath: '/orders',
+      order, items, minOrderValue,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+// ── Update order (draft only) ──────────────────────────────────────────────
+
+router.put('/:id(\\d+)', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
+    );
+    if (!order || order.status !== 'draft') {
+      req.flash('error', 'Edytować można tylko zamówienia w statusie Szkic.');
+      return res.redirect(`/orders/${req.params.id}`);
+    }
+
+    const { notes } = req.body;
+    const stockIds = [].concat(req.body.item_stock_id || []);
+    const names    = [].concat(req.body.item_name     || []);
+    const skus     = [].concat(req.body.item_sku      || []);
+    const qtys     = [].concat(req.body.item_qty      || []);
+    const units    = [].concat(req.body.item_unit     || []);
+    const prices   = [].concat(req.body.item_price    || []);
+
+    if (names.length === 0) {
+      req.flash('error', 'Dodaj co najmniej jeden produkt do zamówienia.');
+      return res.redirect(`/orders/${order.id}/edit`);
+    }
+
+    await db.run(`UPDATE purchase_orders SET notes=?, updated_at=NOW() WHERE id=?`,
+      [notes?.trim() || null, order.id]);
+
+    await db.run(`DELETE FROM purchase_order_items WHERE order_id=?`, [order.id]);
+
+    for (let i = 0; i < names.length; i++) {
+      const qty   = parseFloat(qtys[i]) || 0;
+      const price = parseFloat(prices[i]) || null;
+      const total = price !== null ? parseFloat((qty * price).toFixed(2)) : null;
+      if (qty <= 0) continue;
+      await db.run(
+        `INSERT INTO purchase_order_items
+           (order_id, stock_item_id, vendor_product_key, product_name, unit, quantity, unit_price_netto, total_netto)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [order.id, parseInt(stockIds[i]) || null, skus[i]?.trim() || null,
+         names[i]?.trim(), units[i]?.trim() || null, qty, price, total]
+      );
+    }
+
+    await recalcOrderTotal(order.id);
+    await log(sessionUser(req), 'Zamówienia – edytowano zamówienie', `ID: ${order.id}`);
+    req.flash('success', 'Zamówienie zaktualizowane.');
+    res.redirect(`/orders/${order.id}`);
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd zapisu zmian.');
+    res.redirect(`/orders/${req.params.id}/edit`);
   }
 });
 
@@ -545,8 +614,8 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${req.params.id}`);
     }
 
-    const minOrderValue = await getMinOrderValue(locationId);
-    if (parseFloat(order.total_netto) < minOrderValue) {
+    const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
+    if (minOrderValue > 0 && parseFloat(order.total_netto) < minOrderValue) {
       req.flash('error', `Wartość zamówienia (${parseFloat(order.total_netto).toFixed(2)} PLN) jest poniżej minimum (${minOrderValue} PLN).`);
       return res.redirect(`/orders/${order.id}`);
     }
@@ -560,7 +629,11 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${order.id}`);
     }
 
-    const creds = await getVendorCreds(locationId);
+    let creds = await getVendorCreds(locationId);
+    if (order.vendor_id) {
+      const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
+      if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+    }
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment: order.notes || `Zamówienie #${order.id} – Kredki`,

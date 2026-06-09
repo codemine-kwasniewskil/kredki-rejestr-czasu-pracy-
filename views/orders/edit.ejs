@@ -5,34 +5,27 @@
   <div class="max-w-5xl mx-auto px-4 py-6">
 
     <div class="flex items-center gap-3 mb-6">
-      <a href="/orders" class="text-slate-400 hover:text-slate-600">
+      <a href="/orders/<%= order.id %>" class="text-slate-400 hover:text-slate-600">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </a>
-      <h1 class="text-2xl font-bold text-slate-800">Nowe zamówienie</h1>
+      <h1 class="text-2xl font-bold text-slate-800">Edytuj zamówienie #<%= order.id %></h1>
     </div>
 
     <% if (error && error.length) { %>
       <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
     <% } %>
 
-    <!-- Vendor selector -->
-    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
-      <label class="block font-semibold text-slate-700 mb-2">Dostawca <span class="text-red-500">*</span></label>
-      <% if (vendors.length === 0) { %>
-        <p class="text-sm text-amber-700">Brak dostawców – <a href="/orders/vendors" class="underline">dodaj dostawcę</a> przed złożeniem zamówienia.</p>
-      <% } else { %>
-        <select id="vendorId" onchange="onVendorChange()"
-          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-          <option value="">-- wybierz dostawcę --</option>
-          <% for (const v of vendors) { %>
-            <option value="<%= v.id %>" data-api="<%= v.api_type %>"><%= v.name %></option>
-          <% } %>
-        </select>
-      <% } %>
+    <!-- Vendor info (read-only) -->
+    <% if (order.vendor_name) { %>
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex items-center gap-3">
+      <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      <span class="text-sm text-slate-500">Dostawca:</span>
+      <span class="font-semibold text-slate-800"><%= order.vendor_name %></span>
     </div>
+    <% } %>
 
-    <!-- Vendor product search (shown only for API vendors) -->
-    <div id="vendorSearchPanel" class="bg-white border border-slate-200 rounded-xl p-4 mb-5 hidden">
+    <!-- Vendor product search -->
+    <div class="<%= order.vendor_api_type === 'intermlecz' ? '' : 'hidden' %> bg-white border border-slate-200 rounded-xl p-4 mb-5">
       <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2">
         <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         Szukaj produktów u dostawcy
@@ -70,19 +63,11 @@
     </div>
 
     <!-- Order form -->
-    <form method="POST" action="/orders" id="orderForm">
-      <input type="hidden" name="vendor_id" id="vendorIdHidden">
-
+    <form method="POST" action="/orders/<%= order.id %>?_method=PUT" id="orderForm">
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
         <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <h2 class="font-semibold text-slate-700">Produkty w zamówieniu</h2>
           <span id="itemCount" class="text-xs text-slate-400">0 pozycji</span>
-        </div>
-
-        <!-- Low-stock pre-fill -->
-        <div id="lowStockBanner" class="<%= lowStock.length > 0 ? '' : 'hidden' %> px-4 py-3 bg-amber-50 border-b border-amber-100 text-sm text-amber-800 flex items-center justify-between gap-3">
-          <span id="lowStockBannerText"></span>
-          <button type="button" onclick="prefillLowStock()" class="btn btn-warning text-xs flex-shrink-0">Dodaj wszystkie</button>
         </div>
 
         <!-- Items table -->
@@ -120,7 +105,9 @@
         <!-- Total -->
         <div class="px-4 py-3 border-t border-slate-100 flex justify-between items-center">
           <div>
-            <span id="minOrderInfo" class="text-xs text-slate-400 hidden"></span>
+            <% if (minOrderValue > 0) { %>
+              <span class="text-xs text-slate-400">Minimalna wartość zamówienia: <strong><%= minOrderValue.toFixed(2) %> PLN netto</strong></span>
+            <% } %>
           </div>
           <div class="text-right">
             <span class="text-slate-500 text-sm">Suma netto:</span>
@@ -133,14 +120,14 @@
       <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
         <label class="block text-sm font-medium text-slate-700 mb-1">Uwagi do zamówienia</label>
         <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
-          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"></textarea>
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"><%= order.notes || '' %></textarea>
       </div>
 
-      <div class="flex gap-3 justify-end">
-        <a href="/orders" class="btn btn-secondary">Anuluj</a>
+      <div class="flex gap-3 justify-between">
+        <a href="/orders/<%= order.id %>" class="btn btn-secondary">← Anuluj</a>
         <button type="submit" class="btn btn-primary" id="saveBtn">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-          Zapisz jako szkic
+          Zapisz zmiany
         </button>
       </div>
     </form>
@@ -149,64 +136,20 @@
 </div>
 
 <script>
-const VENDOR_MINS = <%- JSON.stringify(Object.fromEntries(vendors.map(v => [v.id, v.min_order_value]))) %>;
-
-const LOW_STOCK = <%- JSON.stringify(lowStock.map(i => ({
-  id: i.id,
-  vendorId: i.vendor_id,
-  name: i.name,
+const EXISTING_ITEMS = <%- JSON.stringify(items.map(i => ({
+  name: i.product_name,
   sku: i.vendor_product_key || '',
   unit: i.unit || '',
-  price: priceMap[i.vendor_product_key] ? priceMap[i.vendor_product_key].price : null,
-  need: i.min_qty ? (parseFloat(i.min_qty) - (parseFloat(i.last_qty) || 0)).toFixed(2) : 1,
+  qty: i.quantity,
+  price: i.unit_price_netto,
+  stockId: i.stock_item_id || '',
 }))) %>;
 
 let rowIndex = 0;
 
-function onVendorChange() {
-  const sel = document.getElementById('vendorId');
-  const opt = sel.selectedOptions[0];
-  const vendorId = sel.value;
-  const hasApi = opt && opt.dataset.api === 'intermlecz';
-
-  document.getElementById('vendorIdHidden').value = vendorId;
-  document.getElementById('vendorSearchPanel').classList.toggle('hidden', !hasApi);
-
-  // Update min order value display
-  const minEl = document.getElementById('minOrderInfo');
-  const min = vendorId ? VENDOR_MINS[vendorId] : null;
-  if (min !== null && min !== undefined && parseFloat(min) > 0) {
-    minEl.textContent = 'Minimum logistyczne: ' + parseFloat(min).toFixed(2) + ' PLN netto';
-    minEl.classList.remove('hidden');
-  } else {
-    minEl.classList.add('hidden');
-  }
-
-  // Clear search results when vendor changes
-  if (!hasApi) {
-    document.getElementById('vendorResults').classList.add('hidden');
-  }
-
-  // Update low-stock banner for selected vendor
-  const banner = document.getElementById('lowStockBanner');
-  const bannerText = document.getElementById('lowStockBannerText');
-  if (vendorId) {
-    const forVendor = LOW_STOCK.filter(i => String(i.vendorId) === String(vendorId));
-    if (forVendor.length > 0) {
-      bannerText.textContent = forVendor.length + ' produktów poniżej minimum dla tego dostawcy – kliknij by dodać automatycznie.';
-      banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-  } else {
-    const all = LOW_STOCK;
-    if (all.length > 0) {
-      bannerText.textContent = all.length + ' produktów poniżej minimum – kliknij by dodać je automatycznie.';
-      banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-  }
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return parseFloat(n).toFixed(2).replace('.', ',') + ' PLN';
 }
 
 function updateTotal() {
@@ -226,6 +169,7 @@ function updateTotal() {
 }
 
 function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '' } = {}) {
+  const i = rowIndex++;
   const emptyRow = document.getElementById('emptyRow');
   const tr = document.createElement('tr');
   tr.className = 'order-row border-b border-slate-100';
@@ -266,16 +210,6 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
   updateTotal();
 }
 
-function prefillLowStock() {
-  const vendorId = document.getElementById('vendorId').value;
-  const items = vendorId
-    ? LOW_STOCK.filter(i => String(i.vendorId) === String(vendorId))
-    : LOW_STOCK;
-  items.forEach(item => {
-    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id });
-  });
-}
-
 // Vendor search — debounced on input
 let _vendorDebounce = null;
 function triggerVendorSearch(phrase) {
@@ -284,16 +218,17 @@ function triggerVendorSearch(phrase) {
   _vendorDebounce = setTimeout(() => doVendorSearch(phrase.trim()), 300);
 }
 
+const EDIT_VENDOR_ID = '<%= order.vendor_id || "" %>';
+
 async function doVendorSearch(phrase) {
   const q = phrase || document.getElementById('vendorSearch').value.trim();
   if (!q) return;
-  const vendorId = document.getElementById('vendorId').value;
   document.getElementById('vendorSpinner').classList.remove('hidden');
   document.getElementById('vendorLoading').classList.remove('hidden');
   document.getElementById('vendorError').classList.add('hidden');
   document.getElementById('vendorResults').classList.add('hidden');
   try {
-    const qs = '/orders/vendor/search?q=' + encodeURIComponent(q) + (vendorId ? '&vendor_id=' + vendorId : '');
+    const qs = '/orders/vendor/search?q=' + encodeURIComponent(q) + (EDIT_VENDOR_ID ? '&vendor_id=' + EDIT_VENDOR_ID : '');
     const resp = await fetch(qs);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
@@ -346,18 +281,14 @@ document.getElementById('vendorSearch').addEventListener('keydown', e => {
 });
 
 document.getElementById('orderForm').addEventListener('submit', e => {
-  if (!document.getElementById('vendorIdHidden').value) {
-    e.preventDefault();
-    alert('Wybierz dostawcę przed zapisaniem zamówienia.');
-    document.getElementById('vendorId').focus();
-    return;
-  }
   const rows = document.querySelectorAll('.order-row');
   if (!rows.length) { e.preventDefault(); alert('Dodaj co najmniej jeden produkt.'); }
 });
 
-// Init low-stock banner
-onVendorChange();
+// Pre-fill existing items
+document.addEventListener('DOMContentLoaded', () => {
+  EXISTING_ITEMS.forEach(item => addRow(item));
+});
 </script>
 
 <%- include('../partials/footer') %>

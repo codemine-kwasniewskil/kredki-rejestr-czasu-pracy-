@@ -115,6 +115,7 @@
             <tr class="text-left text-slate-500">
               <th class="px-4 py-3 font-medium">Nr</th>
               <th class="px-4 py-3 font-medium">Status</th>
+              <th class="px-4 py-3 font-medium hidden sm:table-cell">Dostawca</th>
               <th class="px-4 py-3 font-medium hidden sm:table-cell">Data</th>
               <th class="px-4 py-3 font-medium hidden md:table-cell">Utworzył</th>
               <th class="px-4 py-3 font-medium text-right">Wartość netto</th>
@@ -130,6 +131,9 @@
             <tr class="hover:bg-slate-50">
               <td class="px-4 py-3 font-mono font-medium text-slate-700">#<%= o.id %></td>
               <td class="px-4 py-3"><span class="<%= statusClass %>"><%= statusLabel %></span></td>
+              <td class="px-4 py-3 hidden sm:table-cell text-slate-600 text-sm">
+                <% if (o.vendor_name) { %><%= o.vendor_name %><% } else { %><span class="text-slate-300">—</span><% } %>
+              </td>
               <td class="px-4 py-3 hidden sm:table-cell text-slate-500"><%= o.created_at ? String(o.created_at).substring(0,10) : '—' %></td>
               <td class="px-4 py-3 hidden md:table-cell text-slate-500"><%= o.created_by_name %></td>
               <td class="px-4 py-3 text-right font-mono text-slate-700"><%= parseFloat(o.total_netto||0).toFixed(2) %> PLN</td>

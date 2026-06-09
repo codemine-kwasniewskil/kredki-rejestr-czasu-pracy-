@@ -31,6 +31,16 @@
   </div>
 
   <div>
+    <label class="block text-sm font-medium text-slate-700 mb-1">Minimum logistyczne (PLN netto)</label>
+    <div class="flex items-center gap-2">
+      <input type="number" name="min_order_value" value="<%= v?.min_order_value ?? '' %>"
+        min="0" step="1" placeholder="np. 500"
+        class="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-right focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+      <span class="text-slate-400 text-xs">PLN · zostaw puste jeśli brak minimum</span>
+    </div>
+  </div>
+
+  <div>
     <label class="block text-sm font-medium text-slate-700 mb-1">Strona WWW (opcjonalnie)</label>
     <input type="text" name="website" value="<%= v?.website || '' %>" placeholder="np. b2b.intermlecz.pl"
       class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">

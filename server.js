@@ -699,6 +699,31 @@ const migrationsReady = (async () => {
   } catch (e) {
     console.error('vendor_id column migration error:', e.message);
   }
+
+  // ── min_order_value on vendors ────────────────────────────────────────────
+  try {
+    const minCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='vendors' AND COLUMN_NAME='min_order_value'`);
+    if (!minCol || minCol.cnt === 0) {
+      await db.run(`ALTER TABLE vendors ADD COLUMN min_order_value DECIMAL(10,2) DEFAULT NULL`);
+      console.log('✓ Added min_order_value to vendors');
+    }
+  } catch (e) {
+    console.error('min_order_value on vendors migration error:', e.message);
+  }
+
+  // ── vendor_id on purchase_orders ──────────────────────────────────────────
+  try {
+    const vidOnPO = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchase_orders' AND COLUMN_NAME='vendor_id'`);
+    if (!vidOnPO || vidOnPO.cnt === 0) {
+      await db.run(`ALTER TABLE purchase_orders ADD COLUMN vendor_id INT DEFAULT NULL`);
+      try {
+        await db.run(`ALTER TABLE purchase_orders ADD CONSTRAINT fk_po_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL`);
+      } catch (_) {}
+      console.log('✓ Added vendor_id to purchase_orders');
+    }
+  } catch (e) {
+    console.error('vendor_id on purchase_orders migration error:', e.message);
+  }
 })();
 
 // Gate: wait for migrations before handling any route on the first cold-start request.
