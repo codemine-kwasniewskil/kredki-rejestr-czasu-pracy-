@@ -304,13 +304,24 @@ router.get('/vendor/delivery-dates', requireManager, async (req, res) => {
       r.on('error', e => resolve({ status: 0, body: e.message }));
       r.end();
     });
-    const probes = await Promise.all([
-      tryPath('/api3/deliveryDate'),
-      tryPath('/api3/delivery/dates'),
-      tryPath('/api3/order/deliveryDates'),
-      tryPath('/api3/calendar'),
-    ]);
-    res.json(probes.map((p,i)=>({ path:['/api3/deliveryDate','/api3/delivery/dates','/api3/order/deliveryDates','/api3/calendar'][i], status:p.status, body:p.body })));
+    const paths = [
+      '/api3/deliveryDate',
+      '/api3/delivery/dates',
+      '/api3/order/deliveryDates',
+      '/api3/calendar',
+      '/api3/address',
+      '/api3/addresses',
+      '/api3/deliveryAddress',
+      '/api3/deliveryAddresses',
+      '/api3/customer',
+      '/api3/customer/address',
+      '/api3/account',
+      '/api3/account/address',
+      '/api3/client',
+      '/api3/client/address',
+    ];
+    const probes = await Promise.all(paths.map(p => tryPath(p)));
+    res.json(probes.map((p, i) => ({ path: paths[i], status: p.status, body: p.body })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
