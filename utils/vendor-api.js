@@ -142,10 +142,12 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
 
 async function getClientAddresses(creds = {}) {
   const { clientId, apiKey } = creds;
-  if (!clientId || !apiKey) return [];
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
   const token = await getToken(clientId, apiKey);
   const resp = await apiRequest('/api3/address/clientAddress', 'GET', null, token);
-  if (resp.status !== 200) return [];
+  if (resp.status !== 200) {
+    throw new Error(`Address API error: ${resp.status} — ${JSON.stringify(resp.body)}`);
+  }
   return resp.body?.Items || [];
 }
 
