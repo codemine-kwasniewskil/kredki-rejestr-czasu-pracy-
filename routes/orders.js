@@ -102,39 +102,46 @@ async function loadVendors(locationId) {
 
 async function buildPriceMap(lowStock, locationId) {
   const priceMap = {};
-  const skusByVendor = {};
-  for (const i of lowStock) {
-    if (!i.vendor_product_key) continue;
-    const vid = i.vendor_id || '__location__';
-    if (!skusByVendor[vid]) skusByVendor[vid] = [];
-    skusByVendor[vid].push(i.vendor_product_key);
-  }
-  if (Object.keys(skusByVendor).length === 0) return priceMap;
+  const allSkus = [...new Set(lowStock.map(i => i.vendor_product_key).filter(Boolean))];
+  if (allSkus.length === 0) return priceMap;
 
-  const locationCreds = await getVendorCreds(locationId);
+  console.log('[buildPriceMap] looking up', allSkus.length, 'SKUs:', allSkus);
+
   const allVendors = await loadVendors(locationId);
-  const vendorCredMap = Object.fromEntries(
-    allVendors.map(v => [v.id, { clientId: v.client_id, apiKey: v.api_key, apiType: v.api_type }])
-  );
-  for (const [vid, skus] of Object.entries(skusByVendor)) {
+  const apiVendors = allVendors.filter(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+
+  console.log('[buildPriceMap] api vendors:', apiVendors.map(v => ({ id: v.id, name: v.name })));
+
+  if (apiVendors.length === 0) {
+    // Fall back to location-level credentials
     try {
-      const vc = vendorCredMap[vid];
-      const creds = (vc?.apiType === 'intermlecz' && vc.clientId && vc.apiKey)
-        ? { clientId: vc.clientId, apiKey: vc.apiKey }
-        : locationCreds;
-      const vendorItems = await vendorApi.getProductsBySku(skus, creds);
-      for (const v of vendorItems) {
-        priceMap[v.Sku] = {
-          price: v.PriceAfterDiscountNet?.Value ?? null,
-          unit: v.Unit,
-          inStock: v.InStock,
-          vendorName: v.Name || null,
-        };
+      const creds = await getVendorCreds(locationId);
+      const items = await vendorApi.getProductsBySku(allSkus, creds);
+      for (const v of items) {
+        priceMap[v.Sku] = { price: v.PriceAfterDiscountNet?.Value ?? null, unit: v.Unit, inStock: v.InStock, vendorName: v.Name || null };
       }
     } catch (e) {
-      console.error(`Price fetch failed for vendor ${vid} (continuing):`, e.message);
+      console.error('[buildPriceMap] location creds fallback failed:', e.message);
+    }
+    return priceMap;
+  }
+
+  // Try each API vendor — merge results (first match per SKU wins)
+  for (const vendor of apiVendors) {
+    try {
+      const remaining = allSkus.filter(s => !(s in priceMap));
+      if (remaining.length === 0) break;
+      const items = await vendorApi.getProductsBySku(remaining, { clientId: vendor.client_id, apiKey: vendor.api_key });
+      console.log('[buildPriceMap] vendor', vendor.name, 'returned', items.length, 'items');
+      for (const v of items) {
+        priceMap[v.Sku] = { price: v.PriceAfterDiscountNet?.Value ?? null, unit: v.Unit, inStock: v.InStock, vendorName: v.Name || null };
+      }
+    } catch (e) {
+      console.error(`[buildPriceMap] vendor ${vendor.name} failed:`, e.message);
     }
   }
+
+  console.log('[buildPriceMap] resolved', Object.keys(priceMap).length, 'of', allSkus.length, 'SKUs');
   return priceMap;
 }
 
