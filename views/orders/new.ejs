@@ -165,11 +165,42 @@
         </div>
       </div>
 
-      <!-- Notes -->
+      <!-- Delivery / payment details -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
-        <label class="block text-sm font-medium text-slate-700 mb-1">Uwagi do zamówienia</label>
-        <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
-          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"></textarea>
+        <h3 class="font-semibold text-slate-700 mb-4">Szczegóły dostawy i płatności</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy</label>
+            <input type="date" name="delivery_date"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Własny numer zamówienia</label>
+            <input type="text" name="own_order_number" placeholder="np. ZAM/2026/001"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Forma płatności</label>
+            <select name="payment_method"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+              <option value="">— wybierz —</option>
+              <option value="przelew">Przelew</option>
+              <option value="gotowka">Gotówka</option>
+              <option value="karta">Karta</option>
+              <option value="odroczona">Płatność odroczona</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Adres dostawy</label>
+            <input type="text" name="delivery_address" placeholder="ul. Przykładowa 1, 00-000 Warszawa"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+        </div>
+        <div class="mt-4">
+          <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi do zamówienia</label>
+          <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
+            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"></textarea>
+        </div>
       </div>
 
       <div class="flex gap-3 justify-end">

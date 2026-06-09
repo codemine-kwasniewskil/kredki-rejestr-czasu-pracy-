@@ -154,11 +154,42 @@
     </div>
     <% } %>
 
-    <!-- Notes -->
-    <% if (order.notes) { %>
+    <!-- Delivery / payment details -->
+    <% if (order.delivery_date || order.delivery_address || order.payment_method || order.own_order_number || order.notes) { %>
     <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
-      <p class="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wide">Uwagi</p>
-      <p class="text-sm text-slate-700"><%= order.notes %></p>
+      <h3 class="font-semibold text-slate-700 mb-3">Szczegóły dostawy i płatności</h3>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <% if (order.delivery_date) { %>
+        <div>
+          <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Data dostawy</dt>
+          <dd class="text-slate-700"><%= String(order.delivery_date).substring(0,10) %></dd>
+        </div>
+        <% } %>
+        <% if (order.own_order_number) { %>
+        <div>
+          <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Własny numer zamówienia</dt>
+          <dd class="text-slate-700 font-mono"><%= order.own_order_number %></dd>
+        </div>
+        <% } %>
+        <% if (order.payment_method) { %>
+        <div>
+          <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Forma płatności</dt>
+          <dd class="text-slate-700 capitalize"><%= order.payment_method %></dd>
+        </div>
+        <% } %>
+        <% if (order.delivery_address) { %>
+        <div>
+          <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Adres dostawy</dt>
+          <dd class="text-slate-700"><%= order.delivery_address %></dd>
+        </div>
+        <% } %>
+        <% if (order.notes) { %>
+        <div class="sm:col-span-2">
+          <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Uwagi</dt>
+          <dd class="text-slate-700"><%= order.notes %></dd>
+        </div>
+        <% } %>
+      </dl>
     </div>
     <% } %>
 

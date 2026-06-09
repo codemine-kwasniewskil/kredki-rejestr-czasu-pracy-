@@ -425,7 +425,7 @@ router.post('/', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const userId = req.session.userId;
-    const { notes, vendor_id } = req.body;
+    const { notes, vendor_id, delivery_date, delivery_address, payment_method, own_order_number } = req.body;
 
     // Parse items from flat form fields: item_stock_id[], item_name[], item_sku[], item_qty[], item_unit[], item_price[]
     const stockIds   = [].concat(req.body.item_stock_id  || []);
@@ -441,8 +441,10 @@ router.post('/', requireManager, async (req, res) => {
     }
 
     const result = await db.run(
-      `INSERT INTO purchase_orders (location_id, created_by, vendor_id, notes, status, total_netto) VALUES (?,?,?,?,'draft',0)`,
-      [locationId, userId, parseInt(vendor_id) || null, notes?.trim() || null]
+      `INSERT INTO purchase_orders (location_id, created_by, vendor_id, notes, status, total_netto, delivery_date, delivery_address, payment_method, own_order_number) VALUES (?,?,?,?,'draft',0,?,?,?,?)`,
+      [locationId, userId, parseInt(vendor_id) || null, notes?.trim() || null,
+       delivery_date?.trim() || null, delivery_address?.trim() || null,
+       payment_method?.trim() || null, own_order_number?.trim() || null]
     );
     const orderId = result.insertId;
 

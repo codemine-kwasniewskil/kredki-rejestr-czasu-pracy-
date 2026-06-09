@@ -724,6 +724,25 @@ const migrationsReady = (async () => {
   } catch (e) {
     console.error('vendor_id on purchase_orders migration error:', e.message);
   }
+
+  // ── delivery / payment fields on purchase_orders ──────────────────────────
+  const poExtraCols = [
+    { col: 'delivery_date',    ddl: 'DATE DEFAULT NULL' },
+    { col: 'delivery_address', ddl: 'VARCHAR(500) DEFAULT NULL' },
+    { col: 'payment_method',   ddl: "VARCHAR(100) DEFAULT NULL" },
+    { col: 'own_order_number', ddl: 'VARCHAR(100) DEFAULT NULL' },
+  ];
+  for (const { col, ddl } of poExtraCols) {
+    try {
+      const r = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchase_orders' AND COLUMN_NAME=?`, [col]);
+      if (!r || r.cnt === 0) {
+        await db.run(`ALTER TABLE purchase_orders ADD COLUMN ${col} ${ddl}`);
+        console.log(`✓ Added ${col} to purchase_orders`);
+      }
+    } catch (e) {
+      console.error(`${col} migration error:`, e.message);
+    }
+  }
 })();
 
 // Gate: wait for migrations before handling any route on the first cold-start request.
