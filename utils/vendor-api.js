@@ -70,7 +70,7 @@ async function getToken(clientId, apiKey) {
   return token;
 }
 
-const PRODUCT_FIELDS = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,Qty,InStock';
+const PRODUCT_FIELDS = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,RetailPriceGross,Vat,Qty,InStock';
 
 function buildFindProductUrl(params) {
   // Build query string manually — commas in 'field' must stay literal (not %2C)

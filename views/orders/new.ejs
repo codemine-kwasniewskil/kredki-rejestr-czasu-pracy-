@@ -224,8 +224,10 @@ const LOW_STOCK = <%- JSON.stringify(lowStock.map(i => ({
   name: i.name,
   sku: i.vendor_product_key || '',
   unit: i.unit || '',
-  price: priceMap[i.vendor_product_key] ? priceMap[i.vendor_product_key].price : null,
-  vendorName: priceMap[i.vendor_product_key] ? (priceMap[i.vendor_product_key].vendorName || '') : '',
+  price: priceMap[i.vendor_product_key]?.price ?? null,
+  priceGross: priceMap[i.vendor_product_key]?.priceGross ?? null,
+  vat: priceMap[i.vendor_product_key]?.vat ?? null,
+  vendorName: priceMap[i.vendor_product_key]?.vendorName || '',
   need: i.min_qty ? (parseFloat(i.min_qty) - (parseFloat(i.last_qty) || 0)).toFixed(2) : 1,
 }))) %>;
 
@@ -308,7 +310,7 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '', vendorName = '', readonly = false } = {}) {
+function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, priceGross = null, vat = null, stockId = '', vendorName = '', readonly = false } = {}) {
   const emptyRow = document.getElementById('emptyRow');
   const tr = document.createElement('tr');
   tr.className = 'order-row border-b border-slate-100';
@@ -342,6 +344,7 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
       <input type="number" name="item_price[]" value="${priceVal}" min="0" step="0.01" placeholder="—"
         class="price-input w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
         oninput="updateTotal()">
+      ${priceGross !== null ? `<span class="block text-xs text-slate-400 mt-0.5 text-right">${parseFloat(priceGross).toFixed(4)} brutto${vat !== null ? ` (${vat}% VAT)` : ''}</span>` : ''}
     </td>
     <td class="px-4 py-2 text-right subtotal font-mono text-slate-600 whitespace-nowrap">—</td>
     <td class="px-4 py-2">
@@ -378,7 +381,7 @@ function prefillLowStock() {
     ? LOW_STOCK.filter(i => String(i.vendorId) === String(vendorId))
     : LOW_STOCK;
   items.forEach(item => {
-    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id, vendorName: item.vendorName || '', readonly: true });
+    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, priceGross: item.priceGross, vat: item.vat, stockId: item.id, vendorName: item.vendorName || '', readonly: true });
   });
 }
 
@@ -437,14 +440,15 @@ async function addStockItem(stockId, name, sku, unit, vendorId, btnId) {
   const btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   let price = null, vendorName = '';
+  let priceGross = null, vat = null;
   try {
     if (sku && vendorId) {
       const resp = await fetch('/orders/vendor/sku-info?sku=' + encodeURIComponent(sku) + '&vendor_id=' + vendorId);
       const data = await resp.json();
-      if (data) { price = data.price; vendorName = data.vendorName || ''; unit = data.unit || unit; }
+      if (data) { price = data.price; priceGross = data.priceGross; vat = data.vat; vendorName = data.vendorName || ''; unit = data.unit || unit; }
     }
   } catch (_) {}
-  addRow({ name, sku, unit, qty: 1, price, stockId, vendorName, readonly: true });
+  addRow({ name, sku, unit, qty: 1, price, priceGross, vat, stockId, vendorName, readonly: true });
   if (btn) { btn.disabled = false; btn.textContent = '+ Dodaj'; }
 }
 
@@ -497,11 +501,14 @@ function renderVendorResults(items, total) {
         <td class="px-3 py-2 text-slate-800">${p.Name || ''}</td>
         <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
         <td class="px-3 py-2 text-slate-500">${p.Unit || ''}</td>
-        <td class="px-3 py-2 text-right font-mono text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
+        <td class="px-3 py-2 text-right font-mono text-slate-700">
+          ${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}
+          ${(p.Vat !== undefined && p.Vat !== null) ? `<span class="block text-xs text-slate-400">VAT ${p.Vat}%</span>` : ''}
+        </td>
         <td class="px-3 py-2 text-center ${stockColor} font-bold">${inStock}</td>
         <td class="px-3 py-2">
           <button type="button" class="btn btn-secondary text-xs py-0.5"
-            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},vendorName:${JSON.stringify(p.Name||"")},readonly:true})'>
+            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},priceGross:${p.PriceAfterDiscountNet?.Value&&p.Vat!=null?Math.round(p.PriceAfterDiscountNet.Value*(1+p.Vat/100)*10000)/10000:null},vat:${p.Vat??null},vendorName:${JSON.stringify(p.Name||"")},readonly:true})'>
             + Dodaj
           </button>
         </td>
