@@ -235,9 +235,11 @@ async function loadDeliveryOptions() {
     if (data.error) { list.innerHTML = `<span class="text-xs text-red-500">Błąd: ${data.error}</span>`; return; }
     const items = data.Items || [];
     if (!items.length) {
+      const probes = (data.probes || []).map(p =>
+        `<div class="mt-1"><span class="font-mono text-slate-500">${p.path} [${p.method||'GET'}]</span> → HTTP ${p.status ?? 'ERR'}: <span class="font-mono break-all">${JSON.stringify(p.body ?? p.error).slice(0, 200)}</span></div>`
+      ).join('');
       list.innerHTML = `<div class="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-        API nie zwraca dostępnych nazw dostawy dla tego konta.<br>
-        <strong>Wpisz nazwę ręcznie</strong> — zaloguj się na <strong>b2b.intermlecz.pl</strong>, utwórz testowe zamówienie i odczytaj nazwę opcji dostawy, lub skontaktuj się z Inter-Mlecz.
+        Brak dostępnych nazw dostawy. Wyniki prób:<br>${probes}
       </div>`;
       return;
     }

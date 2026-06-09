@@ -262,8 +262,28 @@ router.get('/vendor/delivery-options', requireManager, async (req, res) => {
     if (!apiVendor) return res.json({ Items: [], error: 'Brak dostawcy API' });
     const orderSettings = await getOrderSettings(locationId) || {};
     const addressId = orderSettings.cafe_address_id || null;
-    const items = await vendorApi.getDeliveryOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key }, addressId);
-    res.json({ Items: items });
+    const token = await vendorApi.getToken(apiVendor.client_id, apiVendor.api_key);
+    const https = require('https');
+    const probe = (path, method, body) => new Promise(resolve => {
+      const data = body ? JSON.stringify(body) : null;
+      const opts = {
+        hostname: 'b2b.intermlecz.pl', path, method,
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
+          'Authorization': 'bearer ' + token, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+      };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => { try { resolve({ path, status: r2.statusCode, body: JSON.parse(d) }); } catch { resolve({ path, status: r2.statusCode, body: d }); } }); });
+      r.on('error', e => resolve({ path, error: e.message }));
+      if (data) r.write(data);
+      r.end();
+    });
+    const results = await Promise.all([
+      probe('/api3/order/delivery', 'GET', null),
+      probe(addressId ? `/api3/order/delivery?AddressId=${addressId}` : '/api3/order/delivery', 'GET', null),
+      probe('/api3/order/delivery', 'POST', { AddressId: addressId }),
+      probe('/api3/delivery', 'GET', null),
+    ]);
+    const found = results.find(r => r.status === 200 && (Array.isArray(r.body?.Items) && r.body.Items.length > 0));
+    res.json({ Items: found?.body?.Items || [], probes: results });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
