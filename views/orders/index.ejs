@@ -274,7 +274,8 @@ function openSkuModal(itemId, itemName, currentSku, vendorId) {
 
 function closeSkuModal() {
   document.getElementById('skuModal').classList.add('hidden');
-  _skuItemId = null;
+  // Note: _skuItemId is NOT reset here — persistSku captures itemId locally
+  // and only clears it after the async save completes
 }
 
 function triggerSkuSearch(phrase) {
@@ -357,42 +358,66 @@ async function clearSku() {
 }
 
 async function persistSku(sku) {
-  if (!_skuItemId) return;
-  document.getElementById('skuError').classList.add('hidden');
+  if (!_skuItemId) {
+    console.warn('[SKU] _skuItemId is null — modal was closed before save?');
+    return;
+  }
+  const itemId = _skuItemId; // capture before any async
+  const errEl = document.getElementById('skuError');
+  errEl.classList.add('hidden');
+
   try {
     const vendorId = document.getElementById('skuVendorSelect').value || null;
+    console.log('[SKU] saving', { itemId, sku, vendorId });
+
     const resp = await fetch('/orders/assign-sku', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stock_item_id: _skuItemId, vendor_product_key: sku, vendor_id: vendorId }),
+      body: JSON.stringify({ stock_item_id: itemId, vendor_product_key: sku, vendor_id: vendorId }),
     });
-    const data = await resp.json();
+
+    console.log('[SKU] response status', resp.status, resp.url);
+
+    // Parse body whether JSON or HTML (HTML means redirect/auth error)
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw new Error(`Nieoczekiwana odpowiedź serwera (HTTP ${resp.status}). Sprawdź konsolę.`); }
+
     if (!data.ok) throw new Error(data.error || 'Błąd zapisu');
 
-    // Update the table row in-place
-    const cell = document.getElementById('sku-cell-' + _skuItemId);
-    const savedVendorId = vendorId;
-    const savedVendor = VENDORS_DATA.find(v => String(v.id) === String(savedVendorId));
+    // Update the row in-place
+    const cell = document.getElementById('sku-cell-' + itemId);
+    const savedVendor = VENDORS_DATA.find(v => String(v.id) === String(vendorId));
     if (cell) {
       if (sku) {
-        const vendorBadge = savedVendor ? `<span class="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">${savedVendor.name}</span>` : '';
+        const vendorBadge = savedVendor
+          ? `<span class="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">${savedVendor.name}</span>`
+          : '';
         cell.innerHTML = `
           <div class="flex items-center gap-1.5 flex-wrap">
             ${vendorBadge}
             <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">${sku}</span>
-            <button onclick="openSkuModal(${_skuItemId}, '', '${sku}', ${savedVendorId || 'null'})" class="text-slate-400 hover:text-blue-600 transition-colors" title="Zmień SKU">
+            <button data-iid="${itemId}" data-sku="${sku}" data-vid="${vendorId || ''}"
+              onclick="openSkuModal(Number(this.dataset.iid),'',this.dataset.sku,this.dataset.vid||null)"
+              class="text-slate-400 hover:text-blue-600 transition-colors" title="Zmień SKU">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             </button>
           </div>`;
       } else {
-        cell.innerHTML = `<button onclick="openSkuModal(${_skuItemId}, '', '', null)" class="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition-colors font-medium">
+        cell.innerHTML = `<button data-iid="${itemId}"
+          onclick="openSkuModal(Number(this.dataset.iid),'','',null)"
+          class="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition-colors font-medium">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>Przypisz SKU</button>`;
       }
     }
     closeSkuModal();
   } catch (e) {
-    document.getElementById('skuError').textContent = 'Błąd: ' + e.message;
-    document.getElementById('skuError').classList.remove('hidden');
+    console.error('[SKU] persistSku error:', e);
+    errEl.textContent = 'Błąd zapisu: ' + e.message;
+    errEl.classList.remove('hidden');
+    // Scroll error into view
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
