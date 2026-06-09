@@ -139,11 +139,12 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
   return resp.body;
 }
 
-async function getDeliveryOptions(creds = {}) {
+async function getDeliveryOptions(creds = {}, addressId = null) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
   const token = await getToken(clientId, apiKey);
-  const resp = await apiRequest('/api3/order/delivery', 'GET', null, token);
+  const path = '/api3/order/delivery' + (addressId ? `?AddressId=${encodeURIComponent(addressId)}` : '');
+  const resp = await apiRequest(path, 'GET', null, token);
   if (resp.status !== 200) {
     throw new Error(`Delivery API error: ${resp.status} — ${JSON.stringify(resp.body)}`);
   }

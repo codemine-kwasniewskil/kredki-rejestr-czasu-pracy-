@@ -260,7 +260,9 @@ router.get('/vendor/delivery-options', requireManager, async (req, res) => {
     const allVendors = await loadVendors(locationId);
     const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
     if (!apiVendor) return res.json({ Items: [], error: 'Brak dostawcy API' });
-    const items = await vendorApi.getDeliveryOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
+    const orderSettings = await getOrderSettings(locationId) || {};
+    const addressId = orderSettings.cafe_address_id || null;
+    const items = await vendorApi.getDeliveryOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key }, addressId);
     res.json({ Items: items });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -830,17 +832,22 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       };
     }
 
-    // Resolve delivery name — validate against API list; null if list is empty (field omitted)
+    // Resolve delivery name — validate against API list (pass addressId for context)
     let deliveryName = settings.cafe_delivery_name?.trim() || null;
     try {
-      const deliveryOptions = await vendorApi.getDeliveryOptions(creds);
+      const deliveryOptions = await vendorApi.getDeliveryOptions(creds, addressId || null);
       const names = deliveryOptions.map(d => d.Name).filter(Boolean);
       if (names.length === 0) {
-        deliveryName = null;
+        // keep saved value — API may require it even if delivery list is empty
       } else if (!deliveryName || !names.includes(deliveryName)) {
         deliveryName = names[0];
       }
     } catch (_) {}
+
+    if (!deliveryName) {
+      req.flash('error', 'Wymagana nazwa dostawy (DeliveryName). Skonfiguruj ją w Ustawienia → Adres kawiarni. Skontaktuj się z Inter-Mlecz, aby poznać dostępne nazwy dostaw dla Twojego konta.');
+      return res.redirect(`/orders/${order.id}`);
+    }
 
     // Build comment — include own order number here since AdditionalProperties key is unknown
     const commentParts = [order.notes];
