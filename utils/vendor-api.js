@@ -113,7 +113,11 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
   const token = await getToken(clientId, apiKey);
   const lines = items
     .filter(i => i.vendor_product_key)
-    .map(i => ({ Key: String(i.vendor_product_key), Quantity: Number(i.quantity) }));
+    .map(i => ({
+      Key: String(i.vendor_product_key),
+      Quantity: Number(i.quantity),
+      ...(i.unit ? { UnitId: String(i.unit) } : {}),
+    }));
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
@@ -123,6 +127,7 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
     OrderLines: { KeyType: 'Sku', Lines: lines },
     ...(paymentName ? { PaymentName: paymentName } : {}),
     ...(additionalProperties?.length ? { AdditionalProperties: additionalProperties } : {}),
+    Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
   };
 
   if (addressId) {
