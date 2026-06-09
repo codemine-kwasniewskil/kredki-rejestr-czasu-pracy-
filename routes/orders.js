@@ -285,6 +285,61 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   }
 });
 
+// ── TEMP: fetch Swagger spec + probe Order endpoints ──────────────────────
+
+router.get('/vendor/api-probe', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const allVendors = await loadVendors(locationId);
+    const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+    if (!apiVendor) return res.json({ error: 'No API vendor' });
+    const { getToken } = vendorApi;
+    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
+    const https = require('https');
+    const hit = (path, method = 'GET', body = null) => new Promise((resolve) => {
+      const data = body ? JSON.stringify(body) : null;
+      const opts = {
+        hostname: 'b2b.intermlecz.pl', path, method,
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
+          'Authorization': 'bearer ' + token, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) }
+      };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d.slice(0, 1000) })); });
+      r.on('error', e => resolve({ status: 0, body: e.message }));
+      if (data) r.write(data);
+      r.end();
+    });
+    const [spec, ...probes] = await Promise.all([
+      hit('/swagger/docs/v1'),
+      hit('/api3/Order/DeliveryDate'),
+      hit('/api3/Order/GetDeliveryDates'),
+      hit('/api3/Order/AvailableDates'),
+      hit('/api3/Order/AvailableDeliveryDates'),
+      hit('/api3/order/deliverydate'),
+      hit('/api3/order/availabledates'),
+      hit('/api3/Order/Calendar'),
+      hit('/api3/Order/Dates'),
+    ]);
+    const probePaths = [
+      '/api3/Order/DeliveryDate','/api3/Order/GetDeliveryDates','/api3/Order/AvailableDates',
+      '/api3/Order/AvailableDeliveryDates','/api3/order/deliverydate','/api3/order/availabledates',
+      '/api3/Order/Calendar','/api3/Order/Dates',
+    ];
+    // Extract Order-related paths from swagger spec if available
+    let swaggerPaths = null;
+    try {
+      const parsed = JSON.parse(spec.body);
+      swaggerPaths = Object.keys(parsed.paths || {}).filter(p => /order|delivery|date|calendar|address/i.test(p));
+    } catch (_) {}
+    res.json({
+      swaggerStatus: spec.status,
+      swaggerPaths,
+      probes: probes.map((p, i) => ({ path: probePaths[i], status: p.status, body: p.body }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── AJAX: search cafe stock items with a vendor SKU ───────────────────────
 
 router.get('/stock-items', requireManager, async (req, res) => {
