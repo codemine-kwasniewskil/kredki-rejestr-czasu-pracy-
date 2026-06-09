@@ -24,11 +24,16 @@
 
     <!-- Cafe address -->
     <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
-      <div class="mb-4 flex items-center gap-3">
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <button type="button" onclick="fillKnownAddress()"
+          class="btn btn-primary text-sm flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          Wpisz adres KAWIARNIA KREDKI
+        </button>
         <button type="button" onclick="loadApiAddresses()"
           class="btn btn-secondary text-sm flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          Pobierz adres z Inter-Mlecz
+          Pobierz z API
         </button>
         <span id="apiAddrStatus" class="text-sm text-slate-400"></span>
       </div>
@@ -214,6 +219,19 @@ async function loadApiAddresses() {
   } catch (e) {
     status.textContent = 'Błąd: ' + e.message;
   }
+}
+
+function fillKnownAddress() {
+  fillFromApi({
+    Id: '174560000',
+    Name: 'KAWIARNIA KREDKI dost.7-9 TR24 GOTÓWKA',
+    Street: 'Ludwika Mierosławskiego',
+    HouseNumber: '29A',
+    PostalCode: '01-567',
+    City: 'Warszawa',
+    Phone: '604938975',
+    Email: 'hello@kredki.store',
+  });
 }
 
 function fillFromApi(a) {
