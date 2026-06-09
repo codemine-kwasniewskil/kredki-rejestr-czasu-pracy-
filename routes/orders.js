@@ -371,13 +371,33 @@ router.get('/settings', requireAdmin, async (req, res) => {
     const vendors = await loadVendors(locationId);
     const editId = req.query.edit ? parseInt(req.query.edit) : null;
     const editVendor = editId ? vendors.find(v => v.id === editId) : null;
+    const orderSettings = await getOrderSettings(locationId) || {};
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor,
+      vendors, editVendor, orderSettings,
     });
   } catch (e) {
     console.error(e);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.post('/settings/address', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const { cafe_address, cafe_phone, cafe_email } = req.body;
+    await db.run(
+      `INSERT INTO order_settings (location_id, cafe_address, cafe_phone, cafe_email)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE cafe_address=VALUES(cafe_address), cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email)`,
+      [locationId, cafe_address?.trim() || null, cafe_phone?.trim() || null, cafe_email?.trim() || null]
+    );
+    req.flash('success', 'Adres kawiarni zapisany.');
+    res.redirect('/orders/settings');
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd zapisu adresu.');
+    res.redirect('/orders/settings');
   }
 });
 
@@ -396,9 +416,11 @@ router.get('/new', requireManager, async (req, res) => {
     });
 
     const vendors = await loadVendors(locationId);
+    const orderSettings = await getOrderSettings(locationId) || {};
+    const cafeAddress = orderSettings.cafe_address || '';
     res.render('orders/new', {
       title: 'Nowe zamówienie', currentPath: '/orders',
-      lowStock, priceMap, minOrderValue, vendors,
+      lowStock, priceMap, minOrderValue, vendors, cafeAddress,
     });
   } catch (e) {
     console.error(e);

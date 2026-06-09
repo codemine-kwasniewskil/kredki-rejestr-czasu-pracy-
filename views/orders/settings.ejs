@@ -22,6 +22,41 @@
       <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
     <% } %>
 
+    <!-- Cafe address -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+      <h2 class="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Adres kawiarni (domyślny adres dostawy)
+      </h2>
+      <form method="POST" action="/orders/settings/address">
+        <div class="grid grid-cols-1 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Adres (ulica, numer, kod, miasto)</label>
+            <input type="text" name="cafe_address" value="<%= orderSettings.cafe_address || '' %>"
+              placeholder="np. Ludwika Mierosławskiego 29A, 01-567 Warszawa"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Telefon</label>
+              <input type="text" name="cafe_phone" value="<%= orderSettings.cafe_phone || '' %>"
+                placeholder="np. 604938975"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
+              <input type="email" name="cafe_email" value="<%= orderSettings.cafe_email || '' %>"
+                placeholder="np. hello@kredki.store"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            </div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary text-sm">Zapisz adres</button>
+        </div>
+      </form>
+    </div>
+
     <!-- Vendors list -->
     <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
       <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">

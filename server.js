@@ -743,6 +743,24 @@ const migrationsReady = (async () => {
       console.error(`${col} migration error:`, e.message);
     }
   }
+
+  // ── cafe address fields on order_settings ─────────────────────────────────
+  const osCols = [
+    { col: 'cafe_address', ddl: 'VARCHAR(500) DEFAULT NULL' },
+    { col: 'cafe_phone',   ddl: 'VARCHAR(50) DEFAULT NULL' },
+    { col: 'cafe_email',   ddl: 'VARCHAR(200) DEFAULT NULL' },
+  ];
+  for (const { col, ddl } of osCols) {
+    try {
+      const r = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='order_settings' AND COLUMN_NAME=?`, [col]);
+      if (!r || r.cnt === 0) {
+        await db.run(`ALTER TABLE order_settings ADD COLUMN ${col} ${ddl}`);
+        console.log(`✓ Added ${col} to order_settings`);
+      }
+    } catch (e) {
+      console.error(`${col} migration error:`, e.message);
+    }
+  }
 })();
 
 // Gate: wait for migrations before handling any route on the first cold-start request.

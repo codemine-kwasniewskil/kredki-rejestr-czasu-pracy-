@@ -170,8 +170,8 @@
         <h3 class="font-semibold text-slate-700 mb-4">Szczegóły dostawy i płatności</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy</label>
-            <input type="date" name="delivery_date"
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(min. jutro)</span></label>
+            <input type="date" name="delivery_date" id="deliveryDate"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
           <div>
@@ -191,9 +191,24 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Adres dostawy</label>
-            <input type="text" name="delivery_address" placeholder="ul. Przykładowa 1, 00-000 Warszawa"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            <label class="block text-xs font-medium text-slate-600 mb-2">Adres dostawy</label>
+            <div class="flex gap-4 mb-2 text-sm">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="delivery_address_type" value="cafe" checked onchange="onAddressTypeChange(this.value)">
+                Adres kawiarni
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="delivery_address_type" value="custom" onchange="onAddressTypeChange(this.value)">
+                Inny adres
+              </label>
+            </div>
+            <input type="hidden" name="delivery_address" id="deliveryAddressHidden" value="<%- cafeAddress %>">
+            <div id="cafeAddressDisplay" class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 min-h-[38px]">
+              <% if (cafeAddress) { %><%= cafeAddress %><% } else { %><span class="text-slate-400 italic">Brak skonfigurowanego adresu — <a href="/orders/settings" class="underline text-blue-500">ustaw w ustawieniach</a></span><% } %>
+            </div>
+            <input type="text" id="customAddressInput" placeholder="ul. Przykładowa 1, 00-000 Warszawa"
+              class="hidden w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+              oninput="document.getElementById('deliveryAddressHidden').value=this.value">
           </div>
         </div>
         <div class="mt-4">
@@ -536,6 +551,35 @@ document.getElementById('orderForm').addEventListener('submit', e => {
   const rows = document.querySelectorAll('.order-row');
   if (!rows.length) { e.preventDefault(); alert('Dodaj co najmniej jeden produkt.'); }
 });
+
+// Delivery address type toggle
+const CAFE_ADDRESS = <%- JSON.stringify(cafeAddress) %>;
+function onAddressTypeChange(type) {
+  const cafeDisplay = document.getElementById('cafeAddressDisplay');
+  const customInput = document.getElementById('customAddressInput');
+  const hidden = document.getElementById('deliveryAddressHidden');
+  if (type === 'cafe') {
+    cafeDisplay.classList.remove('hidden');
+    customInput.classList.add('hidden');
+    hidden.value = CAFE_ADDRESS;
+  } else {
+    cafeDisplay.classList.add('hidden');
+    customInput.classList.remove('hidden');
+    hidden.value = customInput.value;
+    customInput.focus();
+  }
+}
+
+// Delivery date: minimum tomorrow
+(function() {
+  const el = document.getElementById('deliveryDate');
+  if (!el) return;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const iso = tomorrow.toISOString().split('T')[0];
+  el.min = iso;
+  el.value = iso;
+})();
 
 // Init low-stock banner
 onVendorChange();
