@@ -108,14 +108,15 @@ router.get('/vendors', requireManager, (req, res) => {
 router.post('/vendors', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, api_type, client_id, api_key, website, min_order_value } = req.body;
+    const { name, client_id, api_key, website, min_order_value } = req.body;
     if (!name?.trim()) { req.flash('error', 'Nazwa jest wymagana.'); return res.redirect('/orders/settings'); }
     const slug = name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50) || `vendor-${Date.now()}`;
     const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
+    const apiType = client_id?.trim() ? 'intermlecz' : 'manual';
     await db.run(
       `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website, min_order_value) VALUES (?,?,?,?,?,?,?,?)`,
-      [locationId, name.trim(), slug, api_type || 'manual',
+      [locationId, name.trim(), slug, apiType,
        client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null, minVal]
     );
     await log(sessionUser(req), 'Dostawcy – dodano', name.trim());
@@ -131,11 +132,12 @@ router.post('/vendors', requireAdmin, async (req, res) => {
 router.post('/vendors/:id', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, api_type, client_id, api_key, website, active, min_order_value } = req.body;
+    const { name, client_id, api_key, website, active, min_order_value } = req.body;
     const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
+    const apiType = client_id?.trim() ? 'intermlecz' : 'manual';
     await db.run(
       `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=?, min_order_value=? WHERE id=? AND location_id=?`,
-      [name?.trim(), api_type || 'manual',
+      [name?.trim(), apiType,
        client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null,
        active === '1' ? 1 : 0, minVal, req.params.id, locationId]
     );

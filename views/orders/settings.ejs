@@ -1,14 +1,6 @@
 <%- include('../partials/head') %>
 <%- include('../partials/nav') %>
 
-<%
-  const API_TYPES = {
-    intermlecz: { label: 'Inter-Mlecz (SolEx B2B API)', color: 'bg-blue-100 text-blue-700' },
-    manual:     { label: 'Ręczne (bez API)',              color: 'bg-slate-100 text-slate-600' },
-    frisco:     { label: 'Frisco (wkrótce)',              color: 'bg-orange-100 text-orange-600' },
-    zabka:      { label: 'Żabka (wkrótce)',               color: 'bg-green-100 text-green-700' },
-  };
-%>
 
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
   <div class="max-w-3xl mx-auto px-4 py-6">
@@ -45,8 +37,6 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="font-medium text-slate-800"><%= v.name %></span>
-              <% const at = API_TYPES[v.api_type] || { label: v.api_type, color: 'bg-slate-100 text-slate-600' }; %>
-              <span class="text-xs px-2 py-0.5 rounded-full font-medium <%= at.color %>"><%= at.label %></span>
               <% if (!v.active) { %>
                 <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Nieaktywny</span>
               <% } %>
@@ -83,7 +73,7 @@
     <div id="edit" class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-5">
       <h2 class="font-semibold text-blue-800 mb-4">Edytuj: <%= editVendor.name %></h2>
       <form method="POST" action="/orders/vendors/<%= editVendor.id %>">
-        <%- include('./_vendor_form', { v: editVendor, API_TYPES }) %>
+        <%- include('./_vendor_form', { v: editVendor }) %>
         <div class="flex gap-2 mt-4">
           <button type="submit" class="btn btn-primary">Zapisz</button>
           <a href="/orders/settings" class="btn btn-secondary">Anuluj</a>
@@ -99,7 +89,7 @@
         Dodaj nowego dostawcę
       </h2>
       <form method="POST" action="/orders/vendors">
-        <%- include('./_vendor_form', { v: null, API_TYPES }) %>
+        <%- include('./_vendor_form', { v: null }) %>
         <div class="mt-4">
           <button type="submit" class="btn btn-success">Dodaj dostawcę</button>
         </div>
