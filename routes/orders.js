@@ -260,8 +260,20 @@ router.get('/vendor/delivery-options', requireManager, async (req, res) => {
     const allVendors = await loadVendors(locationId);
     const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
     if (!apiVendor) return res.json({ Items: [], error: 'Brak dostawcy API' });
-    const items = await vendorApi.getDeliveryOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
-    res.json({ Items: items });
+    const token = await vendorApi.getToken(apiVendor.client_id, apiVendor.api_key);
+    const https = require('https');
+    const raw = await new Promise((resolve, reject) => {
+      const opts = { hostname: 'b2b.intermlecz.pl', path: '/api3/order/delivery', method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d })); });
+      r.on('error', reject);
+      r.end();
+    });
+    let parsed = null;
+    try { parsed = JSON.parse(raw.body); } catch (_) {}
+    const items = Array.isArray(parsed) ? parsed
+      : parsed?.Items || parsed?.items || parsed?.Deliveries || parsed?.deliveries || [];
+    res.json({ Items: items, _raw: parsed, _status: raw.status });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -234,7 +234,14 @@ async function loadDeliveryOptions() {
     const data = await resp.json();
     if (data.error) { list.innerHTML = `<span class="text-xs text-red-500">Błąd: ${data.error}</span>`; return; }
     const items = data.Items || [];
-    if (!items.length) { list.innerHTML = '<span class="text-xs text-amber-600">Brak dostępnych opcji dostawy.</span>'; return; }
+    if (!items.length) {
+      list.innerHTML = `<div class="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+        Brak dostępnych opcji dostawy (HTTP ${data._status}).<br>
+        <span class="font-medium">Surowa odpowiedź API:</span>
+        <pre class="mt-1 whitespace-pre-wrap break-all text-slate-700">${JSON.stringify(data._raw, null, 2)}</pre>
+      </div>`;
+      return;
+    }
     list.innerHTML = `<div class="mt-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
       <div class="font-medium text-slate-500 mb-1">Dostępne opcje — kliknij aby wybrać:</div>
       ${items.map(d => `<div class="py-0.5"><button type="button"
