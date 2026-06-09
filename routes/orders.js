@@ -879,11 +879,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
     console.error('Place order error:', e);
-    const isDeliveryError = e.message.includes('DeliveryName') || e.message.includes('Delivery with given name');
-    const userMsg = isDeliveryError
-      ? 'Nieprawidłowa nazwa dostawy (DeliveryName). Skontaktuj się z Inter-Mlecz, aby uzyskać poprawną wartość dla Twojego konta, i wpisz ją w Ustawienia → Adres kawiarni → Nazwa dostawy.'
-      : `Błąd składania zamówienia: ${e.message}`;
-    req.flash('error', userMsg);
+    req.flash('error', `Błąd składania zamówienia: ${e.message}`);
     res.redirect(`/orders/${req.params.id}`);
   }
 });
