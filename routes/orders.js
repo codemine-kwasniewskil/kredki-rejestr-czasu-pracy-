@@ -412,8 +412,20 @@ router.get('/settings/api-addresses', requireAdmin, async (req, res) => {
     const vendors = await loadVendors(locationId);
     const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
     if (!apiVendor) return res.json({ error: 'Brak dostawcy z API (Inter-Mlecz).' });
-    const addresses = await vendorApi.getClientAddresses({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
-    res.json({ addresses });
+    const { getToken } = vendorApi;
+    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
+    const https = require('https');
+    const raw = await new Promise((resolve) => {
+      const opts = { hostname: 'b2b.intermlecz.pl', path: '/api3/address/clientAddres', method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d })); });
+      r.on('error', e => resolve({ status: 0, body: e.message }));
+      r.end();
+    });
+    let parsed = null;
+    try { parsed = JSON.parse(raw.body); } catch (_) {}
+    const addresses = parsed?.Items || [];
+    res.json({ addresses, debug: { status: raw.status, rawBody: raw.body.slice(0, 300) } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
