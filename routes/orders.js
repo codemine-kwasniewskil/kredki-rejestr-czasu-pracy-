@@ -272,6 +272,51 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   }
 });
 
+// ── AJAX: search cafe stock items with a vendor SKU ───────────────────────
+
+router.get('/stock-items', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json([]);
+    const vendorId = req.query.vendor_id ? parseInt(req.query.vendor_id, 10) : null;
+    const params = [`%${q}%`, locationId];
+    let sql = `SELECT si.id, si.name, si.vendor_product_key AS sku, si.unit, si.vendor_id,
+                      v.name AS vendor_name
+               FROM stock_items si
+               LEFT JOIN vendors v ON v.id = si.vendor_id
+               WHERE si.name LIKE ? AND si.location_id = ? AND si.active = 1
+                 AND si.vendor_product_key IS NOT NULL AND si.vendor_product_key != ''`;
+    if (vendorId) { sql += ' AND si.vendor_id = ?'; params.push(vendorId); }
+    sql += ' ORDER BY si.name LIMIT 30';
+    res.json(await db.all(sql, params));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── AJAX: live price + name for a single SKU ───────────────────────────────
+
+router.get('/vendor/sku-info', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const sku = (req.query.sku || '').trim();
+    const vendorId = req.query.vendor_id ? parseInt(req.query.vendor_id, 10) : null;
+    if (!sku) return res.json(null);
+    let creds = await getVendorCreds(locationId);
+    if (vendorId) {
+      const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=? AND active=1`, [vendorId, locationId]);
+      if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+    }
+    const items = await vendorApi.getProductsBySku([sku], creds);
+    const item = items[0] || null;
+    if (!item) return res.json(null);
+    res.json({ price: item.PriceAfterDiscountNet?.Value ?? null, vendorName: item.Name || null, unit: item.Unit || null, inStock: item.InStock });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 router.get('/', requireManager, async (req, res) => {

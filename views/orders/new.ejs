@@ -69,6 +69,41 @@
       <div id="vendorLoading" class="hidden text-sm text-slate-400 mt-2">Wyszukiwanie…</div>
     </div>
 
+    <!-- Cafe stock search (shown when any vendor selected) -->
+    <div id="stockSearchPanel" class="bg-white border border-slate-200 rounded-xl p-4 mb-5 hidden">
+      <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        Szukaj w produktach kawiarni
+      </h2>
+      <div class="flex gap-2 mb-3 items-center">
+        <div class="relative flex-1">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" id="stockSearch" placeholder="Wpisz nazwę produktu z magazynu…"
+            class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200">
+        </div>
+        <div id="stockSpinner" class="hidden flex-shrink-0">
+          <svg class="animate-spin w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+        </div>
+      </div>
+      <div id="stockResults" class="hidden">
+        <div class="overflow-x-auto max-h-64 border border-slate-100 rounded-lg">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 sticky top-0">
+              <tr class="text-left text-slate-500 text-xs border-b border-slate-200">
+                <th class="px-3 py-2 font-medium">Produkt (magazyn)</th>
+                <th class="px-3 py-2 font-medium">SKU</th>
+                <th class="px-3 py-2 font-medium">Dostawca</th>
+                <th class="px-3 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="stockResultsBody"></tbody>
+          </table>
+        </div>
+        <p id="stockResultsCount" class="text-xs text-slate-400 mt-1"></p>
+      </div>
+      <div id="stockError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+
     <!-- Order form -->
     <form method="POST" action="/orders" id="orderForm">
       <input type="hidden" name="vendor_id" id="vendorIdHidden">
@@ -173,6 +208,7 @@ function onVendorChange() {
 
   document.getElementById('vendorIdHidden').value = vendorId;
   document.getElementById('vendorSearchPanel').classList.toggle('hidden', !hasApi);
+  document.getElementById('stockSearchPanel').classList.toggle('hidden', !vendorId);
 
   // Clear search results when vendor changes
   if (!hasApi) {
@@ -291,13 +327,17 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
 function onAddProductClick() {
   const sel = document.getElementById('vendorId');
   const opt = sel.selectedOptions[0];
-  if (opt && opt.dataset.api === 'intermlecz' && sel.value) {
+  const hasApi = opt && opt.dataset.api === 'intermlecz' && sel.value;
+  if (hasApi) {
     document.getElementById('vendorSearchPanel').classList.remove('hidden');
-    const input = document.getElementById('vendorSearch');
-    input.focus();
+    document.getElementById('vendorSearch').focus();
     document.getElementById('vendorSearchPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (sel.value) {
+    document.getElementById('stockSearch').focus();
+    document.getElementById('stockSearchPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } else {
-    addRow({ readonly: false });
+    document.getElementById('vendorId').focus();
+    alert('Wybierz najpierw dostawcę.');
   }
 }
 
@@ -310,6 +350,74 @@ function prefillLowStock() {
     addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id, vendorName: item.vendorName || '', readonly: true });
   });
 }
+
+// Stock items search
+let _stockDebounce = null;
+function triggerStockSearch(phrase) {
+  clearTimeout(_stockDebounce);
+  if (!phrase || phrase.trim().length < 2) {
+    document.getElementById('stockResults').classList.add('hidden');
+    return;
+  }
+  _stockDebounce = setTimeout(() => doStockSearch(phrase.trim()), 300);
+}
+
+async function doStockSearch(phrase) {
+  const vendorId = document.getElementById('vendorId').value;
+  document.getElementById('stockSpinner').classList.remove('hidden');
+  document.getElementById('stockError').classList.add('hidden');
+  document.getElementById('stockResults').classList.add('hidden');
+  try {
+    const qs = '/orders/stock-items?q=' + encodeURIComponent(phrase) + (vendorId ? '&vendor_id=' + vendorId : '');
+    const items = await (await fetch(qs)).json();
+    if (items.error) throw new Error(items.error);
+    const tbody = document.getElementById('stockResultsBody');
+    tbody.innerHTML = '';
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-center text-slate-400">Brak wyników.</td></tr>';
+    } else {
+      items.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-100 hover:bg-emerald-50';
+        tr.innerHTML = `
+          <td class="px-3 py-2 text-slate-800 font-medium">${p.name}</td>
+          <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.sku || '—'}</td>
+          <td class="px-3 py-2 text-xs text-slate-400">${p.vendor_name || '—'}</td>
+          <td class="px-3 py-2">
+            <button type="button" id="stock-add-${p.id}" class="btn btn-secondary text-xs py-0.5"
+              onclick="addStockItem(${p.id}, ${JSON.stringify(p.name)}, ${JSON.stringify(p.sku||'')}, ${JSON.stringify(p.unit||'')}, ${p.vendor_id||'null'}, ${JSON.stringify('stock-add-'+p.id)})">
+              + Dodaj
+            </button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById('stockResultsCount').textContent = `Wyniki: ${items.length}`;
+    document.getElementById('stockResults').classList.remove('hidden');
+  } catch (e) {
+    document.getElementById('stockError').textContent = 'Błąd: ' + e.message;
+    document.getElementById('stockError').classList.remove('hidden');
+  } finally {
+    document.getElementById('stockSpinner').classList.add('hidden');
+  }
+}
+
+async function addStockItem(stockId, name, sku, unit, vendorId, btnId) {
+  const btn = document.getElementById(btnId);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  let price = null, vendorName = '';
+  try {
+    if (sku && vendorId) {
+      const resp = await fetch('/orders/vendor/sku-info?sku=' + encodeURIComponent(sku) + '&vendor_id=' + vendorId);
+      const data = await resp.json();
+      if (data) { price = data.price; vendorName = data.vendorName || ''; unit = data.unit || unit; }
+    }
+  } catch (_) {}
+  addRow({ name, sku, unit, qty: 1, price, stockId, vendorName, readonly: true });
+  if (btn) { btn.disabled = false; btn.textContent = '+ Dodaj'; }
+}
+
+document.getElementById('stockSearch').addEventListener('input', e => triggerStockSearch(e.target.value));
 
 // Vendor search — debounced on input
 let _vendorDebounce = null;
