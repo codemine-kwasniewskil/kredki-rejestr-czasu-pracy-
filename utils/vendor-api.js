@@ -131,7 +131,9 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
     body.Address = { ...address, OneTimeAdress: true };
   }
 
+  console.log('[placeOrder] POST /api3/order body:', JSON.stringify(body, null, 2));
   const resp = await apiRequest('/api3/order', 'POST', body, token);
+  console.log('[placeOrder] response status:', resp.status, 'body:', JSON.stringify(resp.body));
   if (resp.status !== 200) {
     const msg = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
     throw new Error(`Błąd składania zamówienia: ${msg}`);
