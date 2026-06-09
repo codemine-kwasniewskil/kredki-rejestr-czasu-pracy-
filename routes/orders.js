@@ -862,7 +862,13 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       [String(vendorOrderId), order.id]
     );
     await log(sessionUser(req), 'Zamówienia – złożono u dostawcy', `ID: ${order.id} | Vendor: ${vendorOrderId}`);
-    req.flash('success', `Zamówienie złożone! Numer u dostawcy: ${vendorOrderId}`);
+
+    const statements = [
+      ...(vendorResult?.BasketStatements || []),
+      ...(vendorResult?.BasketProductsStatements || []),
+    ].map(s => s.Message).filter(Boolean);
+
+    req.flash('success', `Zamówienie złożone! Numer u dostawcy: ${vendorOrderId}${statements.length ? ' — ' + statements.join('; ') : ''}`);
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
     console.error('Place order error:', e);
