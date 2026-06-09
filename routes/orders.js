@@ -303,6 +303,7 @@ router.get('/new', requireManager, async (req, res) => {
             price: v.PriceAfterDiscountNet?.Value ?? null,
             unit: v.Unit,
             inStock: v.InStock,
+            vendorName: v.Name || null,
           };
         }
       } catch (e) {
