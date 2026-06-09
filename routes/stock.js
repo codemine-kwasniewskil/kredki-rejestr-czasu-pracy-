@@ -420,6 +420,51 @@ router.get('/admin', requireManager, async (req, res) => {
   }
 });
 
+// Bulk update items
+router.post('/admin/items/bulk-update', requireManager, async (req, res) => {
+  const back = req.get('Referer') || `/stock/admin?type=${req.body.report_type || ''}`;
+  try {
+    const locationId = getLocationId(req);
+    const ids = (req.body.ids || '').split(',').map(Number).filter(Boolean);
+    if (!ids.length) {
+      req.flash('error', 'Nie zaznaczono żadnych produktów.');
+      return res.redirect(back);
+    }
+    const { action } = req.body;
+    const ph = ids.map(() => '?').join(',');
+
+    if (action === 'assign_vendor') {
+      const vId = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
+      await db.run(
+        `UPDATE stock_items SET vendor_id=? WHERE id IN (${ph}) AND location_id=?`,
+        [vId, ...ids, locationId]
+      );
+      await log(sessionUser(req), 'Raport Stanów – bulk dostawca', `${ids.length} produktów → vendor_id=${vId}`);
+      req.flash('success', `Dostawca przypisany do ${ids.length} produktów.`);
+    } else if (action === 'clear_vendor') {
+      await db.run(
+        `UPDATE stock_items SET vendor_id=NULL, vendor_product_key=NULL WHERE id IN (${ph}) AND location_id=?`,
+        [...ids, locationId]
+      );
+      await log(sessionUser(req), 'Raport Stanów – bulk usuń dostawcę', `${ids.length} produktów`);
+      req.flash('success', `Dostawca usunięty z ${ids.length} produktów.`);
+    } else if (action === 'activate') {
+      await db.run(`UPDATE stock_items SET active=1 WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
+      req.flash('success', `${ids.length} produktów aktywowanych.`);
+    } else if (action === 'deactivate') {
+      await db.run(`UPDATE stock_items SET active=0 WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
+      req.flash('success', `${ids.length} produktów dezaktywowanych.`);
+    } else {
+      req.flash('error', 'Nieznana operacja.');
+    }
+    res.redirect(back);
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd operacji zbiorowej.');
+    res.redirect(back);
+  }
+});
+
 // Add item
 router.post('/admin/items', requireManager, async (req, res) => {
   try {

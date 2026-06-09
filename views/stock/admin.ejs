@@ -216,9 +216,13 @@
           <div class="px-4 py-8 text-center text-slate-400 text-sm">Brak produktów. Dodaj pierwszy poniżej.</div>
         <% } else { %>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm" id="itemsTable">
               <thead>
                 <tr class="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <th class="px-3 py-2.5 w-8">
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"
+                      class="w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer">
+                  </th>
                   <th class="text-left px-3 py-2.5 font-semibold w-8">#</th>
                   <th class="text-left px-3 py-2.5 font-semibold">Kategoria</th>
                   <th class="text-left px-3 py-2.5 font-semibold">Nazwa</th>
@@ -232,6 +236,11 @@
               <tbody>
                 <% for (const item of items) { %>
                   <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors <%= !item.active ? 'opacity-40' : '' %>">
+                    <td class="px-3 py-2.5">
+                      <input type="checkbox" name="item_cb" value="<%= item.id %>"
+                        onchange="onItemCheck()"
+                        class="item-cb w-4 h-4 rounded border-slate-300 text-blue-600 cursor-pointer">
+                    </td>
                     <td class="px-3 py-2.5 text-slate-400 text-xs"><%= item.sort_order %></td>
                     <td class="px-3 py-2.5 text-slate-500 text-xs"><%= item.category || '—' %></td>
                     <td class="px-3 py-2.5 font-medium text-slate-800 text-sm"><%= item.name %></td>
@@ -287,6 +296,43 @@
             </table>
           </div>
         <% } %>
+      </div>
+
+      <!-- Hidden bulk form -->
+      <form id="bulkForm" method="POST" action="/stock/admin/items/bulk-update" style="display:none">
+        <input type="hidden" name="ids" id="bulkIds">
+        <input type="hidden" name="action" id="bulkAction">
+        <input type="hidden" name="vendor_id" id="bulkVendorId">
+        <input type="hidden" name="report_type" value="<%= activeType %>">
+      </form>
+
+      <!-- Floating bulk action bar -->
+      <div id="bulkBar"
+        class="hidden fixed bottom-0 left-0 right-0 md:left-60 z-40 bg-slate-800 border-t border-slate-600 px-4 py-3 flex flex-wrap items-center gap-3 shadow-2xl">
+        <span id="bulkCount" class="text-white text-sm font-semibold whitespace-nowrap"></span>
+        <div class="flex flex-wrap items-center gap-2 flex-1">
+          <select id="bulkActionSel" onchange="onBulkActionChange()"
+            class="border border-slate-500 bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400">
+            <option value="">-- wybierz operację --</option>
+            <option value="assign_vendor">Przypisz dostawcę</option>
+            <option value="clear_vendor">Usuń dostawcę i SKU</option>
+            <option value="activate">Aktywuj</option>
+            <option value="deactivate">Dezaktywuj</option>
+          </select>
+          <select id="bulkVendorSel"
+            class="hidden border border-slate-500 bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400">
+            <option value="">-- brak (usuń dostawcę) --</option>
+            <% for (const vendor of (vendors||[])) { %>
+              <option value="<%= vendor.id %>"><%= vendor.name %></option>
+            <% } %>
+          </select>
+          <button type="button" onclick="applyBulk()"
+            class="btn btn-primary py-1.5 text-sm">Zastosuj</button>
+        </div>
+        <button type="button" onclick="clearSelection()"
+          class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded transition-colors whitespace-nowrap">
+          ✕ Odznacz
+        </button>
       </div>
 
       <!-- Category & unit management -->
@@ -699,6 +745,58 @@
 </div>
 
 <script>
+// ── Bulk selection ────────────────────────────────────────────────────────
+function getChecked() {
+  return [...document.querySelectorAll('.item-cb:checked')].map(cb => cb.value);
+}
+
+function toggleSelectAll(master) {
+  document.querySelectorAll('.item-cb').forEach(cb => cb.checked = master.checked);
+  onItemCheck();
+}
+
+function onItemCheck() {
+  const ids = getChecked();
+  const bar = document.getElementById('bulkBar');
+  if (ids.length > 0) {
+    document.getElementById('bulkCount').textContent = `${ids.length} zaznaczonych`;
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+    document.getElementById('bulkActionSel').value = '';
+    document.getElementById('bulkVendorSel').classList.add('hidden');
+  }
+  // Sync select-all checkbox state
+  const all = document.querySelectorAll('.item-cb');
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.indeterminate = ids.length > 0 && ids.length < all.length;
+  if (sa) sa.checked = ids.length === all.length && all.length > 0;
+}
+
+function clearSelection() {
+  document.querySelectorAll('.item-cb').forEach(cb => cb.checked = false);
+  const sa = document.getElementById('selectAll');
+  if (sa) { sa.checked = false; sa.indeterminate = false; }
+  document.getElementById('bulkBar').classList.add('hidden');
+}
+
+function onBulkActionChange() {
+  const action = document.getElementById('bulkActionSel').value;
+  document.getElementById('bulkVendorSel').classList.toggle('hidden', action !== 'assign_vendor');
+}
+
+function applyBulk() {
+  const action = document.getElementById('bulkActionSel').value;
+  if (!action) { alert('Wybierz operację.'); return; }
+  const ids = getChecked();
+  if (!ids.length) { alert('Nie zaznaczono żadnych produktów.'); return; }
+  if (action === 'deactivate' && !confirm(`Dezaktywować ${ids.length} produktów?`)) return;
+  document.getElementById('bulkIds').value = ids.join(',');
+  document.getElementById('bulkAction').value = action;
+  document.getElementById('bulkVendorId').value = document.getElementById('bulkVendorSel').value;
+  document.getElementById('bulkForm').submit();
+}
+
 // ── Rename validation ─────────────────────────────────────────────────────
 function validateRename(form) {
   const inp = form.querySelector('input[name="new_category"],input[name="new_unit"]');
