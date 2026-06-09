@@ -285,48 +285,6 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   }
 });
 
-// ── AJAX: probe delivery dates from vendor API ────────────────────────────
-
-router.get('/vendor/delivery-dates', requireManager, async (req, res) => {
-  try {
-    const locationId = getLocationId(req);
-    const allVendors = await loadVendors(locationId);
-    const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-    if (!apiVendor) return res.json({ error: 'No API vendor' });
-    const { getToken } = vendorApi;
-    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
-    // Try common delivery-date endpoint patterns
-    const https = require('https');
-    const tryPath = (path) => new Promise((resolve) => {
-      const opts = { hostname: 'b2b.intermlecz.pl', path, method: 'GET',
-        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
-      const r = https.request(opts, res2 => { let d=''; res2.on('data',c=>d+=c); res2.on('end',()=>resolve({status:res2.statusCode,body:d.slice(0,500)})); });
-      r.on('error', e => resolve({ status: 0, body: e.message }));
-      r.end();
-    });
-    const paths = [
-      '/api3/deliveryDate',
-      '/api3/delivery/dates',
-      '/api3/order/deliveryDates',
-      '/api3/calendar',
-      '/api3/address',
-      '/api3/addresses',
-      '/api3/deliveryAddress',
-      '/api3/deliveryAddresses',
-      '/api3/customer',
-      '/api3/customer/address',
-      '/api3/account',
-      '/api3/account/address',
-      '/api3/client',
-      '/api3/client/address',
-    ];
-    const probes = await Promise.all(paths.map(p => tryPath(p)));
-    res.json(probes.map((p, i) => ({ path: paths[i], status: p.status, body: p.body })));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── AJAX: search cafe stock items with a vendor SKU ───────────────────────
 
 router.get('/stock-items', requireManager, async (req, res) => {
