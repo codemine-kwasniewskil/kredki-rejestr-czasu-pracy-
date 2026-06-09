@@ -760,35 +760,33 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
 
     const settings = await getOrderSettings(locationId) || {};
 
-    // Build Address object from cafe settings
+    // Use AddressId if configured; otherwise build Address only when fully specified
     let address = null;
-    let addressId = settings.cafe_address_id || null;
-    if (!addressId && (settings.cafe_street || settings.cafe_city)) {
+    const addressId = settings.cafe_address_id || null;
+    if (!addressId && settings.cafe_street && settings.cafe_city && settings.cafe_postal_code) {
       address = {
         Name: settings.cafe_name || 'Kawiarnia Kredki',
-        Street: settings.cafe_street || '',
+        Street: settings.cafe_street,
         HouseNumber: settings.cafe_house_number || '',
-        City: settings.cafe_city || '',
-        PostalCode: settings.cafe_postal_code || '',
+        City: settings.cafe_city,
+        PostalCode: settings.cafe_postal_code,
         Phone: settings.cafe_phone || '',
         Email: settings.cafe_email || '',
         CountryId: settings.cafe_country_id || 1,
       };
     }
 
-    // AdditionalProperties: pass own order number if set
-    const additionalProperties = [];
-    if (order.own_order_number) {
-      additionalProperties.push({ Key: 'OwnOrderNumber', Values: [order.own_order_number] });
-    }
+    // Build comment — include own order number here since AdditionalProperties key is unknown
+    const commentParts = [order.notes];
+    if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
+    const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} – Kredki`;
 
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
-      comment: order.notes || `Zamówienie #${order.id} – Kredki`,
-      paymentName: order.payment_method || null,
+      comment,
+      // PaymentName omitted — API uses account default when not provided
       address,
       addressId,
-      additionalProperties,
       ...creds,
     });
 
