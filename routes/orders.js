@@ -879,7 +879,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
     console.error('Place order error:', e);
-    req.flash('error', `Błąd składania zamówienia: ${e.message}`);
+    req.flash('error', e.message);
     res.redirect(`/orders/${req.params.id}`);
   }
 });
