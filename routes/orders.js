@@ -291,23 +291,40 @@ router.get('/new', requireManager, async (req, res) => {
     const lowStock = await loadLowStockItems(locationId);
     const minOrderValue = await getMinOrderValue(locationId);
 
-    // Enrich with current vendor prices for items that have a vendor_product_key
-    const skus = lowStock.filter(i => i.vendor_product_key).map(i => i.vendor_product_key);
+    // Enrich with current vendor prices — group low-stock items by vendor_id
+    // and use per-vendor credentials, falling back to location-level creds
     const priceMap = {};
-    if (skus.length > 0) {
-      try {
-        const creds = await getVendorCreds(locationId);
-        const vendorItems = await vendorApi.getProductsBySku(skus, creds);
-        for (const v of vendorItems) {
-          priceMap[v.Sku] = {
-            price: v.PriceAfterDiscountNet?.Value ?? null,
-            unit: v.Unit,
-            inStock: v.InStock,
-            vendorName: v.Name || null,
-          };
+    const skusByVendor = {};
+    for (const i of lowStock) {
+      if (!i.vendor_product_key) continue;
+      const vid = i.vendor_id || '__location__';
+      if (!skusByVendor[vid]) skusByVendor[vid] = [];
+      skusByVendor[vid].push(i.vendor_product_key);
+    }
+    if (Object.keys(skusByVendor).length > 0) {
+      const locationCreds = await getVendorCreds(locationId);
+      const allVendors = await loadVendors(locationId);
+      const vendorCredMap = Object.fromEntries(
+        allVendors.map(v => [v.id, { clientId: v.client_id, apiKey: v.api_key, apiType: v.api_type }])
+      );
+      for (const [vid, skus] of Object.entries(skusByVendor)) {
+        try {
+          const vc = vendorCredMap[vid];
+          const creds = (vc?.apiType === 'intermlecz' && vc.clientId && vc.apiKey)
+            ? { clientId: vc.clientId, apiKey: vc.apiKey }
+            : locationCreds;
+          const vendorItems = await vendorApi.getProductsBySku(skus, creds);
+          for (const v of vendorItems) {
+            priceMap[v.Sku] = {
+              price: v.PriceAfterDiscountNet?.Value ?? null,
+              unit: v.Unit,
+              inStock: v.InStock,
+              vendorName: v.Name || null,
+            };
+          }
+        } catch (e) {
+          console.error(`Price fetch failed for vendor ${vid} (continuing):`, e.message);
         }
-      } catch (e) {
-        console.error('Price fetch failed (continuing):', e.message);
       }
     }
 
