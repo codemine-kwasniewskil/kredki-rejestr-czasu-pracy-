@@ -122,21 +122,25 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentId, payment
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
   const body = {
-    AddressId: addressId ? parseInt(addressId, 10) : null,
-    Address: {
-      Name:            address?.Name            || '',
-      Street:          address?.Street          || '',
-      City:            address?.City            || '',
-      PostalCode:      address?.PostalCode      || '',
-      Phone:           address?.Phone           || '',
-      CountryId:       address?.CountryId       || null,
-      RegionId:        address?.RegionId        || null,
-      Email:           address?.Email           || '',
-      ApartmentNumber: address?.ApartmentNumber || '',
-      HouseNumber:     address?.HouseNumber     || '',
-      TaxNumber:       address?.TaxNumber       || '',
-      OneTimeAdress:   true,
-    },
+    ...(addressId
+      ? { AddressId: parseInt(addressId, 10) }
+      : {
+          Address: {
+            Name:            address?.Name            || '',
+            Street:          address?.Street          || '',
+            City:            address?.City            || '',
+            PostalCode:      address?.PostalCode      || '',
+            Phone:           address?.Phone           || '',
+            CountryId:       address?.CountryId       || null,
+            RegionId:        address?.RegionId        || null,
+            Email:           address?.Email           || '',
+            ApartmentNumber: address?.ApartmentNumber || '',
+            HouseNumber:     address?.HouseNumber     || '',
+            TaxNumber:       address?.TaxNumber       || '',
+            OneTimeAdress:   true,
+          },
+        }
+    ),
     PaymentId:            paymentId  ? parseInt(paymentId, 10)  : null,
     PaymentName:          paymentName  || '',
     DeliveryId:           deliveryId ? parseInt(deliveryId, 10) : null,
