@@ -112,7 +112,7 @@
 
         <!-- Add product row -->
         <div class="px-4 py-3 border-t border-slate-100">
-          <button type="button" onclick="addRow()" class="btn btn-secondary text-sm flex items-center gap-1.5">
+          <button type="button" onclick="onAddProductClick()" class="btn btn-secondary text-sm flex items-center gap-1.5">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             Dodaj produkt
           </button>
@@ -241,29 +241,31 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '', vendorName = '' } = {}) {
+function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '', vendorName = '', readonly = false } = {}) {
   const emptyRow = document.getElementById('emptyRow');
   const tr = document.createElement('tr');
   tr.className = 'order-row border-b border-slate-100';
   const priceVal = price !== null ? parseFloat(price).toFixed(2) : '';
   const vn = escHtml(vendorName);
+  const nameHtml = readonly
+    ? `<input type="hidden" name="item_name[]" value="${escHtml(name)}"><span class="text-sm text-slate-700">${escHtml(name) || '—'}</span>`
+    : `<input type="text" name="item_name[]" value="${escHtml(name)}" required class="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400 min-w-[140px]">`;
+  const skuHtml = readonly
+    ? `<input type="hidden" name="item_sku[]" value="${escHtml(sku)}"><span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">${escHtml(sku) || '—'}</span>`
+    : `<input type="text" name="item_sku[]" value="${escHtml(sku)}" placeholder="SKU" class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">`;
+  const unitHtml = readonly
+    ? `<input type="hidden" name="item_unit[]" value="${unit}"><span class="text-sm text-slate-500">${unit || '—'}</span>`
+    : `<input type="text" name="item_unit[]" value="${unit}" placeholder="szt." class="w-16 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400">`;
   tr.innerHTML = `
     <td class="px-4 py-2">
       <input type="hidden" name="item_stock_id[]" value="${stockId}">
-      <input type="text" name="item_name[]" value="${escHtml(name)}" required
-        class="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400 min-w-[140px]">
+      ${nameHtml}
     </td>
-    <td class="px-4 py-2">
-      <input type="text" name="item_sku[]" value="${escHtml(sku)}" placeholder="SKU"
-        class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">
-    </td>
+    <td class="px-4 py-2">${skuHtml}</td>
     <td class="px-4 py-2 text-slate-600 text-xs">
       ${vn ? `<span class="leading-tight" title="${vn}">${vn}</span>` : '<span class="text-slate-300">—</span>'}
     </td>
-    <td class="px-4 py-2">
-      <input type="text" name="item_unit[]" value="${unit}" placeholder="szt."
-        class="w-16 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400">
-    </td>
+    <td class="px-4 py-2">${unitHtml}</td>
     <td class="px-4 py-2 text-right">
       <input type="number" name="item_qty[]" value="${parseFloat(qty) || 1}" min="0.001" step="0.001" required
         class="qty-input w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
@@ -286,13 +288,26 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
   updateTotal();
 }
 
+function onAddProductClick() {
+  const sel = document.getElementById('vendorId');
+  const opt = sel.selectedOptions[0];
+  if (opt && opt.dataset.api === 'intermlecz' && sel.value) {
+    document.getElementById('vendorSearchPanel').classList.remove('hidden');
+    const input = document.getElementById('vendorSearch');
+    input.focus();
+    document.getElementById('vendorSearchPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else {
+    addRow({ readonly: false });
+  }
+}
+
 function prefillLowStock() {
   const vendorId = document.getElementById('vendorId').value;
   const items = vendorId
     ? LOW_STOCK.filter(i => String(i.vendorId) === String(vendorId))
     : LOW_STOCK;
   items.forEach(item => {
-    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id, vendorName: item.vendorName || '' });
+    addRow({ name: item.name, sku: item.sku, unit: item.unit, qty: Math.max(0.001, parseFloat(item.need)), price: item.price, stockId: item.id, vendorName: item.vendorName || '', readonly: true });
   });
 }
 
@@ -347,7 +362,7 @@ function renderVendorResults(items, total) {
         <td class="px-3 py-2 text-center ${stockColor} font-bold">${inStock}</td>
         <td class="px-3 py-2">
           <button type="button" class="btn btn-secondary text-xs py-0.5"
-            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},vendorName:${JSON.stringify(p.Name||"")}})'>
+            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},vendorName:${JSON.stringify(p.Name||"")},readonly:true})'>
             + Dodaj
           </button>
         </td>
