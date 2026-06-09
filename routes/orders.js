@@ -896,7 +896,6 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment,
-      deliveryId,
       deliveryName,
       paymentName,
       address,

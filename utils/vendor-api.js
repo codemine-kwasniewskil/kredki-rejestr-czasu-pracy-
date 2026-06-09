@@ -107,50 +107,54 @@ async function getProductsBySku(skus, creds = {}) {
   return results;
 }
 
-async function placeOrder({ items, comment, clientId, apiKey, paymentId, paymentName, deliveryId, deliveryName, address, addressId, additionalProperties }) {
+async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliveryName, address, addressId, additionalProperties }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
   const lines = items
     .filter(i => i.vendor_product_key)
-    .map(i => ({
-      Key: String(i.vendor_product_key),
-      Quantity: Number(i.quantity),
-      UnitId: String(i.unit || ''),
-    }));
+    .map(i => {
+      const line = { Key: String(i.vendor_product_key), Quantity: Number(i.quantity) };
+      if (i.unit) line.UnitId = String(i.unit);
+      return line;
+    });
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
-  const body = {
-    ...(addressId
-      ? { AddressId: parseInt(addressId, 10) }
-      : {
-          Address: {
-            Name:            address?.Name            || '',
-            Street:          address?.Street          || '',
-            City:            address?.City            || '',
-            PostalCode:      address?.PostalCode      || '',
-            Phone:           address?.Phone           || '',
-            CountryId:       address?.CountryId       || null,
-            RegionId:        address?.RegionId        || null,
-            Email:           address?.Email           || '',
-            ApartmentNumber: address?.ApartmentNumber || '',
-            HouseNumber:     address?.HouseNumber     || '',
-            TaxNumber:       address?.TaxNumber       || '',
-            OneTimeAdress:   true,
-          },
-        }
-    ),
-    PaymentId:            paymentId  ? parseInt(paymentId, 10)  : null,
-    PaymentName:          paymentName  || '',
-    DeliveryId:           deliveryId ? parseInt(deliveryId, 10) : 0,
-    DeliveryName:         deliveryName || '',
-    Comment:              comment || 'Zamówienie z systemu Kredki',
-    OrderLines:           { KeyType: 'Sku', Lines: lines },
-    InpostPaczkomatCode:  '',
-    AdditionalProperties: additionalProperties || [],
-    Config:               { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
-  };
+  const body = {};
+
+  // AddressId OR Address — mutually exclusive
+  if (addressId) {
+    body.AddressId = parseInt(addressId, 10);
+  } else if (address) {
+    const addr = { OneTimeAdress: true };
+    if (address.Name)            addr.Name            = address.Name;
+    if (address.Street)          addr.Street          = address.Street;
+    if (address.City)            addr.City            = address.City;
+    if (address.PostalCode)      addr.PostalCode      = address.PostalCode;
+    if (address.Phone)           addr.Phone           = address.Phone;
+    if (address.CountryId)       addr.CountryId       = address.CountryId;
+    if (address.RegionId)        addr.RegionId        = address.RegionId;
+    if (address.Email)           addr.Email           = address.Email;
+    if (address.ApartmentNumber) addr.ApartmentNumber = address.ApartmentNumber;
+    if (address.HouseNumber)     addr.HouseNumber     = address.HouseNumber;
+    if (address.TaxNumber)       addr.TaxNumber       = address.TaxNumber;
+    body.Address = addr;
+  }
+
+  // PaymentId obsolete — PaymentName only
+  if (paymentName) body.PaymentName = paymentName;
+
+  // DeliveryId obsolete — DeliveryName only
+  if (deliveryName) body.DeliveryName = deliveryName;
+
+  if (comment) body.Comment = comment;
+
+  body.OrderLines = { KeyType: 'Sku', Lines: lines };
+
+  if (additionalProperties?.length) body.AdditionalProperties = additionalProperties;
+
+  body.Config = { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false };
 
   console.log('[placeOrder] POST /api3/order body:', JSON.stringify(body, null, 2));
   const resp = await apiRequest('/api3/order', 'POST', body, token);
