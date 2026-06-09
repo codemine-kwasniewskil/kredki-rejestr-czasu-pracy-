@@ -75,10 +75,19 @@
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">
               Address ID w Inter-Mlecz
-              <span class="text-slate-400 font-normal">(opcjonalnie — jeśli znasz ID adresu)</span>
+              <span class="text-slate-400 font-normal">(opcjonalnie)</span>
             </label>
             <input type="number" name="cafe_address_id" value="<%= orderSettings.cafe_address_id || '' %>"
               placeholder="np. 123"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">
+              Nazwa dostawy (DeliveryName) <span class="text-red-500">*</span>
+              <span class="text-slate-400 font-normal ml-1">— wymagane przez API Inter-Mlecz. Sprawdź dostępne opcje: <a href="/orders/vendor/delivery-options" target="_blank" class="text-blue-500 underline">/vendor/delivery-options</a></span>
+            </label>
+            <input type="text" name="cafe_delivery_name" value="<%= orderSettings.cafe_delivery_name || '' %>"
+              placeholder="np. dost.7-9 TR24 GOTÓWKA"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
         </div>

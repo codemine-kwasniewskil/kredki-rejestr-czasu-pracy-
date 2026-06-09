@@ -252,6 +252,30 @@ router.post('/assign-sku', requireManager, async (req, res) => {
   }
 });
 
+// ── AJAX: get delivery options from vendor API ────────────────────────────
+
+router.get('/vendor/delivery-options', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const allVendors = await loadVendors(locationId);
+    const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+    if (!apiVendor) return res.json({ Items: [], error: 'Brak dostawcy API' });
+    const { getToken } = vendorApi;
+    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
+    const https = require('https');
+    const raw = await new Promise((resolve) => {
+      const opts = { hostname: 'b2b.intermlecz.pl', path: '/api3/order/delivery', method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
+      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve(d)); });
+      r.on('error', () => resolve('{}'));
+      r.end();
+    });
+    res.json(JSON.parse(raw));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── AJAX: vendor product search ────────────────────────────────────────────
 
 router.get('/vendor/search', requireManager, async (req, res) => {
@@ -385,24 +409,26 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
-            cafe_phone, cafe_email, cafe_address_id } = req.body;
+            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name } = req.body;
     const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
       .filter(Boolean).join(' ').trim() || null;
     await db.run(
       `INSERT INTO order_settings
-         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?)
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
          cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
          cafe_postal_code=VALUES(cafe_postal_code), cafe_city=VALUES(cafe_city),
          cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email),
-         cafe_address_id=VALUES(cafe_address_id)`,
+         cafe_address_id=VALUES(cafe_address_id),
+         cafe_delivery_name=VALUES(cafe_delivery_name)`,
       [locationId, cafeAddress,
        cafe_name?.trim() || null, cafe_street?.trim() || null,
        cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
        cafe_city?.trim() || null, cafe_phone?.trim() || null,
-       cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null]
+       cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null,
+       cafe_delivery_name?.trim() || null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -784,7 +810,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment,
-      // PaymentName omitted — API uses account default when not provided
+      deliveryName: settings.cafe_delivery_name || null,
       address,
       addressId,
       ...creds,
