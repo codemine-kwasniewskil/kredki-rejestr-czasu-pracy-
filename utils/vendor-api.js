@@ -144,7 +144,7 @@ async function getClientAddresses(creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) return [];
   const token = await getToken(clientId, apiKey);
-  const resp = await apiRequest('/api3/address/clientAddres', 'GET', null, token);
+  const resp = await apiRequest('/api3/address/clientAddress', 'GET', null, token);
   if (resp.status !== 200) return [];
   return resp.body?.Items || [];
 }

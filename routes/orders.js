@@ -425,6 +425,24 @@ router.get('/settings/api-addresses', requireAdmin, async (req, res) => {
     let parsed = null;
     try { parsed = JSON.parse(raw.body); } catch (_) {}
     const addresses = parsed?.Items || [];
+    // Also auto-save addressId if exactly one address returned
+    if (addresses.length === 1) {
+      const a = addresses[0];
+      const locationId = getLocationId(req);
+      const existing = await getOrderSettings(locationId) || {};
+      if (!existing.cafe_address_id) {
+        await db.run(
+          `INSERT INTO order_settings (location_id, cafe_address_id, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE cafe_address_id=VALUES(cafe_address_id), cafe_name=VALUES(cafe_name),
+             cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
+             cafe_postal_code=VALUES(cafe_postal_code), cafe_city=VALUES(cafe_city),
+             cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email)`,
+          [locationId, parseInt(a.Id), a.Name || null, a.Street || null, a.HouseNumber || null,
+           a.PostalCode || null, a.City || null, a.Phone || null, a.Email || null]
+        ).catch(() => {});
+      }
+    }
     res.json({ addresses, debug: { status: raw.status, rawBody: raw.body.slice(0, 300) } });
   } catch (e) {
     res.status(500).json({ error: e.message });
