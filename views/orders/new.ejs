@@ -172,16 +172,6 @@ function onVendorChange() {
   document.getElementById('vendorIdHidden').value = vendorId;
   document.getElementById('vendorSearchPanel').classList.toggle('hidden', !hasApi);
 
-  // Update min order value display
-  const minEl = document.getElementById('minOrderInfo');
-  const min = vendorId ? VENDOR_MINS[vendorId] : null;
-  if (min !== null && min !== undefined && parseFloat(min) > 0) {
-    minEl.textContent = 'Minimum logistyczne: ' + parseFloat(min).toFixed(2) + ' PLN netto';
-    minEl.classList.remove('hidden');
-  } else {
-    minEl.classList.add('hidden');
-  }
-
   // Clear search results when vendor changes
   if (!hasApi) {
     document.getElementById('vendorResults').classList.add('hidden');
@@ -207,6 +197,8 @@ function onVendorChange() {
       banner.classList.add('hidden');
     }
   }
+
+  updateTotal();
 }
 
 function updateTotal() {
@@ -223,22 +215,46 @@ function updateTotal() {
   document.getElementById('orderTotal').textContent = total.toFixed(2).replace('.', ',') + ' PLN';
   document.getElementById('itemCount').textContent = count + ' pozycj' + (count === 1 ? 'a' : count < 5 ? 'e' : 'i');
   document.getElementById('emptyRow').style.display = count > 0 ? 'none' : '';
+
+  const vendorId = document.getElementById('vendorId').value;
+  const min = vendorId ? VENDOR_MINS[vendorId] : null;
+  const minEl = document.getElementById('minOrderInfo');
+  if (min !== null && min !== undefined && parseFloat(min) > 0) {
+    const minVal = parseFloat(min);
+    const diff = minVal - total;
+    if (diff > 0.005) {
+      minEl.textContent = `Minimum logistyczne: ${minVal.toFixed(2)} PLN netto — brakuje ${diff.toFixed(2)} PLN`;
+      minEl.className = 'text-xs text-amber-600 font-medium';
+    } else {
+      minEl.textContent = `Minimum logistyczne: ${minVal.toFixed(2)} PLN netto ✓`;
+      minEl.className = 'text-xs text-green-600 font-medium';
+    }
+    minEl.classList.remove('hidden');
+  } else {
+    minEl.classList.add('hidden');
+  }
 }
 
-function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '' } = {}) {
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '', vendorName = '' } = {}) {
   const emptyRow = document.getElementById('emptyRow');
   const tr = document.createElement('tr');
   tr.className = 'order-row border-b border-slate-100';
   const priceVal = price !== null ? parseFloat(price).toFixed(2) : '';
+  const vn = escHtml(vendorName);
   tr.innerHTML = `
     <td class="px-4 py-2">
       <input type="hidden" name="item_stock_id[]" value="${stockId}">
-      <input type="text" name="item_name[]" value="${name}" required
+      <input type="text" name="item_name[]" value="${escHtml(name)}" required
         class="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400 min-w-[140px]">
     </td>
     <td class="px-4 py-2">
-      <input type="text" name="item_sku[]" value="${sku}" placeholder="SKU"
+      <input type="text" name="item_sku[]" value="${escHtml(sku)}" placeholder="SKU"
         class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">
+      ${vn ? `<span class="text-xs text-slate-400 block mt-0.5 leading-tight max-w-[112px] truncate" title="${vn}">${vn}</span>` : ''}
     </td>
     <td class="px-4 py-2">
       <input type="text" name="item_unit[]" value="${unit}" placeholder="szt."
@@ -327,7 +343,7 @@ function renderVendorResults(items, total) {
         <td class="px-3 py-2 text-center ${stockColor} font-bold">${inStock}</td>
         <td class="px-3 py-2">
           <button type="button" class="btn btn-secondary text-xs py-0.5"
-            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null}})'>
+            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},vendorName:${JSON.stringify(p.Name||"")}})'>
             + Dodaj
           </button>
         </td>

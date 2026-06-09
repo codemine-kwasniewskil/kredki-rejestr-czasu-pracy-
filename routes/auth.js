@@ -7,7 +7,7 @@ const { requireAuth, getLocationId } = require('../middleware/auth');
 const { log } = require('../utils/logger');
 const { sendMail } = require('../utils/mailer');
 
-const ADMIN_EMAIL = 'hello@graficzek.pl';
+const ADMIN_EMAIL = 'l.kwasniewski@codemine.pl';
 const APP_URL = process.env.APP_URL || 'https://www.graficzek.pl';
 
 router.get('/', requireAuth, (req, res) => res.redirect('/dashboard'));
