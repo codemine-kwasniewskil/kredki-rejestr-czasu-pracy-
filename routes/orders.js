@@ -272,6 +272,33 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   }
 });
 
+// ── TEMP: raw price field probe ────────────────────────────────────────────
+
+router.get('/vendor/price-probe', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const sku = (req.query.sku || '32648').trim();
+    const allVendors = await loadVendors(locationId);
+    const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+    if (!apiVendor) return res.json({ error: 'No API vendor found' });
+    const { getToken } = vendorApi;
+    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
+    // Request every plausible price field
+    const allFields = 'Id,Name,Sku,Unit,Qty,InStock,PriceNet,PriceGross,PriceAfterDiscountNet,PriceAfterDiscountGross,RetailPriceNet,RetailPriceGross,UnitPriceNet,UnitPriceGross,Price,PriceVat,Vat';
+    const url = `/api3/product/findProduct?field=${allFields}&productsSku=${encodeURIComponent(sku)}`;
+    const https = require('https');
+    const raw = await new Promise((resolve, reject) => {
+      const options = { hostname: 'b2b.intermlecz.pl', path: url, method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token } };
+      const req2 = https.request(options, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => resolve(d)); });
+      req2.on('error', reject); req2.end();
+    });
+    res.json({ sku, raw: JSON.parse(raw) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── AJAX: search cafe stock items with a vendor SKU ───────────────────────
 
 router.get('/stock-items', requireManager, async (req, res) => {
