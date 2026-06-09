@@ -143,7 +143,7 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentId, payment
     ),
     PaymentId:            paymentId  ? parseInt(paymentId, 10)  : null,
     PaymentName:          paymentName  || '',
-    DeliveryId:           deliveryId ? parseInt(deliveryId, 10) : null,
+    DeliveryId:           deliveryId ? parseInt(deliveryId, 10) : 0,
     DeliveryName:         deliveryName || '',
     Comment:              comment || 'Zamówienie z systemu Kredki',
     OrderLines:           { KeyType: 'Sku', Lines: lines },
