@@ -434,7 +434,7 @@ async function doStockSearch(phrase) {
           <td class="px-3 py-2 text-xs text-slate-400">${p.vendor_name || '—'}</td>
           <td class="px-3 py-2">
             <button type="button" id="stock-add-${p.id}" class="btn btn-secondary text-xs py-0.5"
-              onclick="addStockItem(${p.id}, ${JSON.stringify(p.name)}, ${JSON.stringify(p.sku||'')}, ${JSON.stringify(p.unit||'')}, ${p.vendor_id||'null'}, ${JSON.stringify('stock-add-'+p.id)})">
+              onclick='addStockItem(${p.id}, ${JSON.stringify(p.name)}, ${JSON.stringify(p.sku||"")}, ${JSON.stringify(p.unit||"")}, ${p.vendor_id||null}, "stock-add-${p.id}")'>
               + Dodaj
             </button>
           </td>`;
