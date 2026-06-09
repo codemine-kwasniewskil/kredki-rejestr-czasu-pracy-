@@ -24,6 +24,18 @@
 
     <!-- Cafe address -->
     <div class="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+      <% if (typeof apiAddresses !== 'undefined' && apiAddresses.length > 0) { %>
+      <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+        <strong>Adresy pobrane z Inter-Mlecz API:</strong>
+        <% for (const a of apiAddresses) { %>
+        <div class="mt-2 flex items-center justify-between gap-4">
+          <span><strong class="font-mono">#<%= a.Id %></strong> — <%= a.Name %> — <%= a.Street %> <%= a.HouseNumber %>, <%= a.PostalCode %> <%= a.City %></span>
+          <button type="button" onclick="fillFromApi(<%= JSON.stringify(a) %>)"
+            class="btn btn-secondary text-xs flex-shrink-0">Użyj tego adresu</button>
+        </div>
+        <% } %>
+      </div>
+      <% } %>
       <h2 class="font-semibold text-slate-700 mb-4 flex items-center gap-2">
         <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Adres kawiarni (domyślny adres dostawy)
@@ -174,4 +186,17 @@
   </div>
 </div>
 
+<script>
+function fillFromApi(a) {
+  const f = v => document.querySelector(`[name="${v}"]`);
+  if (f('cafe_address_id')) f('cafe_address_id').value = a.Id || '';
+  if (f('cafe_name'))         f('cafe_name').value = a.Name || '';
+  if (f('cafe_street'))       f('cafe_street').value = a.Street || '';
+  if (f('cafe_house_number')) f('cafe_house_number').value = a.HouseNumber || '';
+  if (f('cafe_postal_code'))  f('cafe_postal_code').value = a.PostalCode || '';
+  if (f('cafe_city'))         f('cafe_city').value = a.City || '';
+  if (f('cafe_phone'))        f('cafe_phone').value = a.Phone || '';
+  if (f('cafe_email'))        f('cafe_email').value = a.Email || '';
+}
+</script>
 <%- include('../partials/footer') %>

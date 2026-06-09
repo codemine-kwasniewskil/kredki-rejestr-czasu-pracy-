@@ -395,9 +395,19 @@ router.get('/settings', requireAdmin, async (req, res) => {
     const editId = req.query.edit ? parseInt(req.query.edit) : null;
     const editVendor = editId ? vendors.find(v => v.id === editId) : null;
     const orderSettings = await getOrderSettings(locationId) || {};
+
+    // Try to fetch client address from Inter-Mlecz API to pre-populate settings
+    let apiAddresses = [];
+    try {
+      const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+      if (apiVendor) {
+        apiAddresses = await vendorApi.getClientAddresses({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
+      }
+    } catch (_) {}
+
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor, orderSettings,
+      vendors, editVendor, orderSettings, apiAddresses,
     });
   } catch (e) {
     console.error(e);
@@ -786,9 +796,16 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
 
     const settings = await getOrderSettings(locationId) || {};
 
-    // Use AddressId if configured; otherwise build Address only when fully specified
+    // Prefer AddressId (from settings or auto-fetched from API)
     let address = null;
-    const addressId = settings.cafe_address_id || null;
+    let addressId = settings.cafe_address_id ? parseInt(settings.cafe_address_id, 10) : null;
+    if (!addressId) {
+      try {
+        const addrs = await vendorApi.getClientAddresses(creds);
+        if (addrs.length > 0) addressId = parseInt(addrs[0].Id, 10);
+      } catch (_) {}
+    }
+    // Fall back to structured address from settings if no ID found
     if (!addressId && settings.cafe_street && settings.cafe_city && settings.cafe_postal_code) {
       address = {
         Name: settings.cafe_name || 'Kawiarnia Kredki',
