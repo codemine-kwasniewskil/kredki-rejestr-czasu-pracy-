@@ -396,22 +396,26 @@ router.get('/settings', requireAdmin, async (req, res) => {
     const editVendor = editId ? vendors.find(v => v.id === editId) : null;
     const orderSettings = await getOrderSettings(locationId) || {};
 
-    // Try to fetch client address from Inter-Mlecz API to pre-populate settings
-    let apiAddresses = [];
-    try {
-      const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-      if (apiVendor) {
-        apiAddresses = await vendorApi.getClientAddresses({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
-      }
-    } catch (_) {}
-
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor, orderSettings, apiAddresses,
+      vendors, editVendor, orderSettings,
     });
   } catch (e) {
     console.error(e);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/settings/api-addresses', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const vendors = await loadVendors(locationId);
+    const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+    if (!apiVendor) return res.json({ error: 'Brak dostawcy z API (Inter-Mlecz).' });
+    const addresses = await vendorApi.getClientAddresses({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key });
+    res.json({ addresses });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
