@@ -398,11 +398,16 @@ router.get('/admin', requireManager, async (req, res) => {
       [locationId]
     );
 
+    const vendors = await db.all(
+      `SELECT id, name, api_type FROM vendors WHERE location_id=? AND active=1 ORDER BY sort_order, name`,
+      [locationId]
+    );
+
     res.render('stock/admin', {
       title: 'Zarządzaj – Raport Stanów', currentPath: '/stock',
       tab, activeType, items, editItem, categories, units,
       categoryStats, unitStats,
-      history, reportTypes, REPORT_META,
+      history, reportTypes, REPORT_META, vendors,
     });
   } catch (e) {
     console.error(e);
@@ -422,10 +427,11 @@ router.post('/admin/items', requireManager, async (req, res) => {
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
+    const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
     await db.run(
-      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, location_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, vendor_id, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, locationId]
+       target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, vendorId, locationId]
     );
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');
@@ -444,10 +450,11 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
+    const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
     await db.run(
-      `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=? WHERE id=?`,
+      `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=?,vendor_id=? WHERE id=?`,
       [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
-       target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, req.params.id]
+       target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, vendorId || null, req.params.id]
     );
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');

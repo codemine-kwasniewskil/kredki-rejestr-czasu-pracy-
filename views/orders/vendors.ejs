@@ -1,0 +1,109 @@
+<%- include('../partials/head') %>
+<%- include('../partials/nav') %>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-3xl mx-auto px-4 py-6">
+
+    <div class="flex items-center gap-3 mb-6">
+      <a href="/orders" class="text-slate-400 hover:text-slate-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800">Dostawcy</h1>
+        <p class="text-slate-500 text-sm mt-0.5">Zarządzaj dostawcami i ich integracjami API</p>
+      </div>
+    </div>
+
+    <% if (success && success.length) { %>
+      <div class="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <%
+      const API_TYPES = {
+        intermlecz: { label: 'Inter-Mlecz (SolEx B2B API)', color: 'bg-blue-100 text-blue-700' },
+        manual:     { label: 'Ręczne (bez API)',              color: 'bg-slate-100 text-slate-600' },
+        frisco:     { label: 'Frisco (wkrótce)',              color: 'bg-orange-100 text-orange-600' },
+        zabka:      { label: 'Żabka (wkrótce)',               color: 'bg-green-100 text-green-700' },
+      };
+    %>
+
+    <!-- Vendors list -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-700">Lista dostawców</h2>
+        <span class="text-xs text-slate-400"><%= vendors.length %> dostawców</span>
+      </div>
+      <% if (vendors.length === 0) { %>
+        <div class="px-4 py-10 text-center text-slate-400 text-sm">Brak dostawców. Dodaj pierwszego poniżej.</div>
+      <% } else { %>
+      <div class="divide-y divide-slate-100">
+        <% for (const v of vendors) { %>
+        <div class="px-4 py-3 flex items-center gap-3 <%= !v.active ? 'opacity-50' : '' %>">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-medium text-slate-800"><%= v.name %></span>
+              <% const at = API_TYPES[v.api_type] || { label: v.api_type, color: 'bg-slate-100 text-slate-600' }; %>
+              <span class="text-xs px-2 py-0.5 rounded-full font-medium <%= at.color %>"><%= at.label %></span>
+              <% if (!v.active) { %>
+                <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Nieaktywny</span>
+              <% } %>
+            </div>
+            <% if (v.api_type === 'intermlecz' && v.client_id) { %>
+              <p class="text-xs text-slate-400 mt-0.5">Client ID: <span class="font-mono"><%= v.client_id %></span></p>
+            <% } %>
+            <% if (v.website) { %>
+              <p class="text-xs text-slate-400 mt-0.5"><%= v.website %></p>
+            <% } %>
+          </div>
+          <% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <a href="/orders/vendors?edit=<%= v.id %>#edit" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edytuj</a>
+            <form method="POST" action="/orders/vendors/<%= v.id %>?_method=DELETE"
+              onsubmit="return confirm('Usunąć dostawcę „<%= v.name %>"?')">
+              <button type="submit" class="text-red-400 hover:text-red-600 text-xs font-medium">Usuń</button>
+            </form>
+          </div>
+          <% } %>
+        </div>
+        <% } %>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- Edit form (inline) -->
+    <% if (editVendor) { %>
+    <div id="edit" class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-5">
+      <h2 class="font-semibold text-blue-800 mb-4">Edytuj: <%= editVendor.name %></h2>
+      <form method="POST" action="/orders/vendors/<%= editVendor.id %>">
+        <%- include('./_vendor_form', { v: editVendor, API_TYPES }) %>
+        <div class="flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">Zapisz</button>
+          <a href="/orders/vendors" class="btn btn-secondary">Anuluj</a>
+        </div>
+      </form>
+    </div>
+    <% } %>
+
+    <!-- Add new vendor -->
+    <% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+    <div class="bg-white border border-slate-200 rounded-xl p-5">
+      <h2 class="font-semibold text-slate-700 mb-4">
+        <svg class="w-4 h-4 inline-block mr-1 -mt-0.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Dodaj nowego dostawcę
+      </h2>
+      <form method="POST" action="/orders/vendors">
+        <%- include('./_vendor_form', { v: null, API_TYPES }) %>
+        <div class="mt-4">
+          <button type="submit" class="btn btn-success">Dodaj dostawcę</button>
+        </div>
+      </form>
+    </div>
+    <% } %>
+
+  </div>
+</div>
+
+<%- include('../partials/footer') %>

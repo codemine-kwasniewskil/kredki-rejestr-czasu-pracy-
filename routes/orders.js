@@ -47,8 +47,10 @@ async function recalcOrderTotal(orderId) {
 async function loadLowStockItems(locationId) {
   return db.all(
     `SELECT si.id, si.name, si.category, si.report_type, si.unit, si.min_qty, si.vendor_product_key,
+            si.vendor_id, v.name AS vendor_name, v.api_type AS vendor_api_type,
             CAST(sre.quantity AS DECIMAL(10,3)) AS last_qty, sr.report_date AS last_date
      FROM stock_items si
+     LEFT JOIN vendors v ON v.id = si.vendor_id
      JOIN (
        SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
        FROM stock_report_entries sre2
@@ -67,6 +69,93 @@ async function loadLowStockItems(locationId) {
   );
 }
 
+// ── Vendor management ──────────────────────────────────────────────────────
+
+async function loadVendors(locationId) {
+  return db.all(`SELECT * FROM vendors WHERE location_id=? ORDER BY sort_order, name`, [locationId]);
+}
+
+router.get('/vendors', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const vendors = await loadVendors(locationId);
+    const editId = req.query.edit ? parseInt(req.query.edit) : null;
+    const editVendor = editId ? vendors.find(v => v.id === editId) : null;
+    res.render('orders/vendors', {
+      title: 'Dostawcy', currentPath: '/orders',
+      vendors, editVendor,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.post('/vendors', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const { name, api_type, client_id, api_key, website } = req.body;
+    if (!name?.trim()) { req.flash('error', 'Nazwa jest wymagana.'); return res.redirect('/orders/vendors'); }
+    const slug = name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50) || `vendor-${Date.now()}`;
+    await db.run(
+      `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website) VALUES (?,?,?,?,?,?,?)`,
+      [locationId, name.trim(), slug, api_type || 'manual',
+       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null]
+    );
+    await log(sessionUser(req), 'Dostawcy – dodano', name.trim());
+    req.flash('success', `Dostawca "${name.trim()}" dodany.`);
+    res.redirect('/orders/vendors');
+  } catch (e) {
+    console.error(e);
+    req.flash('error', e.code === 'ER_DUP_ENTRY' ? 'Dostawca o tym slugu już istnieje.' : 'Błąd zapisu.');
+    res.redirect('/orders/vendors');
+  }
+});
+
+router.post('/vendors/:id', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const { name, api_type, client_id, api_key, website, active } = req.body;
+    await db.run(
+      `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=? WHERE id=? AND location_id=?`,
+      [name?.trim(), api_type || 'manual',
+       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null,
+       active === '1' ? 1 : 0, req.params.id, locationId]
+    );
+    await log(sessionUser(req), 'Dostawcy – zaktualizowano', name?.trim());
+    req.flash('success', 'Dostawca zaktualizowany.');
+    res.redirect('/orders/vendors');
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd aktualizacji.');
+    res.redirect('/orders/vendors');
+  }
+});
+
+router.delete('/vendors/:id', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const inUse = await db.get(
+      `SELECT COUNT(*) AS cnt FROM stock_items WHERE vendor_id=? AND location_id=?`,
+      [req.params.id, locationId]
+    );
+    if (inUse && inUse.cnt > 0) {
+      req.flash('error', `Nie można usunąć – ${inUse.cnt} produktów korzysta z tego dostawcy.`);
+      return res.redirect('/orders/vendors');
+    }
+    const v = await db.get(`SELECT name FROM vendors WHERE id=? AND location_id=?`, [req.params.id, locationId]);
+    await db.run(`DELETE FROM vendors WHERE id=? AND location_id=?`, [req.params.id, locationId]);
+    await log(sessionUser(req), 'Dostawcy – usunięto', v?.name);
+    req.flash('success', 'Dostawca usunięty.');
+    res.redirect('/orders/vendors');
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd usuwania.');
+    res.redirect('/orders/vendors');
+  }
+});
+
 // ── AJAX: assign vendor SKU to a stock item ────────────────────────────────
 
 router.post('/assign-sku', requireManager, async (req, res) => {
@@ -74,10 +163,11 @@ router.post('/assign-sku', requireManager, async (req, res) => {
     const locationId = getLocationId(req);
     const stockItemId = parseInt(req.body.stock_item_id, 10);
     const sku = req.body.vendor_product_key?.trim() || null;
+    const vendorId = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
     if (!stockItemId) return res.status(400).json({ error: 'Brak ID produktu.' });
     const item = await db.get(`SELECT id, name FROM stock_items WHERE id=? AND location_id=?`, [stockItemId, locationId]);
     if (!item) return res.status(404).json({ error: 'Produkt nie istnieje.' });
-    await db.run(`UPDATE stock_items SET vendor_product_key=? WHERE id=?`, [sku, stockItemId]);
+    await db.run(`UPDATE stock_items SET vendor_product_key=?, vendor_id=? WHERE id=?`, [sku, vendorId || null, stockItemId]);
     await log(sessionUser(req), 'Zamówienia – przypisano SKU', `${item.name} → ${sku || '(usunięto)'}`);
     res.json({ ok: true });
   } catch (e) {
@@ -92,7 +182,25 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     if (!q) return res.json({ items: [], total: 0 });
-    const creds = await getVendorCreds(getLocationId(req));
+    const locationId = getLocationId(req);
+
+    // Look up vendor by vendor_id if provided
+    if (req.query.vendor_id) {
+      const vendor = await db.get(
+        `SELECT * FROM vendors WHERE id=? AND location_id=? AND active=1`,
+        [req.query.vendor_id, locationId]
+      );
+      if (vendor) {
+        if (vendor.api_type !== 'intermlecz') {
+          return res.json({ items: [], total: 0, manual: true, vendorName: vendor.name });
+        }
+        const result = await vendorApi.searchProducts(q, 30, { clientId: vendor.client_id, apiKey: vendor.api_key });
+        return res.json(result);
+      }
+    }
+
+    // Fallback: use location-level credentials
+    const creds = await getVendorCreds(locationId);
     const result = await vendorApi.searchProducts(q, 30, creds);
     res.json(result);
   } catch (e) {
@@ -109,6 +217,7 @@ router.get('/', requireManager, async (req, res) => {
     const minOrderValue = await getMinOrderValue(locationId);
 
     const lowStock = await loadLowStockItems(locationId);
+    const vendors  = await loadVendors(locationId);
 
     const orders = await db.all(
       `SELECT po.*, u.name AS created_by_name, a.name AS approved_by_name
@@ -122,7 +231,7 @@ router.get('/', requireManager, async (req, res) => {
 
     res.render('orders/index', {
       title: 'Zamówienia', currentPath: '/orders',
-      lowStock, orders, minOrderValue,
+      lowStock, orders, minOrderValue, vendors,
     });
   } catch (e) {
     console.error(e);
