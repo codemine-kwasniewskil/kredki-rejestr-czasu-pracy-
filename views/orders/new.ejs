@@ -170,7 +170,7 @@
         <h3 class="font-semibold text-slate-700 mb-4">Szczegóły dostawy i płatności</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(min. jutro)</span></label>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(min. jutro, bez niedziel)</span></label>
             <input type="date" name="delivery_date" id="deliveryDate"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
@@ -570,15 +570,34 @@ function onAddressTypeChange(type) {
   }
 }
 
-// Delivery date: minimum tomorrow
+// Delivery date: minimum tomorrow, no Sundays
 (function() {
   const el = document.getElementById('deliveryDate');
   if (!el) return;
+
+  function localDate(y, m, d) { return new Date(y, m, d); }
+  function parseDate(str) { const [y,m,d] = str.split('-').map(Number); return localDate(y, m-1, d); }
+  function toIso(date) { return date.toISOString().split('T')[0]; }
+  function skipSunday(date) {
+    if (date.getDay() === 0) date.setDate(date.getDate() + 1);
+    return date;
+  }
+
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const iso = tomorrow.toISOString().split('T')[0];
-  el.min = iso;
-  el.value = iso;
+  tomorrow.setHours(0,0,0,0);
+
+  el.min = toIso(tomorrow);
+  el.value = toIso(skipSunday(new Date(tomorrow)));
+
+  el.addEventListener('change', function() {
+    if (!this.value) return;
+    const d = parseDate(this.value);
+    if (d.getDay() === 0) {
+      d.setDate(d.getDate() + 1);
+      this.value = toIso(d);
+    }
+  });
 })();
 
 // Init low-stock banner
