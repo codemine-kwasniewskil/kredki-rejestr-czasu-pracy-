@@ -29,26 +29,57 @@
         Adres kawiarni (domyślny adres dostawy)
       </h2>
       <form method="POST" action="/orders/settings/address">
-        <div class="grid grid-cols-1 gap-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Adres (ulica, numer, kod, miasto)</label>
-            <input type="text" name="cafe_address" value="<%= orderSettings.cafe_address || '' %>"
-              placeholder="np. Ludwika Mierosławskiego 29A, 01-567 Warszawa"
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa (do adresu dostawy)</label>
+            <input type="text" name="cafe_name" value="<%= orderSettings.cafe_name || '' %>"
+              placeholder="np. KAWIARNIA KREDKI"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Telefon</label>
-              <input type="text" name="cafe_phone" value="<%= orderSettings.cafe_phone || '' %>"
-                placeholder="np. 604938975"
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
-              <input type="email" name="cafe_email" value="<%= orderSettings.cafe_email || '' %>"
-                placeholder="np. hello@kredki.store"
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
-            </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Ulica</label>
+            <input type="text" name="cafe_street" value="<%= orderSettings.cafe_street || '' %>"
+              placeholder="np. Ludwika Mierosławskiego"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Numer budynku</label>
+            <input type="text" name="cafe_house_number" value="<%= orderSettings.cafe_house_number || '' %>"
+              placeholder="np. 29A"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Kod pocztowy</label>
+            <input type="text" name="cafe_postal_code" value="<%= orderSettings.cafe_postal_code || '' %>"
+              placeholder="np. 01-567"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Miasto</label>
+            <input type="text" name="cafe_city" value="<%= orderSettings.cafe_city || '' %>"
+              placeholder="np. Warszawa"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Telefon</label>
+            <input type="text" name="cafe_phone" value="<%= orderSettings.cafe_phone || '' %>"
+              placeholder="np. 604938975"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
+            <input type="email" name="cafe_email" value="<%= orderSettings.cafe_email || '' %>"
+              placeholder="np. hello@kredki.store"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">
+              Address ID w Inter-Mlecz
+              <span class="text-slate-400 font-normal">(opcjonalnie — jeśli znasz ID adresu)</span>
+            </label>
+            <input type="number" name="cafe_address_id" value="<%= orderSettings.cafe_address_id || '' %>"
+              placeholder="np. 123"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
           </div>
         </div>
         <div class="mt-3">

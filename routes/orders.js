@@ -285,59 +285,6 @@ router.get('/vendor/search', requireManager, async (req, res) => {
   }
 });
 
-// ── TEMP: fetch Swagger spec + probe Order endpoints ──────────────────────
-
-router.get('/vendor/api-probe', requireManager, async (req, res) => {
-  try {
-    const https = require('https');
-
-    const locationId = getLocationId(req);
-    const allVendors = await loadVendors(locationId);
-    const apiVendor = allVendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-    if (!apiVendor) return res.json({ error: 'No API vendor' });
-
-    const { getToken } = vendorApi;
-    const token = await getToken(apiVendor.client_id, apiVendor.api_key);
-
-    const hit = (path, method = 'GET', extraHeaders = {}) => new Promise((resolve) => {
-      const opts = { hostname: 'b2b.intermlecz.pl', path, method,
-        headers: { 'Accept': 'application/json', 'Authorization': 'bearer ' + token, ...extraHeaders } };
-      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d.slice(0, 2000) })); });
-      r.on('error', e => resolve({ status: 0, body: e.message }));
-      r.end();
-    });
-
-    // Fetch raw HTML of API example pages (no auth needed — static files)
-    const fetchStatic = (path) => new Promise((resolve) => {
-      const opts = { hostname: 'b2b.intermlecz.pl', path, method: 'GET', headers: { 'Accept': 'text/html' } };
-      const r = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve({ status: r2.statusCode, body: d })); });
-      r.on('error', e => resolve({ status: 0, body: e.message }));
-      r.end();
-    });
-
-    const [delivery, createOrderHtml, swaggerJson, addresses, orderHtml] = await Promise.all([
-      hit('/api3/order/delivery'),
-      fetchStatic('/static/ApiExamples/CreateNewOrder.html'),
-      hit('/swagger/docs/v1'),
-      hit('/api3/address'),
-      fetchStatic('/static/ApiExamples/GettingToken.html'),
-    ]);
-
-    // Parse swagger paths
-    let swaggerPaths = null;
-    try { swaggerPaths = Object.keys(JSON.parse(swaggerJson.body).paths || {}); } catch (_) {}
-
-    res.json({
-      delivery: { status: delivery.status, body: delivery.body },
-      addresses: { status: addresses.status, body: addresses.body },
-      swaggerPaths,
-      createOrderHtml: { status: createOrderHtml.status, body: createOrderHtml.body },
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── AJAX: search cafe stock items with a vendor SKU ───────────────────────
 
 router.get('/stock-items', requireManager, async (req, res) => {
@@ -437,12 +384,25 @@ router.get('/settings', requireAdmin, async (req, res) => {
 router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { cafe_address, cafe_phone, cafe_email } = req.body;
+    const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
+            cafe_phone, cafe_email, cafe_address_id } = req.body;
+    const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
+      .filter(Boolean).join(' ').trim() || null;
     await db.run(
-      `INSERT INTO order_settings (location_id, cafe_address, cafe_phone, cafe_email)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE cafe_address=VALUES(cafe_address), cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email)`,
-      [locationId, cafe_address?.trim() || null, cafe_phone?.trim() || null, cafe_email?.trim() || null]
+      `INSERT INTO order_settings
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
+         cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
+         cafe_postal_code=VALUES(cafe_postal_code), cafe_city=VALUES(cafe_city),
+         cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email),
+         cafe_address_id=VALUES(cafe_address_id)`,
+      [locationId, cafeAddress,
+       cafe_name?.trim() || null, cafe_street?.trim() || null,
+       cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
+       cafe_city?.trim() || null, cafe_phone?.trim() || null,
+       cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -797,9 +757,38 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
       if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
     }
+
+    const settings = await getOrderSettings(locationId) || {};
+
+    // Build Address object from cafe settings
+    let address = null;
+    let addressId = settings.cafe_address_id || null;
+    if (!addressId && (settings.cafe_street || settings.cafe_city)) {
+      address = {
+        Name: settings.cafe_name || 'Kawiarnia Kredki',
+        Street: settings.cafe_street || '',
+        HouseNumber: settings.cafe_house_number || '',
+        City: settings.cafe_city || '',
+        PostalCode: settings.cafe_postal_code || '',
+        Phone: settings.cafe_phone || '',
+        Email: settings.cafe_email || '',
+        CountryId: settings.cafe_country_id || 1,
+      };
+    }
+
+    // AdditionalProperties: pass own order number if set
+    const additionalProperties = [];
+    if (order.own_order_number) {
+      additionalProperties.push({ Key: 'OwnOrderNumber', Values: [order.own_order_number] });
+    }
+
     const vendorResult = await vendorApi.placeOrder({
       items: itemsWithSku,
       comment: order.notes || `Zamówienie #${order.id} – Kredki`,
+      paymentName: order.payment_method || null,
+      address,
+      addressId,
+      additionalProperties,
       ...creds,
     });
 

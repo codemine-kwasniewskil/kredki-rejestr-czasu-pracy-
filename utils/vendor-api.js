@@ -107,7 +107,7 @@ async function getProductsBySku(skus, creds = {}) {
   return results;
 }
 
-async function placeOrder({ items, comment, clientId, apiKey }) {
+async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliveryName, address, addressId, additionalProperties }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
   const lines = items
@@ -119,7 +119,16 @@ async function placeOrder({ items, comment, clientId, apiKey }) {
   const body = {
     Comment: comment || 'Zamówienie z systemu Kredki',
     OrderLines: { KeyType: 'Sku', Lines: lines },
+    ...(paymentName ? { PaymentName: paymentName } : {}),
+    ...(deliveryName ? { DeliveryName: deliveryName } : {}),
+    ...(additionalProperties?.length ? { AdditionalProperties: additionalProperties } : {}),
   };
+
+  if (addressId) {
+    body.AddressId = parseInt(addressId, 10);
+  } else if (address) {
+    body.Address = address;
+  }
 
   const resp = await apiRequest('/api3/order', 'POST', body, token);
   if (resp.status !== 200) {
