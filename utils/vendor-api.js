@@ -193,15 +193,19 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   }
 
   // Step 4: Add product lines one by one
+  console.error(`[basket] adding lines to basket ID=${basketId} (type=${typeof basketId}), lines count=${lines.length}`);
   for (const line of lines) {
     const lineBody = { KeyType: line.KeyType, Key: line.Key, Quantity: line.Quantity };
     if (line.UnitId) lineBody.UnitId = line.UnitId;
-    console.log(`[basket] POST /api3/basket/${basketId}/line:`, JSON.stringify(lineBody));
-    const lineResp = await apiRequest(`/api3/basket/${basketId}/line`, 'POST', lineBody, token);
-    console.log(`[basket] add line response:`, lineResp.status, JSON.stringify(lineResp.body));
+    const lineUrl = `/api3/basket/${basketId}/line`;
+    console.log(`[basket] POST ${lineUrl}:`, JSON.stringify(lineBody));
+    const lineResp = await apiRequest(lineUrl, 'POST', lineBody, token);
+    const lineBodyRaw = typeof lineResp.body === 'string' ? lineResp.body : JSON.stringify(lineResp.body);
+    const isHtml = typeof lineResp.body === 'string' && lineResp.body.trimStart().startsWith('<');
+    console.log(`[basket] add line response: status=${lineResp.status}`, isHtml ? '(HTML response)' : lineBodyRaw);
     if (![200, 201].includes(lineResp.status)) {
-      const msg = typeof lineResp.body === 'string' ? lineResp.body : JSON.stringify(lineResp.body);
-      throw new Error(`Błąd dodawania produktu ${line.Key} do koszyka: ${msg}`);
+      const msg = isHtml ? `HTTP ${lineResp.status} (HTML response — likely wrong endpoint path)` : lineBodyRaw;
+      throw new Error(`Błąd dodawania produktu ${line.Key} do koszyka [basketId=${basketId}]: ${msg}`);
     }
   }
 
