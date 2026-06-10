@@ -135,8 +135,11 @@ async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentNa
     const msg = typeof createResp.body === 'string' ? createResp.body : JSON.stringify(createResp.body);
     throw new Error(`Błąd tworzenia koszyka: ${msg}`);
   }
-  const basketId = createResp.body?.Id;
-  if (!basketId) throw new Error(`Brak ID koszyka w odpowiedzi: ${JSON.stringify(createResp.body)}`);
+  const basketId = createResp.body?.Id ?? createResp.body?.BasketId ?? createResp.body?.id ?? null;
+  if (!basketId) {
+    console.error('[basket] create body (no ID field):', JSON.stringify(createResp.body));
+    throw new Error(`Brak ID koszyka w odpowiedzi: ${JSON.stringify(createResp.body)}`);
+  }
   console.log(`[basket] created basket ID: ${basketId}`);
 
   // Step 2: Fetch basket-specific additional parameters to learn what the API accepts
