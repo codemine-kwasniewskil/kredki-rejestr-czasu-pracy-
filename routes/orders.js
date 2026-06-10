@@ -922,7 +922,10 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
     }
 
-    const vendorResult = await vendorApi.finalizeBasket({ basketId: order.vendor_basket_id, ...creds });
+    const settings = await getOrderSettings(locationId) || {};
+    const deliveryName = settings.cafe_delivery_name?.trim() || null;
+
+    const vendorResult = await vendorApi.finalizeBasket({ basketId: order.vendor_basket_id, deliveryName, ...creds });
 
     const vendorOrderId = vendorResult?.OrderId || vendorResult?.Id || JSON.stringify(vendorResult);
     await db.run(

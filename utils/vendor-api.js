@@ -196,16 +196,36 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 }
 
 // Step 5: Finalize an open basket into an order via POST /api3/order with BasketId.
-// The basket workflow uses the same /api3/order endpoint as direct ordering,
-// but references an existing basket instead of inline OrderLines.
-async function finalizeBasket({ basketId, clientId, apiKey }) {
+// Delivery must be specified — fetches available options and picks by name or first available.
+async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
+
+  let deliveryId = null;
+  let chosenDeliveryName = deliveryName;
+  try {
+    const delResp = await apiRequest('/api3/order/delivery', 'GET', null, token);
+    console.log('[basket] delivery options:', delResp.status, JSON.stringify(delResp.body));
+    const opts = (delResp.body?.Items || []).filter(d => d.Name);
+    if (opts.length > 0) {
+      const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
+      deliveryId = chosen.Id ?? null;
+      chosenDeliveryName = chosen.Name || deliveryName;
+      console.log(`[basket] chosen delivery: id=${deliveryId} name=${chosenDeliveryName}`);
+    } else {
+      console.warn('[basket] no delivery options returned — will try without delivery');
+    }
+  } catch (e) {
+    console.error('[basket] delivery options fetch error:', e.message);
+  }
 
   const body = {
     BasketId: basketId,
     Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
   };
+  if (deliveryId != null) body.DeliveryId = deliveryId;
+  if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
+
   console.log(`[basket] POST /api3/order (BasketId=${basketId}):`, JSON.stringify(body));
   const orderResp = await apiRequest('/api3/order', 'POST', body, token);
   const isHtml = typeof orderResp.body === 'string' && orderResp.body.trimStart().startsWith('<');
@@ -222,7 +242,7 @@ async function finalizeBasket({ basketId, clientId, apiKey }) {
 // Convenience wrapper: prepare then immediately finalize (single-step flow).
 async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
-  return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey });
+  return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey, deliveryName: opts.deliveryName || null });
 }
 
 // Looks for a parameter name in the additionalparameters API response, falling back to defaultName.

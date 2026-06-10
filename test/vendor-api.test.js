@@ -42,12 +42,12 @@ function loadVendorApi() {
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const TOKEN_RESP  = { status: 200, body: { AccessToken: 'tok123', ExpiresIn: 3600 } };
-const BASKET_RESP = { status: 201, body: { Id: 42 } };
-const AP_RESP     = { status: 200, body: { Items: [{ Name: 'RequestedDeliveryDate' }] } };
-const PATCH_RESP  = { status: 204, body: null };
-const LINE_RESP   = { status: 201, body: {} };
-const ORDER_RESP  = { status: 200, body: { OrderId: 'ORD-99' } };
+const TOKEN_RESP    = { status: 200, body: { AccessToken: 'tok123', ExpiresIn: 3600 } };
+const BASKET_RESP   = { status: 201, body: { Id: 42 } };
+const AP_RESP       = { status: 200, body: { Items: [{ Name: 'RequestedDeliveryDate' }] } };
+const PATCH_RESP    = { status: 204, body: null };
+const DELIVERY_RESP = { status: 200, body: { Items: [{ Id: 5, Name: 'Standardowa' }] } };
+const ORDER_RESP    = { status: 200, body: { OrderId: 'ORD-99' } };
 
 const BASE_INPUT = {
   items: [{ vendor_product_key: 'SKU-1', quantity: 2, unit: 'szt.' }],
@@ -63,11 +63,11 @@ const BASE_INPUT = {
 function fullSeq(overrides = {}) {
   return [
     TOKEN_RESP,
-    overrides.basket ?? BASKET_RESP,
-    overrides.ap     ?? AP_RESP,
-    overrides.patch  ?? PATCH_RESP,
-    overrides.line   ?? LINE_RESP,
-    overrides.order  ?? ORDER_RESP,
+    overrides.basket   ?? BASKET_RESP,
+    overrides.ap       ?? AP_RESP,
+    overrides.patch    ?? PATCH_RESP,
+    overrides.delivery ?? DELIVERY_RESP,
+    overrides.order    ?? ORDER_RESP,
   ];
 }
 
@@ -232,7 +232,7 @@ function stubWithPatchCapture(responses) {
 
   // 9. Additional parameters 404 does not abort the flow
   await test('additional parameters 404 does not abort the flow', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, { status: 404, body: null }, PATCH_RESP, ORDER_RESP]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, { status: 404, body: null }, PATCH_RESP, DELIVERY_RESP, ORDER_RESP]);
     const api = loadVendorApi();
     const result = await api.placeOrderViaBasket(BASE_INPUT);
     assert.strictEqual(result.OrderId, 'ORD-99',
