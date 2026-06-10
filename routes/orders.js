@@ -606,10 +606,12 @@ router.get('/:id(\\d+)/edit', requireManager, async (req, res) => {
       [order.id]
     );
     const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
+    const orderSettings = await getOrderSettings(locationId) || {};
+    const cafeAddress = orderSettings.cafe_address || '';
 
     res.render('orders/edit', {
       title: `Edytuj zamówienie #${order.id}`, currentPath: '/orders',
-      order, items, minOrderValue,
+      order, items, minOrderValue, cafeAddress,
     });
   } catch (e) {
     console.error(e);
@@ -632,7 +634,7 @@ router.put('/:id(\\d+)', requireManager, async (req, res) => {
       return res.redirect(`/orders/${req.params.id}`);
     }
 
-    const { notes } = req.body;
+    const { notes, delivery_date, own_order_number, payment_method, delivery_address } = req.body;
     const stockIds = [].concat(req.body.item_stock_id || []);
     const names    = [].concat(req.body.item_name     || []);
     const skus     = [].concat(req.body.item_sku      || []);
@@ -645,8 +647,10 @@ router.put('/:id(\\d+)', requireManager, async (req, res) => {
       return res.redirect(`/orders/${order.id}/edit`);
     }
 
-    await db.run(`UPDATE purchase_orders SET notes=?, updated_at=NOW() WHERE id=?`,
-      [notes?.trim() || null, order.id]);
+    await db.run(
+      `UPDATE purchase_orders SET notes=?, delivery_date=?, own_order_number=?, payment_method=?, delivery_address=?, updated_at=NOW() WHERE id=?`,
+      [notes?.trim() || null, delivery_date || null, own_order_number?.trim() || null, payment_method || null, delivery_address?.trim() || null, order.id]
+    );
 
     await db.run(`DELETE FROM purchase_order_items WHERE order_id=?`, [order.id]);
 
@@ -818,7 +822,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
         if (vendorUnit) item.unit = vendorUnit;
       }
     } catch (e) {
-      console.error('[placeOrder] unit re-fetch error:', e.message);
+      console.error('[basket] unit re-fetch error:', e.message);
     }
 
     const settings = await getOrderSettings(locationId) || {};
@@ -846,7 +850,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
         };
       }
     } catch (e) {
-      console.error('[placeOrder] getClientAddresses error:', e.message);
+      console.error('[basket] getClientAddresses error:', e.message);
     }
     // Fall back to settings-only address if API fetch failed
     if (!address && settings.cafe_street && settings.cafe_city) {
@@ -865,27 +869,6 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       };
     }
 
-    // Resolve delivery — capture both Id and Name
-    let deliveryId = null;
-    let deliveryName = settings.cafe_delivery_name?.trim() || null;
-    try {
-      const deliveryOptions = await vendorApi.getDeliveryOptions(creds, addressId || null);
-      const opts = deliveryOptions.filter(d => d.Name);
-      console.log('[placeOrder] delivery options from API:', opts.map(d => `${d.Id}:${d.Name}`), '| configured:', deliveryName);
-      if (opts.length > 0) {
-        const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
-        deliveryId   = chosen.Id   || null;
-        deliveryName = chosen.Name || deliveryName;
-      }
-    } catch (e) {
-      console.error('[placeOrder] getDeliveryOptions error:', e.message);
-    }
-
-    if (!deliveryName) {
-      req.flash('error', 'Nie można określić metody dostawy. Skonfiguruj nazwę dostawy (DeliveryName) w ustawieniach zamówień.');
-      return res.redirect(`/orders/${order.id}`);
-    }
-
     // Build comment
     const commentParts = [order.notes];
     if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
@@ -893,13 +876,13 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
 
     const paymentName = settings.cafe_payment_name?.trim() || null;
 
-    const vendorResult = await vendorApi.placeOrder({
+    const vendorResult = await vendorApi.placeOrderViaBasket({
       items: itemsWithSku,
       comment,
-      deliveryName,
       paymentName,
       address,
       addressId,
+      deliveryDate: order.delivery_date || null,
       ...creds,
     });
 

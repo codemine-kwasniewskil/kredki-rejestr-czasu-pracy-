@@ -107,25 +107,57 @@ async function getProductsBySku(skus, creds = {}) {
   return results;
 }
 
-async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliveryName, address, addressId, additionalProperties }) {
+async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
+
   const lines = items
     .filter(i => i.vendor_product_key)
     .map(i => {
-      const line = { Key: String(i.vendor_product_key), Quantity: Number(i.quantity) };
+      const line = { KeyType: 'Sku', Key: String(i.vendor_product_key), Quantity: Number(i.quantity) };
       if (i.unit) line.UnitId = String(i.unit);
       return line;
     });
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
-  const body = {};
+  // Step 1: Create basket with minimal body — address and delivery date are set via PATCH after
+  // fetching additional parameters (Delivery is null by default in newly created baskets)
+  const basketBody = {};
+  if (paymentName) basketBody.PaymentName = paymentName;
+  if (comment) basketBody.Comment = comment;
 
-  // AddressId OR Address — mutually exclusive
+  console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
+  const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
+  console.log('[basket] create response:', createResp.status, JSON.stringify(createResp.body));
+  if (![200, 201].includes(createResp.status)) {
+    const msg = typeof createResp.body === 'string' ? createResp.body : JSON.stringify(createResp.body);
+    throw new Error(`Błąd tworzenia koszyka: ${msg}`);
+  }
+  const basketId = createResp.body?.Id;
+  if (!basketId) throw new Error(`Brak ID koszyka w odpowiedzi: ${JSON.stringify(createResp.body)}`);
+  console.log(`[basket] created basket ID: ${basketId}`);
+
+  // Step 2: Fetch basket-specific additional parameters to learn what the API accepts
+  console.log(`[basket] GET /api3/basket/${basketId}/additionalparameters`);
+  let additionalParams = null;
+  try {
+    const apResp = await apiRequest(`/api3/basket/${basketId}/additionalparameters`, 'GET', null, token);
+    console.log('[basket] additionalparameters response:', apResp.status, JSON.stringify(apResp.body));
+    if ([200, 201].includes(apResp.status)) {
+      additionalParams = apResp.body;
+    } else {
+      console.warn(`[basket] additionalparameters returned ${apResp.status} — skipping, will PATCH with known fields`);
+    }
+  } catch (e) {
+    console.warn('[basket] additionalparameters fetch error:', e.message, '— skipping, will PATCH with known fields');
+  }
+
+  // Step 3: PATCH basket — set address, delivery date, and explicit Delivery: null
+  const patchBody = { Delivery: null };
   if (addressId) {
-    body.AddressId = parseInt(addressId, 10);
+    patchBody.AddressId = parseInt(addressId, 10);
   } else if (address) {
     const addr = { OneTimeAdress: true };
     if (address.Name)            addr.Name            = address.Name;
@@ -133,37 +165,65 @@ async function placeOrder({ items, comment, clientId, apiKey, paymentName, deliv
     if (address.City)            addr.City            = address.City;
     if (address.PostalCode)      addr.PostalCode      = address.PostalCode;
     if (address.Phone)           addr.Phone           = address.Phone;
-    if (address.CountryId)       addr.CountryId       = address.CountryId;
-    if (address.RegionId)        addr.RegionId        = address.RegionId;
+    if (address.CountryId != null) addr.CountryId     = address.CountryId;
+    if (address.RegionId  != null) addr.RegionId      = address.RegionId;
     if (address.Email)           addr.Email           = address.Email;
     if (address.ApartmentNumber) addr.ApartmentNumber = address.ApartmentNumber;
     if (address.HouseNumber)     addr.HouseNumber     = address.HouseNumber;
     if (address.TaxNumber)       addr.TaxNumber       = address.TaxNumber;
-    body.Address = addr;
+    patchBody.Address = addr;
+  }
+  if (deliveryDate) {
+    // Map to the field name used by the API (confirmed via additionalparameters response if available)
+    const dateField = _resolveAdditionalParamName(additionalParams, ['RequestedDeliveryDate', 'DeliveryDate'], 'RequestedDeliveryDate');
+    patchBody[dateField] = deliveryDate;
+    console.log(`[basket] mapping deliveryDate → ${dateField}: ${deliveryDate}`);
   }
 
-  // PaymentId obsolete — PaymentName only
-  if (paymentName) body.PaymentName = paymentName;
-
-  // DeliveryId obsolete — DeliveryName only
-  if (deliveryName) body.DeliveryName = deliveryName;
-
-  if (comment) body.Comment = comment;
-
-  body.OrderLines = { KeyType: 'Sku', Lines: lines };
-
-  if (additionalProperties?.length) body.AdditionalProperties = additionalProperties;
-
-  body.Config = { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false };
-
-  console.log('[placeOrder] POST /api3/order body:', JSON.stringify(body, null, 2));
-  const resp = await apiRequest('/api3/order', 'POST', body, token);
-  console.log('[placeOrder] response status:', resp.status, 'body:', JSON.stringify(resp.body));
-  if (resp.status !== 200) {
-    const msg = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
-    throw new Error(`Błąd składania zamówienia: ${msg}`);
+  console.log(`[basket] PATCH /api3/basket/${basketId}:`, JSON.stringify(patchBody, null, 2));
+  const patchResp = await apiRequest(`/api3/basket/${basketId}`, 'PATCH', patchBody, token);
+  console.log('[basket] PATCH response:', patchResp.status, JSON.stringify(patchResp.body));
+  if (![200, 201, 204].includes(patchResp.status)) {
+    const msg = typeof patchResp.body === 'string' ? patchResp.body : JSON.stringify(patchResp.body);
+    throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
   }
-  return resp.body;
+
+  // Step 4: Add product lines one by one
+  for (const line of lines) {
+    const lineBody = { KeyType: line.KeyType, Key: line.Key, Quantity: line.Quantity };
+    if (line.UnitId) lineBody.UnitId = line.UnitId;
+    console.log(`[basket] POST /api3/basket/${basketId}/line:`, JSON.stringify(lineBody));
+    const lineResp = await apiRequest(`/api3/basket/${basketId}/line`, 'POST', lineBody, token);
+    console.log(`[basket] add line response:`, lineResp.status, JSON.stringify(lineResp.body));
+    if (![200, 201].includes(lineResp.status)) {
+      const msg = typeof lineResp.body === 'string' ? lineResp.body : JSON.stringify(lineResp.body);
+      throw new Error(`Błąd dodawania produktu ${line.Key} do koszyka: ${msg}`);
+    }
+  }
+
+  // Step 5: Finalize basket → order
+  console.log(`[basket] POST /api3/basket/${basketId}/order`);
+  const orderResp = await apiRequest(`/api3/basket/${basketId}/order`, 'POST', {}, token);
+  console.log('[basket] finalize response:', orderResp.status, JSON.stringify(orderResp.body));
+  if (![200, 201].includes(orderResp.status)) {
+    const msg = typeof orderResp.body === 'string' ? orderResp.body : JSON.stringify(orderResp.body);
+    throw new Error(`Błąd finalizacji koszyka: ${msg}`);
+  }
+  const result = orderResp.body;
+  console.log(`[basket] created order ID: ${result?.OrderId || result?.Id || '(unknown)'}`);
+  return result;
+}
+
+// Looks for a parameter name in the additionalparameters API response, falling back to defaultName.
+// candidateNames is checked in priority order against Items[].Name (case-insensitive).
+function _resolveAdditionalParamName(additionalParams, candidateNames, defaultName) {
+  const items = additionalParams?.Items || additionalParams?.AdditionalParameters || [];
+  for (const candidate of candidateNames) {
+    if (items.some(p => String(p.Name).toLowerCase() === candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return defaultName;
 }
 
 async function getDeliveryOptions(creds = {}, addressId = null) {
@@ -189,4 +249,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, placeOrder, getDeliveryOptions, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, placeOrderViaBasket, getDeliveryOptions, getClientAddresses };

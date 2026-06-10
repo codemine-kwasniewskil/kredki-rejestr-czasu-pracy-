@@ -62,6 +62,41 @@
       <div id="vendorLoading" class="hidden text-sm text-slate-400 mt-2">Wyszukiwanie…</div>
     </div>
 
+    <!-- Cafe stock search -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        Szukaj w produktach kawiarni
+      </h2>
+      <div class="flex gap-2 mb-3 items-center">
+        <div class="relative flex-1">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" id="stockSearch" placeholder="Wpisz nazwę produktu z magazynu…"
+            class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200">
+        </div>
+        <div id="stockSpinner" class="hidden flex-shrink-0">
+          <svg class="animate-spin w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+        </div>
+      </div>
+      <div id="stockResults" class="hidden">
+        <div class="overflow-x-auto max-h-64 border border-slate-100 rounded-lg">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 sticky top-0">
+              <tr class="text-left text-slate-500 text-xs border-b border-slate-200">
+                <th class="px-3 py-2 font-medium">Produkt (magazyn)</th>
+                <th class="px-3 py-2 font-medium">SKU</th>
+                <th class="px-3 py-2 font-medium">Dostawca</th>
+                <th class="px-3 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="stockResultsBody"></tbody>
+          </table>
+        </div>
+        <p id="stockResultsCount" class="text-xs text-slate-400 mt-1"></p>
+      </div>
+      <div id="stockError" class="hidden text-sm text-red-600 mt-2"></div>
+    </div>
+
     <!-- Order form -->
     <form method="POST" action="/orders/<%= order.id %>?_method=PUT" id="orderForm">
       <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
@@ -77,6 +112,7 @@
               <tr class="text-left text-slate-500">
                 <th class="px-4 py-2 font-medium">Produkt</th>
                 <th class="px-4 py-2 font-medium">SKU dostawcy</th>
+                <th class="px-4 py-2 font-medium">Nazwa u dostawcy</th>
                 <th class="px-4 py-2 font-medium">Jedn.</th>
                 <th class="px-4 py-2 font-medium text-right">Ilość</th>
                 <th class="px-4 py-2 font-medium text-right">Cena netto</th>
@@ -86,7 +122,7 @@
             </thead>
             <tbody id="orderItems">
               <tr id="emptyRow">
-                <td colspan="7" class="px-4 py-8 text-center text-slate-400">
+                <td colspan="8" class="px-4 py-8 text-center text-slate-400">
                   Brak produktów. Wyszukaj produkty powyżej lub kliknij „Dodaj produkt".
                 </td>
               </tr>
@@ -116,11 +152,58 @@
         </div>
       </div>
 
-      <!-- Notes -->
+      <!-- Delivery / payment details -->
       <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
-        <label class="block text-sm font-medium text-slate-700 mb-1">Uwagi do zamówienia</label>
-        <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
-          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"><%= order.notes || '' %></textarea>
+        <h3 class="font-semibold text-slate-700 mb-4">Szczegóły dostawy i płatności</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(min. jutro, bez niedziel)</span></label>
+            <input type="date" name="delivery_date" id="deliveryDate"
+              value="<%= order.delivery_date ? String(order.delivery_date).substring(0, 10) : '' %>"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Własny numer zamówienia</label>
+            <input type="text" name="own_order_number" value="<%= order.own_order_number || '' %>" placeholder="np. ZAM/2026/001"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Forma płatności</label>
+            <select name="payment_method"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+              <option value="">— wybierz —</option>
+              <option value="przelew"   <%= order.payment_method === 'przelew'   ? 'selected' : '' %>>Przelew</option>
+              <option value="gotowka"   <%= order.payment_method === 'gotowka'   ? 'selected' : '' %>>Gotówka</option>
+              <option value="karta"     <%= order.payment_method === 'karta'     ? 'selected' : '' %>>Karta</option>
+              <option value="odroczona" <%= order.payment_method === 'odroczona' ? 'selected' : '' %>>Płatność odroczona</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-2">Adres dostawy</label>
+            <div class="flex gap-4 mb-2 text-sm">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="delivery_address_type" value="cafe" id="addrCafe" onchange="onAddressTypeChange(this.value)">
+                Adres kawiarni
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="delivery_address_type" value="custom" id="addrCustom" onchange="onAddressTypeChange(this.value)">
+                Inny adres
+              </label>
+            </div>
+            <input type="hidden" name="delivery_address" id="deliveryAddressHidden" value="<%- order.delivery_address || cafeAddress %>">
+            <div id="cafeAddressDisplay" class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 min-h-[38px]">
+              <% if (cafeAddress) { %><%= cafeAddress %><% } else { %><span class="text-slate-400 italic">Brak skonfigurowanego adresu — <a href="/orders/settings" class="underline text-blue-500">ustaw w ustawieniach</a></span><% } %>
+            </div>
+            <input type="text" id="customAddressInput" placeholder="ul. Przykładowa 1, 00-000 Warszawa"
+              class="hidden w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+              oninput="document.getElementById('deliveryAddressHidden').value=this.value">
+          </div>
+        </div>
+        <div class="mt-4">
+          <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi do zamówienia</label>
+          <textarea name="notes" rows="2" placeholder="Opcjonalne uwagi…"
+            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 resize-none"><%= order.notes || '' %></textarea>
+        </div>
       </div>
 
       <div class="flex gap-3 justify-between">
@@ -143,13 +226,14 @@ const EXISTING_ITEMS = <%- JSON.stringify(items.map(i => ({
   qty: i.quantity,
   price: i.unit_price_netto,
   stockId: i.stock_item_id || '',
+  vendorName: '',
 }))) %>;
 
-let rowIndex = 0;
+const CAFE_ADDRESS = <%- JSON.stringify(cafeAddress) %>;
+const EDIT_VENDOR_ID = '<%= order.vendor_id || "" %>';
 
-function fmt(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return parseFloat(n).toFixed(2).replace('.', ',') + ' PLN';
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function updateTotal() {
@@ -168,24 +252,27 @@ function updateTotal() {
   document.getElementById('emptyRow').style.display = count > 0 ? 'none' : '';
 }
 
-function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId = '' } = {}) {
-  const i = rowIndex++;
+function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, priceGross = null, vat = null, stockId = '', vendorName = '' } = {}) {
   const emptyRow = document.getElementById('emptyRow');
   const tr = document.createElement('tr');
   tr.className = 'order-row border-b border-slate-100';
   const priceVal = price !== null ? parseFloat(price).toFixed(2) : '';
+  const vn = escHtml(vendorName);
   tr.innerHTML = `
     <td class="px-4 py-2">
-      <input type="hidden" name="item_stock_id[]" value="${stockId}">
-      <input type="text" name="item_name[]" value="${name}" required
+      <input type="hidden" name="item_stock_id[]" value="${escHtml(String(stockId))}">
+      <input type="text" name="item_name[]" value="${escHtml(name)}" required
         class="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400 min-w-[140px]">
     </td>
     <td class="px-4 py-2">
-      <input type="text" name="item_sku[]" value="${sku}" placeholder="SKU"
+      <input type="text" name="item_sku[]" value="${escHtml(sku)}" placeholder="SKU"
         class="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-400">
     </td>
+    <td class="px-4 py-2 text-slate-600 text-xs">
+      ${vn ? `<span class="leading-tight" title="${vn}">${vn}</span>` : '<span class="text-slate-300">—</span>'}
+    </td>
     <td class="px-4 py-2">
-      <input type="text" name="item_unit[]" value="${unit}" placeholder="szt."
+      <input type="text" name="item_unit[]" value="${escHtml(unit)}" placeholder="szt."
         class="w-16 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400">
     </td>
     <td class="px-4 py-2 text-right">
@@ -197,6 +284,7 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
       <input type="number" name="item_price[]" value="${priceVal}" min="0" step="0.01" placeholder="—"
         class="price-input w-24 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
         oninput="updateTotal()">
+      ${priceGross !== null ? `<span class="block text-xs text-slate-400 mt-0.5 text-right">${parseFloat(priceGross).toFixed(4)} brutto${vat !== null ? ` (${vat}% VAT)` : ''}</span>` : ''}
     </td>
     <td class="px-4 py-2 text-right subtotal font-mono text-slate-600 whitespace-nowrap">—</td>
     <td class="px-4 py-2">
@@ -210,15 +298,13 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, stockId
   updateTotal();
 }
 
-// Vendor search — debounced on input
+// Vendor search
 let _vendorDebounce = null;
 function triggerVendorSearch(phrase) {
   clearTimeout(_vendorDebounce);
   if (!phrase || phrase.trim().length < 2) return;
   _vendorDebounce = setTimeout(() => doVendorSearch(phrase.trim()), 300);
 }
-
-const EDIT_VENDOR_ID = '<%= order.vendor_id || "" %>';
 
 async function doVendorSearch(phrase) {
   const q = phrase || document.getElementById('vendorSearch').value.trim();
@@ -258,11 +344,14 @@ function renderVendorResults(items, total) {
         <td class="px-3 py-2 text-slate-800">${p.Name || ''}</td>
         <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
         <td class="px-3 py-2 text-slate-500">${p.Unit || ''}</td>
-        <td class="px-3 py-2 text-right font-mono text-slate-700">${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}</td>
+        <td class="px-3 py-2 text-right font-mono text-slate-700">
+          ${price ? parseFloat(price).toFixed(2) + ' PLN' : '—'}
+          ${(p.Vat !== undefined && p.Vat !== null) ? `<span class="block text-xs text-slate-400">VAT ${p.Vat}%</span>` : ''}
+        </td>
         <td class="px-3 py-2 text-center ${stockColor} font-bold">${inStock}</td>
         <td class="px-3 py-2">
           <button type="button" class="btn btn-secondary text-xs py-0.5"
-            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null}})'>
+            onclick='addRow({name:${JSON.stringify(p.Name)},sku:${JSON.stringify(p.Sku)},unit:${JSON.stringify(p.Unit||"")},qty:1,price:${price||null},priceGross:${p.PriceAfterDiscountNet?.Value&&p.Vat!=null?Math.round(p.PriceAfterDiscountNet.Value*(1+p.Vat/100)*10000)/10000:null},vat:${p.Vat??null},vendorName:${JSON.stringify(p.Name||"")}})'>
             + Dodaj
           </button>
         </td>
@@ -270,8 +359,7 @@ function renderVendorResults(items, total) {
       tbody.appendChild(tr);
     });
   }
-  document.getElementById('vendorResultsCount').textContent =
-    `Pokazano ${items.length} z ${total} wyników`;
+  document.getElementById('vendorResultsCount').textContent = `Pokazano ${items.length} z ${total} wyników`;
   document.getElementById('vendorResults').classList.remove('hidden');
 }
 
@@ -279,6 +367,125 @@ document.getElementById('vendorSearch').addEventListener('input', e => triggerVe
 document.getElementById('vendorSearch').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); doVendorSearch(); }
 });
+
+// Stock search
+let _stockDebounce = null;
+function triggerStockSearch(phrase) {
+  clearTimeout(_stockDebounce);
+  if (!phrase || phrase.trim().length < 2) {
+    document.getElementById('stockResults').classList.add('hidden');
+    return;
+  }
+  _stockDebounce = setTimeout(() => doStockSearch(phrase.trim()), 300);
+}
+
+async function doStockSearch(phrase) {
+  document.getElementById('stockSpinner').classList.remove('hidden');
+  document.getElementById('stockError').classList.add('hidden');
+  document.getElementById('stockResults').classList.add('hidden');
+  try {
+    const qs = '/orders/stock-items?q=' + encodeURIComponent(phrase) + (EDIT_VENDOR_ID ? '&vendor_id=' + EDIT_VENDOR_ID : '');
+    const items = await (await fetch(qs)).json();
+    if (items.error) throw new Error(items.error);
+    const tbody = document.getElementById('stockResultsBody');
+    tbody.innerHTML = '';
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-center text-slate-400">Brak wyników.</td></tr>';
+    } else {
+      items.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-slate-100 hover:bg-emerald-50';
+        tr.innerHTML = `
+          <td class="px-3 py-2 text-slate-800 font-medium">${p.name}</td>
+          <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.sku || '—'}</td>
+          <td class="px-3 py-2 text-xs text-slate-400">${p.vendor_name || '—'}</td>
+          <td class="px-3 py-2">
+            <button type="button" id="stock-add-${p.id}" class="btn btn-secondary text-xs py-0.5"
+              onclick='addStockItem(${p.id}, ${JSON.stringify(p.name)}, ${JSON.stringify(p.sku||"")}, ${JSON.stringify(p.unit||"")}, ${p.vendor_id||null}, "stock-add-${p.id}")'>
+              + Dodaj
+            </button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById('stockResultsCount').textContent = `Wyniki: ${items.length}`;
+    document.getElementById('stockResults').classList.remove('hidden');
+  } catch (e) {
+    document.getElementById('stockError').textContent = 'Błąd: ' + e.message;
+    document.getElementById('stockError').classList.remove('hidden');
+  } finally {
+    document.getElementById('stockSpinner').classList.add('hidden');
+  }
+}
+
+async function addStockItem(stockId, name, sku, unit, vendorId, btnId) {
+  const btn = document.getElementById(btnId);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  let price = null, vendorName = '';
+  let priceGross = null, vat = null;
+  try {
+    if (sku && vendorId) {
+      const resp = await fetch('/orders/vendor/sku-info?sku=' + encodeURIComponent(sku) + '&vendor_id=' + vendorId);
+      const data = await resp.json();
+      if (data) { price = data.price; priceGross = data.priceGross; vat = data.vat; vendorName = data.vendorName || ''; unit = data.unit || unit; }
+    }
+  } catch (_) {}
+  addRow({ name, sku, unit, qty: 1, price, priceGross, vat, stockId, vendorName });
+  if (btn) { btn.disabled = false; btn.textContent = '+ Dodaj'; }
+}
+
+document.getElementById('stockSearch').addEventListener('input', e => triggerStockSearch(e.target.value));
+
+// Delivery address toggle
+function onAddressTypeChange(type) {
+  const cafeDisplay = document.getElementById('cafeAddressDisplay');
+  const customInput = document.getElementById('customAddressInput');
+  const hidden = document.getElementById('deliveryAddressHidden');
+  if (type === 'cafe') {
+    cafeDisplay.classList.remove('hidden');
+    customInput.classList.add('hidden');
+    hidden.value = CAFE_ADDRESS;
+  } else {
+    cafeDisplay.classList.add('hidden');
+    customInput.classList.remove('hidden');
+    hidden.value = customInput.value;
+    customInput.focus();
+  }
+}
+
+// Init address radio: if current address differs from cafe address → select custom
+(function() {
+  const currentAddr = <%- JSON.stringify(order.delivery_address || '') %>;
+  const isCustom = currentAddr && currentAddr !== CAFE_ADDRESS;
+  if (isCustom) {
+    document.getElementById('addrCustom').checked = true;
+    const customInput = document.getElementById('customAddressInput');
+    customInput.value = currentAddr;
+    customInput.classList.remove('hidden');
+    document.getElementById('cafeAddressDisplay').classList.add('hidden');
+  } else {
+    document.getElementById('addrCafe').checked = true;
+  }
+})();
+
+// Delivery date: enforce min tomorrow, skip Sundays
+(function() {
+  const el = document.getElementById('deliveryDate');
+  if (!el) return;
+  function toIso(date) { return date.toISOString().split('T')[0]; }
+  function skipSunday(date) { if (date.getDay() === 0) date.setDate(date.getDate() + 1); return date; }
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  el.min = toIso(tomorrow);
+  if (!el.value) el.value = toIso(skipSunday(new Date(tomorrow)));
+  el.addEventListener('change', function() {
+    if (!this.value) return;
+    const [y, m, d] = this.value.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (date.getDay() === 0) { date.setDate(date.getDate() + 1); this.value = toIso(date); }
+  });
+})();
 
 document.getElementById('orderForm').addEventListener('submit', e => {
   const rows = document.querySelectorAll('.order-row');
