@@ -126,7 +126,8 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   // Step 1: Create basket with minimal body — address and delivery date are set via PATCH after
   // fetching additional parameters (Delivery is null by default in newly created baskets)
-  const basketBody = { BasketName: comment || 'Zamówienie' };
+  const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
+  const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})` };
   if (paymentName) basketBody.PaymentName = paymentName;
   if (comment) basketBody.Comment = comment;
 
