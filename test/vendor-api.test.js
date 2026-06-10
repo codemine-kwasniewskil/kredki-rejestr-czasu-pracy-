@@ -167,7 +167,7 @@ function stubWithPatchCapture(responses) {
     await api.placeOrderViaBasket(BASE_INPUT);
 
     const patchIdx = capturedCalls.findIndex(c => c.method === 'PATCH');
-    const lineIdx  = capturedCalls.findIndex(c => c.path.includes('/line'));
+    const lineIdx  = capturedCalls.findIndex(c => c.path === '/api3/basketline');
     assert.ok(patchIdx !== -1, 'PATCH call not found');
     assert.ok(lineIdx  !== -1, 'line add call not found');
     assert.ok(patchIdx < lineIdx, 'PATCH must happen before adding product lines');
