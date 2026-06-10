@@ -2,8 +2,8 @@
 <%- include('../partials/nav') %>
 
 <%
-  const statusLabel = { draft: 'Szkic', pending_approval: 'Oczekuje na akceptację', approved: 'Zatwierdzone', rejected: 'Odrzucone', placed: 'Złożone u dostawcy' }[order.status] || order.status;
-  const statusClass = { draft: 'badge-draft', pending_approval: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected', placed: 'badge-approved' }[order.status] || 'badge-draft';
+  const statusLabel = { draft: 'Szkic', pending_approval: 'Oczekuje na akceptację', approved: 'Zatwierdzone', rejected: 'Odrzucone', basket_created: 'Koszyk otwarty', placed: 'Złożone u dostawcy' }[order.status] || order.status;
+  const statusClass = { draft: 'badge-draft', pending_approval: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected', basket_created: 'badge-submitted', placed: 'badge-approved' }[order.status] || 'badge-draft';
   const total = parseFloat(order.total_netto || 0);
   const belowMin = total < minOrderValue;
 %>
@@ -45,9 +45,10 @@
           { key: 'draft', label: 'Szkic' },
           { key: 'pending_approval', label: 'Weryfikacja' },
           { key: 'approved', label: 'Zatwierdzone' },
+          { key: 'basket_created', label: 'Koszyk' },
           { key: 'placed', label: 'Złożone' },
         ];
-        const stepOrder = ['draft','pending_approval','approved','placed'];
+        const stepOrder = ['draft','pending_approval','approved','basket_created','placed'];
         const currentIdx = stepOrder.indexOf(order.status === 'rejected' ? 'pending_approval' : order.status);
         %>
         <% steps.forEach((step, idx) => {
@@ -79,6 +80,17 @@
     <% if (order.status === 'rejected' && order.reject_reason) { %>
     <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
       <p class="text-sm text-red-800"><strong>Powód odrzucenia:</strong> <%= order.reject_reason %></p>
+    </div>
+    <% } %>
+
+    <!-- Open basket info -->
+    <% if (order.status === 'basket_created' && order.vendor_basket_id) { %>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 flex items-center gap-3">
+      <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <div>
+        <p class="text-sm font-medium text-blue-800">Koszyk otwarty u dostawcy — sprawdź i zatwierdź na platformie B2B</p>
+        <p class="text-xs text-blue-600">ID koszyka: <strong class="font-mono"><%= order.vendor_basket_id %></strong></p>
+      </div>
     </div>
     <% } %>
 
@@ -230,10 +242,20 @@
             <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edytuj
           </a>
-          <form method="POST" action="/orders/<%= order.id %>/place"
-            onsubmit="return confirm('Złożyć zamówienie u dostawcy Inter-Mlecz? Tej operacji nie można cofnąć.')">
+          <form method="POST" action="/orders/<%= order.id %>/create-basket"
+            onsubmit="return confirm('Utworzyć koszyk u dostawcy Inter-Mlecz? Produkty zostaną dodane do koszyka — możesz go sprawdzić na platformie B2B przed finalizacją.')">
+            <button type="submit" class="btn btn-primary">
+              🛒 Utwórz koszyk u dostawcy
+            </button>
+          </form>
+        <% } %>
+
+        <!-- BASKET_CREATED actions (admin only) -->
+        <% if (order.status === 'basket_created' && isAdmin) { %>
+          <form method="POST" action="/orders/<%= order.id %>/finalize-basket"
+            onsubmit="return confirm('Sfinalizować koszyk i złożyć zamówienie u dostawcy Inter-Mlecz? Tej operacji nie można cofnąć.')">
             <button type="submit" class="btn btn-success">
-              🛒 Złóż zamówienie u dostawcy
+              ✓ Finalizuj zamówienie
             </button>
           </form>
         <% } %>

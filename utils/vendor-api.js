@@ -107,7 +107,9 @@ async function getProductsBySku(skus, creds = {}) {
   return results;
 }
 
-async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate }) {
+// Steps 1-4: create basket, fetch additional parameters, PATCH, add product lines.
+// Returns the basket ID so it can be inspected on the B2B platform before finalization.
+async function prepareBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
@@ -177,7 +179,6 @@ async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentNa
     patchBody.Address = addr;
   }
   if (deliveryDate) {
-    // Map to the field name used by the API (confirmed via additionalparameters response if available)
     const dateField = _resolveAdditionalParamName(additionalParams, ['RequestedDeliveryDate', 'DeliveryDate'], 'RequestedDeliveryDate');
     patchBody[dateField] = deliveryDate;
     console.log(`[basket] mapping deliveryDate → ${dateField}: ${deliveryDate}`);
@@ -204,7 +205,14 @@ async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentNa
     }
   }
 
-  // Step 5: Finalize basket → order
+  return basketId;
+}
+
+// Step 5: Finalize an existing open basket into an order.
+async function finalizeBasket({ basketId, clientId, apiKey }) {
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  const token = await getToken(clientId, apiKey);
+
   console.log(`[basket] POST /api3/basket/${basketId}/order`);
   const orderResp = await apiRequest(`/api3/basket/${basketId}/order`, 'POST', {}, token);
   console.log('[basket] finalize response:', orderResp.status, JSON.stringify(orderResp.body));
@@ -215,6 +223,12 @@ async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentNa
   const result = orderResp.body;
   console.log(`[basket] created order ID: ${result?.OrderId || result?.Id || '(unknown)'}`);
   return result;
+}
+
+// Convenience wrapper: prepare then immediately finalize (single-step flow).
+async function placeOrderViaBasket(opts) {
+  const basketId = await prepareBasket(opts);
+  return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey });
 }
 
 // Looks for a parameter name in the additionalparameters API response, falling back to defaultName.
@@ -252,4 +266,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, placeOrderViaBasket, getDeliveryOptions, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getClientAddresses };

@@ -744,6 +744,28 @@ const migrationsReady = (async () => {
     }
   }
 
+  // ── vendor_basket_id on purchase_orders ──────────────────────────────────
+  try {
+    const vbidCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchase_orders' AND COLUMN_NAME='vendor_basket_id'`);
+    if (!vbidCol || vbidCol.cnt === 0) {
+      await db.run(`ALTER TABLE purchase_orders ADD COLUMN vendor_basket_id VARCHAR(200) DEFAULT NULL`);
+      console.log('✓ Added vendor_basket_id to purchase_orders');
+    }
+  } catch (e) {
+    console.error('vendor_basket_id migration error:', e.message);
+  }
+
+  // ── basket_created status in purchase_orders ENUM ─────────────────────────
+  try {
+    const bcEnum = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchase_orders' AND COLUMN_NAME='status' AND COLUMN_TYPE LIKE '%basket_created%'`);
+    if (!bcEnum || bcEnum.cnt === 0) {
+      await db.run(`ALTER TABLE purchase_orders MODIFY COLUMN status ENUM('draft','pending_approval','approved','rejected','placed','basket_created') DEFAULT 'draft'`);
+      console.log('✓ Added basket_created to purchase_orders status ENUM');
+    }
+  } catch (e) {
+    console.error('basket_created ENUM migration error:', e.message);
+  }
+
   // ── deliveries table ──────────────────────────────────────────────────────
   await db.run(`CREATE TABLE IF NOT EXISTS deliveries (
     id INT AUTO_INCREMENT PRIMARY KEY,

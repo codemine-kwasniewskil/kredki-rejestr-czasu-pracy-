@@ -782,27 +782,137 @@ router.post('/:id/reopen', requireManager, async (req, res) => {
   }
 });
 
-// ── Place order with vendor ────────────────────────────────────────────────
+// ── Shared setup for basket routes ────────────────────────────────────────
 
-router.post('/:id/place', requireAdmin, async (req, res) => {
+async function _buildBasketParams(locationId, order) {
+  const items = await db.all(`SELECT * FROM purchase_order_items WHERE order_id=?`, [order.id]);
+  const itemsWithSku = items.filter(i => i.vendor_product_key);
+
+  let creds = await getVendorCreds(locationId);
+  if (order.vendor_id) {
+    const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
+    if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+  }
+
+  try {
+    const skus = itemsWithSku.map(i => i.vendor_product_key);
+    const vendorProducts = await vendorApi.getProductsBySku(skus, creds);
+    const unitMap = new Map(vendorProducts.map(p => [String(p.Sku).trim(), p.Unit]));
+    for (const item of itemsWithSku) {
+      const vendorUnit = unitMap.get(String(item.vendor_product_key).trim());
+      if (vendorUnit) item.unit = vendorUnit;
+    }
+  } catch (e) {
+    console.error('[basket] unit re-fetch error:', e.message);
+  }
+
+  const settings = await getOrderSettings(locationId) || {};
+  let address = null;
+  let addressId = settings.cafe_address_id ? parseInt(settings.cafe_address_id, 10) : null;
+  try {
+    const addrs = await vendorApi.getClientAddresses(creds);
+    if (addrs.length > 0) {
+      const a = addrs[0];
+      if (!addressId) addressId = parseInt(a.Id, 10);
+      address = {
+        Name:            a.Name            || settings.cafe_name  || '',
+        Street:          a.Street          || settings.cafe_street || '',
+        City:            a.City            || settings.cafe_city   || '',
+        PostalCode:      a.PostalCode      || settings.cafe_postal_code || '',
+        Phone:           a.Phone           || settings.cafe_phone  || '',
+        CountryId:       a.CountryId       || settings.cafe_country_id || 1,
+        RegionId:        a.RegionId        || 0,
+        Email:           a.Email           || settings.cafe_email  || '',
+        ApartmentNumber: a.ApartmentNumber || '',
+        HouseNumber:     a.HouseNumber     || settings.cafe_house_number || '',
+        TaxNumber:       a.TaxNumber       || '',
+      };
+    }
+  } catch (e) {
+    console.error('[basket] getClientAddresses error:', e.message);
+  }
+  if (!address && settings.cafe_street && settings.cafe_city) {
+    address = {
+      Name:            settings.cafe_name         || '',
+      Street:          settings.cafe_street        || '',
+      City:            settings.cafe_city          || '',
+      PostalCode:      settings.cafe_postal_code   || '',
+      Phone:           settings.cafe_phone         || '',
+      CountryId:       settings.cafe_country_id   || 1,
+      RegionId:        0,
+      Email:           settings.cafe_email         || '',
+      ApartmentNumber: '',
+      HouseNumber:     settings.cafe_house_number  || '',
+      TaxNumber:       '',
+    };
+  }
+
+  const commentParts = [order.notes];
+  if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
+  const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} – Kredki`;
+  const paymentName = settings.cafe_payment_name?.trim() || null;
+
+  return { itemsWithSku, creds, address, addressId, comment, paymentName };
+}
+
+// ── Step 1: Create basket (approved → basket_created) ─────────────────────
+
+router.post('/:id/create-basket', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const order = await db.get(
       `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
     );
     if (!order || order.status !== 'approved') {
-      req.flash('error', 'Tylko zatwierdzone zamówienia można złożyć.');
+      req.flash('error', 'Tylko zatwierdzone zamówienia można wysłać do koszyka.');
       return res.redirect(`/orders/${req.params.id}`);
     }
 
-    const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
-
-    const items = await db.all(
-      `SELECT * FROM purchase_order_items WHERE order_id=?`, [order.id]
-    );
-    const itemsWithSku = items.filter(i => i.vendor_product_key);
+    const { itemsWithSku, creds, address, addressId, comment, paymentName } = await _buildBasketParams(locationId, order);
     if (itemsWithSku.length === 0) {
       req.flash('error', 'Żaden produkt nie ma przypisanego klucza SKU dostawcy.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    const basketId = await vendorApi.prepareBasket({
+      items: itemsWithSku,
+      comment,
+      paymentName,
+      address,
+      addressId,
+      deliveryDate: order.delivery_date || null,
+      ...creds,
+    });
+
+    await db.run(
+      `UPDATE purchase_orders SET status='basket_created', vendor_basket_id=?, updated_at=NOW() WHERE id=?`,
+      [String(basketId), order.id]
+    );
+    await log(sessionUser(req), 'Zamówienia – koszyk utworzony', `ID: ${order.id} | BasketId: ${basketId}`);
+
+    req.flash('success', `Koszyk utworzony u dostawcy (ID: ${basketId}). Sprawdź koszyk na platformie B2B, a następnie finalizuj zamówienie.`);
+    res.redirect(`/orders/${order.id}`);
+  } catch (e) {
+    console.error('Create basket error:', e);
+    req.flash('error', e.message);
+    res.redirect(`/orders/${req.params.id}`);
+  }
+});
+
+// ── Step 2: Finalize basket (basket_created → placed) ─────────────────────
+
+router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
+    );
+    if (!order || order.status !== 'basket_created') {
+      req.flash('error', 'Tylko zamówienia z otwartym koszykiem można finalizować.');
+      return res.redirect(`/orders/${req.params.id}`);
+    }
+    if (!order.vendor_basket_id) {
+      req.flash('error', 'Brak ID koszyka — nie można sfinalizować.');
       return res.redirect(`/orders/${order.id}`);
     }
 
@@ -812,79 +922,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
       if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
     }
 
-    // Re-fetch vendor unit strings so they exactly match the API (e.g. "szt." not "szt")
-    try {
-      const skus = itemsWithSku.map(i => i.vendor_product_key);
-      const vendorProducts = await vendorApi.getProductsBySku(skus, creds);
-      const unitMap = new Map(vendorProducts.map(p => [String(p.Sku).trim(), p.Unit]));
-      for (const item of itemsWithSku) {
-        const vendorUnit = unitMap.get(String(item.vendor_product_key).trim());
-        if (vendorUnit) item.unit = vendorUnit;
-      }
-    } catch (e) {
-      console.error('[basket] unit re-fetch error:', e.message);
-    }
-
-    const settings = await getOrderSettings(locationId) || {};
-
-    // Fetch full address from vendor API
-    let address = null;
-    let addressId = settings.cafe_address_id ? parseInt(settings.cafe_address_id, 10) : null;
-    try {
-      const addrs = await vendorApi.getClientAddresses(creds);
-      if (addrs.length > 0) {
-        const a = addrs[0];
-        if (!addressId) addressId = parseInt(a.Id, 10);
-        address = {
-          Name:            a.Name            || settings.cafe_name  || '',
-          Street:          a.Street          || settings.cafe_street || '',
-          City:            a.City            || settings.cafe_city   || '',
-          PostalCode:      a.PostalCode      || settings.cafe_postal_code || '',
-          Phone:           a.Phone           || settings.cafe_phone  || '',
-          CountryId:       a.CountryId       || settings.cafe_country_id || 1,
-          RegionId:        a.RegionId        || 0,
-          Email:           a.Email           || settings.cafe_email  || '',
-          ApartmentNumber: a.ApartmentNumber || '',
-          HouseNumber:     a.HouseNumber     || settings.cafe_house_number || '',
-          TaxNumber:       a.TaxNumber       || '',
-        };
-      }
-    } catch (e) {
-      console.error('[basket] getClientAddresses error:', e.message);
-    }
-    // Fall back to settings-only address if API fetch failed
-    if (!address && settings.cafe_street && settings.cafe_city) {
-      address = {
-        Name:            settings.cafe_name         || '',
-        Street:          settings.cafe_street        || '',
-        City:            settings.cafe_city          || '',
-        PostalCode:      settings.cafe_postal_code   || '',
-        Phone:           settings.cafe_phone         || '',
-        CountryId:       settings.cafe_country_id   || 1,
-        RegionId:        0,
-        Email:           settings.cafe_email         || '',
-        ApartmentNumber: '',
-        HouseNumber:     settings.cafe_house_number  || '',
-        TaxNumber:       '',
-      };
-    }
-
-    // Build comment
-    const commentParts = [order.notes];
-    if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
-    const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} – Kredki`;
-
-    const paymentName = settings.cafe_payment_name?.trim() || null;
-
-    const vendorResult = await vendorApi.placeOrderViaBasket({
-      items: itemsWithSku,
-      comment,
-      paymentName,
-      address,
-      addressId,
-      deliveryDate: order.delivery_date || null,
-      ...creds,
-    });
+    const vendorResult = await vendorApi.finalizeBasket({ basketId: order.vendor_basket_id, ...creds });
 
     const vendorOrderId = vendorResult?.OrderId || vendorResult?.Id || JSON.stringify(vendorResult);
     await db.run(
@@ -901,7 +939,7 @@ router.post('/:id/place', requireAdmin, async (req, res) => {
     req.flash('success', `Zamówienie złożone! Numer u dostawcy: ${vendorOrderId}${statements.length ? ' — ' + statements.join('; ') : ''}`);
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
-    console.error('Place order error:', e);
+    console.error('Finalize basket error:', e);
     req.flash('error', e.message);
     res.redirect(`/orders/${req.params.id}`);
   }
