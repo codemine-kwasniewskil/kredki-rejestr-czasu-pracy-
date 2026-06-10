@@ -135,7 +135,7 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
   const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
-  console.log('[basket] create response:', createResp.status, JSON.stringify(createResp.body));
+  console.error('[basket] create response:', createResp.status, JSON.stringify(createResp.body));
   if (![200, 201].includes(createResp.status)) {
     const msg = typeof createResp.body === 'string' ? createResp.body : JSON.stringify(createResp.body);
     throw new Error(`Błąd tworzenia koszyka: ${msg}`);
@@ -186,7 +186,7 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   console.log(`[basket] PATCH /api3/basket/${basketId}:`, JSON.stringify(patchBody, null, 2));
   const patchResp = await apiRequest(`/api3/basket/${basketId}`, 'PATCH', patchBody, token);
-  console.log('[basket] PATCH response:', patchResp.status, JSON.stringify(patchResp.body));
+  console.error('[basket] PATCH response:', patchResp.status, JSON.stringify(patchResp.body));
   if (![200, 201, 204].includes(patchResp.status)) {
     const msg = typeof patchResp.body === 'string' ? patchResp.body : JSON.stringify(patchResp.body);
     throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
