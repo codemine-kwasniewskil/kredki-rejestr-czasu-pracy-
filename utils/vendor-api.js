@@ -124,7 +124,7 @@ async function placeOrderViaBasket({ items, comment, clientId, apiKey, paymentNa
 
   // Step 1: Create basket with minimal body — address and delivery date are set via PATCH after
   // fetching additional parameters (Delivery is null by default in newly created baskets)
-  const basketBody = {};
+  const basketBody = { BasketName: comment || 'Zamówienie' };
   if (paymentName) basketBody.PaymentName = paymentName;
   if (comment) basketBody.Comment = comment;
 
