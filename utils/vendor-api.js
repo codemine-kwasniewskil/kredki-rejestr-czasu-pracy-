@@ -124,12 +124,14 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
-  // Step 1: Create basket with minimal body — address and delivery date are set via PATCH after
-  // fetching additional parameters (Delivery is null by default in newly created baskets)
+  // Step 1: Create basket — include lines in creation body (same pattern as /api3/order).
+  // Address and delivery date are applied via PATCH afterward so they can be confirmed
+  // against the additionalparameters the API reports for this basket.
   const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
   const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})` };
   if (paymentName) basketBody.PaymentName = paymentName;
   if (comment) basketBody.Comment = comment;
+  basketBody.Lines = lines;
 
   console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
   const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
@@ -151,13 +153,10 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   try {
     const apResp = await apiRequest(`/api3/basket/${basketId}/additionalparameters`, 'GET', null, token);
     console.log('[basket] additionalparameters response:', apResp.status, JSON.stringify(apResp.body));
-    if ([200, 201].includes(apResp.status)) {
-      additionalParams = apResp.body;
-    } else {
-      console.warn(`[basket] additionalparameters returned ${apResp.status} — skipping, will PATCH with known fields`);
-    }
+    if ([200, 201].includes(apResp.status)) additionalParams = apResp.body;
+    else console.warn(`[basket] additionalparameters returned ${apResp.status} — will PATCH with known fields`);
   } catch (e) {
-    console.warn('[basket] additionalparameters fetch error:', e.message, '— skipping, will PATCH with known fields');
+    console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
   // Step 3: PATCH basket — set address, delivery date, and explicit Delivery: null
@@ -191,22 +190,6 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   if (![200, 201, 204].includes(patchResp.status)) {
     const msg = typeof patchResp.body === 'string' ? patchResp.body : JSON.stringify(patchResp.body);
     throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
-  }
-
-  // Step 4: Add product lines one by one via POST /api3/basketline (BasketId in body)
-  console.log(`[basket] adding ${lines.length} lines to basketId=${basketId}`);
-  for (const line of lines) {
-    const lineBody = { BasketId: basketId, KeyType: line.KeyType, Key: line.Key, Quantity: line.Quantity };
-    if (line.UnitId) lineBody.UnitId = line.UnitId;
-    console.log(`[basket] POST /api3/basketline:`, JSON.stringify(lineBody));
-    const lineResp = await apiRequest('/api3/basketline', 'POST', lineBody, token);
-    const lineBodyRaw = typeof lineResp.body === 'string' ? lineResp.body : JSON.stringify(lineResp.body);
-    const isHtml = typeof lineResp.body === 'string' && lineResp.body.trimStart().startsWith('<');
-    console.log(`[basket] add line response: status=${lineResp.status}`, isHtml ? '(HTML)' : lineBodyRaw);
-    if (![200, 201].includes(lineResp.status)) {
-      const msg = isHtml ? `HTTP ${lineResp.status} HTML — wrong endpoint path` : lineBodyRaw;
-      throw new Error(`Błąd dodawania produktu ${line.Key} [basketId=${basketId}]: ${msg}`);
-    }
   }
 
   return basketId;

@@ -160,17 +160,26 @@ function stubWithPatchCapture(responses) {
       `expected RequestedDeliveryDate '2026-06-20', got: ${body.RequestedDeliveryDate}`);
   });
 
-  // 5. Products are added only after PATCH succeeds
-  await test('products are added only after PATCH succeeds', async () => {
+  // 5. Lines are included in basket creation body (not a separate call)
+  await test('product lines are included in basket creation body', async () => {
+    let createBody = null;
     stubHttps(fullSeq());
+    const inner = https.request;
+    https.request = (options, callback) => {
+      const req = inner(options, callback);
+      if (options.method === 'POST' && options.path === '/api3/basket') {
+        const origWrite = req.write.bind(req);
+        req.write = (data) => { createBody = JSON.parse(data); return origWrite(data); };
+      }
+      return req;
+    };
     const api = loadVendorApi();
     await api.placeOrderViaBasket(BASE_INPUT);
 
-    const patchIdx = capturedCalls.findIndex(c => c.method === 'PATCH');
-    const lineIdx  = capturedCalls.findIndex(c => c.path === '/api3/basketline');
-    assert.ok(patchIdx !== -1, 'PATCH call not found');
-    assert.ok(lineIdx  !== -1, 'line add call not found');
-    assert.ok(patchIdx < lineIdx, 'PATCH must happen before adding product lines');
+    assert.ok(createBody !== null, 'basket creation body not captured');
+    assert.ok(Array.isArray(createBody.Lines), 'Lines should be an array in basket creation body');
+    assert.strictEqual(createBody.Lines.length, 1, 'expected 1 line');
+    assert.strictEqual(createBody.Lines[0].Key, 'SKU-1');
   });
 
   // 6. Finalization uses the same basket ID
@@ -216,7 +225,7 @@ function stubWithPatchCapture(responses) {
 
   // 9. Additional parameters 404 does not abort the flow
   await test('additional parameters 404 does not abort the flow', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, { status: 404, body: null }, PATCH_RESP, LINE_RESP, ORDER_RESP]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, { status: 404, body: null }, PATCH_RESP, ORDER_RESP]);
     const api = loadVendorApi();
     const result = await api.placeOrderViaBasket(BASE_INPUT);
     assert.strictEqual(result.OrderId, 'ORD-99',
