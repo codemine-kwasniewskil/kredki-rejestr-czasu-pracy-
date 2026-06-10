@@ -182,17 +182,24 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(createBody.Lines[0].Key, 'SKU-1');
   });
 
-  // 6. Finalization uses the same basket ID
-  await test('finalization uses the same basket ID', async () => {
+  // 6. Finalization posts to /api3/order with BasketId in body
+  await test('finalization uses POST /api3/order with correct BasketId', async () => {
+    let finalizeBody = null;
     stubHttps(fullSeq());
+    const inner = https.request;
+    https.request = (options, callback) => {
+      const req = inner(options, callback);
+      if (options.method === 'POST' && options.path === '/api3/order') {
+        const origWrite = req.write.bind(req);
+        req.write = (data) => { finalizeBody = JSON.parse(data); return origWrite(data); };
+      }
+      return req;
+    };
     const api = loadVendorApi();
     await api.placeOrderViaBasket(BASE_INPUT);
 
-    const finalizeCall = capturedCalls.find(
-      c => c.path === '/api3/basket/42/order' && c.method === 'POST'
-    );
-    assert.ok(finalizeCall,
-      `finalize call not found; calls: ${JSON.stringify(capturedCalls)}`);
+    assert.ok(finalizeBody !== null, 'finalize call to /api3/order not captured');
+    assert.strictEqual(finalizeBody.BasketId, 42, `expected BasketId=42, got ${finalizeBody.BasketId}`);
   });
 
   // 7. Error on basket creation throws with Polish message

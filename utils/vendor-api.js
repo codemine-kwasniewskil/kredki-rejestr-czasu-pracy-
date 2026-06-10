@@ -195,16 +195,23 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   return basketId;
 }
 
-// Step 5: Finalize an existing open basket into an order.
+// Step 5: Finalize an open basket into an order via POST /api3/order with BasketId.
+// The basket workflow uses the same /api3/order endpoint as direct ordering,
+// but references an existing basket instead of inline OrderLines.
 async function finalizeBasket({ basketId, clientId, apiKey }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
 
-  console.log(`[basket] POST /api3/basket/${basketId}/order`);
-  const orderResp = await apiRequest(`/api3/basket/${basketId}/order`, 'POST', {}, token);
-  console.log('[basket] finalize response:', orderResp.status, JSON.stringify(orderResp.body));
+  const body = {
+    BasketId: basketId,
+    Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
+  };
+  console.log(`[basket] POST /api3/order (BasketId=${basketId}):`, JSON.stringify(body));
+  const orderResp = await apiRequest('/api3/order', 'POST', body, token);
+  const isHtml = typeof orderResp.body === 'string' && orderResp.body.trimStart().startsWith('<');
+  console.error('[basket] finalize response:', orderResp.status, isHtml ? '(HTML)' : JSON.stringify(orderResp.body));
   if (![200, 201].includes(orderResp.status)) {
-    const msg = typeof orderResp.body === 'string' ? orderResp.body : JSON.stringify(orderResp.body);
+    const msg = isHtml ? `HTTP ${orderResp.status} HTML — wrong endpoint or body` : JSON.stringify(orderResp.body);
     throw new Error(`Błąd finalizacji koszyka: ${msg}`);
   }
   const result = orderResp.body;
