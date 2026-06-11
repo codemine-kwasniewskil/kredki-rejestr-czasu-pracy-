@@ -341,7 +341,12 @@ function renderVendorResults(items, total) {
       const tr = document.createElement('tr');
       tr.className = 'border-b border-slate-100 hover:bg-blue-50 cursor-pointer';
       tr.innerHTML = `
-        <td class="px-3 py-2 text-slate-800">${p.Name || ''}</td>
+        <td class="px-3 py-2 text-slate-800">
+          <div class="flex items-center gap-2">
+            ${p.Photo ? `<img src="${p.Photo}" alt="" class="w-9 h-9 object-contain rounded border border-slate-100 bg-white flex-shrink-0" loading="lazy" onerror="this.remove()">` : '<span class="w-9 h-9 flex-shrink-0 rounded bg-slate-50 border border-slate-100"></span>'}
+            <span>${p.Name || ''}</span>
+          </div>
+        </td>
         <td class="px-3 py-2 font-mono text-xs text-slate-500">${p.Sku || ''}</td>
         <td class="px-3 py-2 text-slate-500">${p.Unit || ''}</td>
         <td class="px-3 py-2 text-right font-mono text-slate-700">

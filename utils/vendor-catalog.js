@@ -47,6 +47,17 @@ function plNum(s) {
   return isNaN(n) ? null : n;
 }
 
+// Main product photo URL from the <photos> block — the one marked main="1",
+// else the first photo. Returns null when the product has no photos.
+function mainPhoto(block) {
+  const ps = block.match(/<photos>([\s\S]*?)<\/photos>/);
+  if (!ps) return null;
+  const photos = [...ps[1].matchAll(/<photo\b([^>]*)>\s*<!\[CDATA\[(.*?)\]\]>/g)];
+  if (photos.length === 0) return null;
+  const main = photos.find(p => /\bmain\s*=\s*"1"/.test(p[1]));
+  return (main || photos[0])[2].trim() || null;
+}
+
 function parseProducts(xml) {
   if (xml.charCodeAt(0) === 0xFEFF) xml = xml.slice(1); // strip BOM
   const out = [];
@@ -69,6 +80,7 @@ function parseProducts(xml) {
       inStock: tagText(b, 'inStock').trim() === 'True' ? 1 : 0,
       qty: plNum(tagText(b, 'qty')),
       availability: unwrapCdata(tagText(b, 'availability')) || null,
+      photo: mainPhoto(b),
     });
   }
   return out;
@@ -92,15 +104,18 @@ async function ensureSchema() {
     in_stock TINYINT(1) NOT NULL DEFAULT 0,
     qty DECIMAL(12,3) NULL,
     availability VARCHAR(64) NULL,
+    photo_url VARCHAR(512) NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_loc_sku (location_id, sku),
     KEY idx_loc_name (location_id, name)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  // Per-vendor feed URL — guarded ALTER (MySQL has no ADD COLUMN IF NOT EXISTS pre-8.0.something).
-  try {
-    await db.run(`ALTER TABLE vendors ADD COLUMN xml_feed_url VARCHAR(512) NULL`);
-  } catch (e) {
-    if (e.code !== 'ER_DUP_FIELDNAME' && e.code !== 'ER_NO_SUCH_TABLE') throw e;
+  // Guarded ALTERs for existing tables (MySQL has no ADD COLUMN IF NOT EXISTS pre-8.0.something).
+  for (const sql of [
+    `ALTER TABLE vendors ADD COLUMN xml_feed_url VARCHAR(512) NULL`,
+    `ALTER TABLE vendor_products ADD COLUMN photo_url VARCHAR(512) NULL`,
+  ]) {
+    try { await db.run(sql); }
+    catch (e) { if (e.code !== 'ER_DUP_FIELDNAME' && e.code !== 'ER_NO_SUCH_TABLE') throw e; }
   }
   schemaReady = true;
 }
@@ -117,15 +132,15 @@ async function syncCatalog({ locationId, feedUrl }) {
   await ensureSchema();
   await db.run('DELETE FROM vendor_products WHERE location_id=?', [locationId]);
 
-  const COLS = '(location_id, sku, ean, product_id, name, unit, price_net, vat, retail_gross, in_stock, qty, availability)';
+  const COLS = '(location_id, sku, ean, product_id, name, unit, price_net, vat, retail_gross, in_stock, qty, availability, photo_url)';
   const CHUNK = 500;
   for (let i = 0; i < products.length; i += CHUNK) {
     const slice = products.slice(i, i + CHUNK);
-    const values = slice.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
+    const values = slice.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
     const params = [];
     for (const p of slice) {
       params.push(locationId, p.sku, p.ean, p.productId, p.name, p.unit,
-        p.priceNet, p.vat, p.gross, p.inStock, p.qty, p.availability);
+        p.priceNet, p.vat, p.gross, p.inStock, p.qty, p.availability, p.photo);
     }
     await db.run(`INSERT INTO vendor_products ${COLS} VALUES ${values}`, params);
   }
@@ -163,6 +178,7 @@ function rowToApiProduct(r) {
     Vat: vat,
     Qty: r.qty != null ? Number(r.qty) : null,
     InStock: !!r.in_stock,
+    Photo: r.photo_url || null,
   };
 }
 
