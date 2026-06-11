@@ -11,5 +11,11 @@
       "src": "/(.*)",
       "dest": "/server.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/orders/cron/sync-catalog",
+      "schedule": "0 4 * * *"
+    }
   ]
 }
