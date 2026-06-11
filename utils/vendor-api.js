@@ -1,6 +1,7 @@
 'use strict';
 const https = require('https');
 const crypto = require('crypto');
+const catalog = require('./vendor-catalog');
 
 const API_HOST = 'b2b.intermlecz.pl';
 
@@ -70,41 +71,21 @@ async function getToken(clientId, apiKey) {
   return token;
 }
 
-const PRODUCT_FIELDS = 'Id,Name,Sku,Unit,PriceAfterDiscountNet,RetailPriceNet,RetailPriceGross,Vat,Qty,InStock';
+// Product search now reads from the local catalog (XML-feed-backed `vendor_products`
+// table) instead of the rate-limited /api3/product/findProduct endpoint. Both take
+// { locationId }; the result shape matches the old API so callers are unchanged.
 
-function buildFindProductUrl(params) {
-  // Build query string manually — commas in 'field' must stay literal (not %2C)
-  const parts = Object.entries(params)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v).replace(/%2C/gi, ',')}`);
-  return `/api3/product/findProduct?${parts.join('&')}`;
+async function searchProducts(phrase, limit = 30, opts = {}) {
+  const { locationId } = opts;
+  if (!locationId) throw new Error('Brak ID lokalizacji dla wyszukiwania produktów.');
+  return catalog.searchCatalog({ locationId, phrase, limit });
 }
 
-async function searchProducts(phrase, limit = 20, creds = {}) {
-  const { clientId, apiKey } = creds;
-  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
-  const token = await getToken(clientId, apiKey);
-  const url = buildFindProductUrl({ field: PRODUCT_FIELDS, where: phrase || '' });
-  const resp = await apiRequest(url, 'GET', null, token);
-  if (resp.status !== 200) throw new Error(`Vendor search failed: ${resp.status} — ${JSON.stringify(resp.body)}`);
-  const items = (resp.body?.Items || []).slice(0, limit);
-  return { items, total: resp.body?.TotalCount || items.length };
-}
-
-async function getProductsBySku(skus, creds = {}) {
+async function getProductsBySku(skus, opts = {}) {
   if (!skus || skus.length === 0) return [];
-  const { clientId, apiKey } = creds;
-  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
-  const token = await getToken(clientId, apiKey);
-  const results = [];
-  for (const sku of skus) {
-    const url = buildFindProductUrl({ field: PRODUCT_FIELDS, productsSku: String(sku).trim() });
-    const resp = await apiRequest(url, 'GET', null, token);
-    if (resp.status !== 200) { console.error(`[vendor-api] SKU ${sku} lookup failed: ${resp.status}`); continue; }
-    const match = (resp.body?.Items || []).find(p => String(p.Sku).trim() === String(sku).trim());
-    if (match) results.push(match);
-  }
-  return results;
+  const { locationId } = opts;
+  if (!locationId) throw new Error('Brak ID lokalizacji dla wyszukiwania produktów.');
+  return catalog.getCatalogBySku({ locationId, skus });
 }
 
 // Steps 1-4: create basket, fetch additional parameters, PATCH, add product lines.

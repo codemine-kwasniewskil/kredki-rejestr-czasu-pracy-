@@ -120,6 +120,28 @@
       </form>
     </div>
 
+    <!-- Catalog (XML feed) sync -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-5">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 class="font-semibold text-slate-700">Katalog produktów (plik XML)</h2>
+          <% if (typeof catalogStatus !== 'undefined' && catalogStatus.count > 0) { %>
+            <p class="text-xs text-slate-500 mt-0.5">
+              <strong class="text-slate-700"><%= catalogStatus.count %></strong> produktów
+              <% if (catalogStatus.syncedAt) { %>
+                · ostatnia synchronizacja: <span class="font-mono"><%= new Date(catalogStatus.syncedAt).toLocaleString('pl-PL') %></span>
+              <% } %>
+            </p>
+          <% } else { %>
+            <p class="text-xs text-amber-600 mt-0.5">Katalog pusty – ustaw adres pliku XML u dostawcy i zsynchronizuj.</p>
+          <% } %>
+        </div>
+        <form method="POST" action="/orders/vendor/sync-catalog">
+          <button type="submit" class="btn btn-primary text-sm">Synchronizuj katalog</button>
+        </form>
+      </div>
+    </div>
+
     <!-- Vendors list -->
     <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
       <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">

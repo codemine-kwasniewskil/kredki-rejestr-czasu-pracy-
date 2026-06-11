@@ -5,9 +5,41 @@ const db = require('../database/db');
 const { requireAuth, requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { log } = require('../utils/logger');
 const vendorApi = require('../utils/vendor-api');
+const vendorCatalog = require('../utils/vendor-catalog');
 
 const requireManager = requireRole('admin', 'location_manager', 'super_admin');
 const requireAdmin   = requireRole('admin', 'super_admin');
+
+// Scheduled catalog refresh for all locations (Vercel cron). Registered BEFORE the
+// auth middleware so it can run without a session. Guarded by CRON_SECRET — Vercel
+// sends `Authorization: Bearer $CRON_SECRET`; a ?key= query is also accepted.
+router.get('/cron/sync-catalog', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const authed = secret && (
+    req.headers.authorization === `Bearer ${secret}` || req.query.key === secret
+  );
+  if (!authed) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await vendorCatalog.ensureSchema();
+    const rows = await db.all(
+      `SELECT DISTINCT location_id, xml_feed_url FROM vendors
+         WHERE api_type='intermlecz' AND xml_feed_url IS NOT NULL AND xml_feed_url != ''`
+    );
+    const results = [];
+    for (const r of rows) {
+      try {
+        const { count } = await vendorCatalog.syncCatalogOnce({ locationId: r.location_id, feedUrl: r.xml_feed_url });
+        results.push({ locationId: r.location_id, count });
+      } catch (e) {
+        results.push({ locationId: r.location_id, error: e.message });
+      }
+    }
+    res.json({ ok: true, synced: results });
+  } catch (e) {
+    console.error('[catalog] cron sync failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 router.use(requireAuth);
 router.use(requireFeature('orders'));
@@ -38,6 +70,29 @@ async function getVendorCreds(locationId) {
   const clientId = s?.vendor_client_id || process.env.VENDOR_CLIENT_ID || '';
   const apiKey   = s?.vendor_api_key   || process.env.VENDOR_API_KEY   || '';
   return { clientId, apiKey };
+}
+
+// Resolve the XML catalog feed URL for a location: first an intermlecz vendor's
+// configured xml_feed_url, else the VENDOR_XML_FEED_URL env fallback.
+async function getCatalogFeedUrl(locationId, vendors = null) {
+  const list = vendors || await loadVendors(locationId);
+  const withFeed = list.find(v => v.api_type === 'intermlecz' && v.xml_feed_url);
+  return withFeed?.xml_feed_url || process.env.VENDOR_XML_FEED_URL || '';
+}
+
+// Make sure the catalog has data before reading. Triggers a one-time sync from the
+// XML feed if the table is empty for this location and a feed URL is configured.
+async function ensureCatalog(locationId, vendors = null) {
+  try {
+    const status = await vendorCatalog.catalogStatus(locationId);
+    if (status.count > 0) return status;
+    const feedUrl = await getCatalogFeedUrl(locationId, vendors);
+    if (!feedUrl) return status;
+    return await vendorCatalog.syncCatalogOnce({ locationId, feedUrl });
+  } catch (e) {
+    console.error('[catalog] ensureCatalog failed:', e.message);
+    return { count: 0, syncedAt: null };
+  }
 }
 
 async function recalcOrderTotal(orderId) {
@@ -122,31 +177,13 @@ async function buildPriceMap(lowStock, locationId) {
   const allSkus = [...new Set(lowStock.map(i => i.vendor_product_key?.trim()).filter(Boolean))];
   if (allSkus.length === 0) return priceMap;
 
-  const allVendors = await loadVendors(locationId);
-  const apiVendors = allVendors.filter(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
-
-  if (apiVendors.length === 0) {
-    // Fall back to location-level credentials
-    try {
-      const creds = await getVendorCreds(locationId);
-      const items = await vendorApi.getProductsBySku(allSkus, creds);
-      for (const v of items) priceMap[String(v.Sku).trim()] = extractPriceEntry(v);
-    } catch (e) {
-      console.error('[buildPriceMap] location creds fallback failed:', e.message);
-    }
-    return priceMap;
-  }
-
-  // Try each API vendor — merge results (first match per SKU wins)
-  for (const vendor of apiVendors) {
-    try {
-      const remaining = allSkus.filter(s => !(s in priceMap));
-      if (remaining.length === 0) break;
-      const items = await vendorApi.getProductsBySku(remaining, { clientId: vendor.client_id, apiKey: vendor.api_key });
-      for (const v of items) priceMap[String(v.Sku).trim()] = extractPriceEntry(v);
-    } catch (e) {
-      console.error(`[buildPriceMap] vendor ${vendor.name} failed:`, e.message);
-    }
+  // Prices come from the local XML-feed catalog (one DB query, no /api3 calls).
+  try {
+    await ensureCatalog(locationId);
+    const items = await vendorApi.getProductsBySku(allSkus, { locationId });
+    for (const v of items) priceMap[String(v.Sku).trim()] = extractPriceEntry(v);
+  } catch (e) {
+    console.error('[buildPriceMap] catalog lookup failed:', e.message);
   }
 
   return priceMap;
@@ -160,16 +197,18 @@ router.get('/vendors', requireManager, (req, res) => {
 router.post('/vendors', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, client_id, api_key, website, min_order_value } = req.body;
+    const { name, client_id, api_key, website, min_order_value, xml_feed_url } = req.body;
     if (!name?.trim()) { req.flash('error', 'Nazwa jest wymagana.'); return res.redirect('/orders/settings'); }
     const slug = name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50) || `vendor-${Date.now()}`;
     const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
     const apiType = client_id?.trim() ? 'intermlecz' : 'manual';
+    await vendorCatalog.ensureSchema(); // make sure xml_feed_url column exists
     await db.run(
-      `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website, min_order_value) VALUES (?,?,?,?,?,?,?,?)`,
+      `INSERT INTO vendors (location_id, name, slug, api_type, client_id, api_key, website, min_order_value, xml_feed_url) VALUES (?,?,?,?,?,?,?,?,?)`,
       [locationId, name.trim(), slug, apiType,
-       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null, minVal]
+       client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null, minVal,
+       xml_feed_url?.trim() || null]
     );
     await log(sessionUser(req), 'Dostawcy – dodano', name.trim());
     req.flash('success', `Dostawca "${name.trim()}" dodany.`);
@@ -184,14 +223,15 @@ router.post('/vendors', requireAdmin, async (req, res) => {
 router.post('/vendors/:id', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, client_id, api_key, website, active, min_order_value } = req.body;
+    const { name, client_id, api_key, website, active, min_order_value, xml_feed_url } = req.body;
     const minVal = min_order_value !== '' && min_order_value !== undefined ? parseFloat(min_order_value) : null;
     const apiType = client_id?.trim() ? 'intermlecz' : 'manual';
+    await vendorCatalog.ensureSchema(); // make sure xml_feed_url column exists
     await db.run(
-      `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=?, min_order_value=? WHERE id=? AND location_id=?`,
+      `UPDATE vendors SET name=?, api_type=?, client_id=?, api_key=?, website=?, active=?, min_order_value=?, xml_feed_url=? WHERE id=? AND location_id=?`,
       [name?.trim(), apiType,
        client_id?.trim() || null, api_key?.trim() || null, website?.trim() || null,
-       active === '1' ? 1 : 0, minVal, req.params.id, locationId]
+       active === '1' ? 1 : 0, minVal, xml_feed_url?.trim() || null, req.params.id, locationId]
     );
     await log(sessionUser(req), 'Dostawcy – zaktualizowano', name?.trim());
     req.flash('success', 'Dostawca zaktualizowany.');
@@ -277,24 +317,20 @@ router.get('/vendor/search', requireManager, async (req, res) => {
     if (!q) return res.json({ items: [], total: 0 });
     const locationId = getLocationId(req);
 
-    // Look up vendor by vendor_id if provided
+    // A manual (non-intermlecz) vendor has no catalog — signal the UI to fall back.
     if (req.query.vendor_id) {
       const vendor = await db.get(
         `SELECT * FROM vendors WHERE id=? AND location_id=? AND active=1`,
         [req.query.vendor_id, locationId]
       );
-      if (vendor) {
-        if (vendor.api_type !== 'intermlecz') {
-          return res.json({ items: [], total: 0, manual: true, vendorName: vendor.name });
-        }
-        const result = await vendorApi.searchProducts(q, 30, { clientId: vendor.client_id, apiKey: vendor.api_key });
-        return res.json(result);
+      if (vendor && vendor.api_type !== 'intermlecz') {
+        return res.json({ items: [], total: 0, manual: true, vendorName: vendor.name });
       }
     }
 
-    // Fallback: use location-level credentials
-    const creds = await getVendorCreds(locationId);
-    const result = await vendorApi.searchProducts(q, 30, creds);
+    // All intermlecz search reads the local XML-feed catalog (no /api3 calls).
+    await ensureCatalog(locationId);
+    const result = await vendorApi.searchProducts(q, 30, { locationId });
     res.json(result);
   } catch (e) {
     console.error('Vendor search error:', e.message);
@@ -331,19 +367,36 @@ router.get('/vendor/sku-info', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const sku = (req.query.sku || '').trim();
-    const vendorId = req.query.vendor_id ? parseInt(req.query.vendor_id, 10) : null;
     if (!sku) return res.json(null);
-    let creds = await getVendorCreds(locationId);
-    if (vendorId) {
-      const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=? AND active=1`, [vendorId, locationId]);
-      if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
-    }
-    const items = await vendorApi.getProductsBySku([sku], creds);
+    await ensureCatalog(locationId);
+    const items = await vendorApi.getProductsBySku([sku], { locationId });
     const item = items[0] || null;
     if (!item) return res.json(null);
     res.json(extractPriceEntry(item));
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Catalog sync (XML feed → vendor_products table) ────────────────────────
+
+// Manual refresh from the settings page.
+router.post('/vendor/sync-catalog', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const feedUrl = await getCatalogFeedUrl(locationId);
+    if (!feedUrl) {
+      req.flash('error', 'Brak adresu pliku XML. Dodaj go w danych dostawcy Inter-Mlecz lub ustaw VENDOR_XML_FEED_URL.');
+      return res.redirect('/orders/settings');
+    }
+    const { count } = await vendorCatalog.syncCatalogOnce({ locationId, feedUrl });
+    await log(sessionUser(req), 'Zamówienia – synchronizacja katalogu', `${count} produktów`);
+    req.flash('success', `Katalog zsynchronizowany: ${count} produktów.`);
+    res.redirect('/orders/settings');
+  } catch (e) {
+    console.error('[catalog] manual sync failed:', e.message);
+    req.flash('error', `Błąd synchronizacji katalogu: ${e.message}`);
+    res.redirect('/orders/settings');
   }
 });
 
@@ -388,10 +441,11 @@ router.get('/settings', requireAdmin, async (req, res) => {
     const editId = req.query.edit ? parseInt(req.query.edit) : null;
     const editVendor = editId ? vendors.find(v => v.id === editId) : null;
     const orderSettings = await getOrderSettings(locationId) || {};
+    const catalogStatus = await vendorCatalog.catalogStatus(locationId).catch(() => ({ count: 0, syncedAt: null }));
 
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor, orderSettings,
+      vendors, editVendor, orderSettings, catalogStatus,
     });
   } catch (e) {
     console.error(e);
@@ -796,7 +850,7 @@ async function _buildBasketParams(locationId, order) {
 
   try {
     const skus = itemsWithSku.map(i => i.vendor_product_key);
-    const vendorProducts = await vendorApi.getProductsBySku(skus, creds);
+    const vendorProducts = await vendorApi.getProductsBySku(skus, { locationId });
     const unitMap = new Map(vendorProducts.map(p => [String(p.Sku).trim(), p.Unit]));
     for (const item of itemsWithSku) {
       const vendorUnit = unitMap.get(String(item.vendor_product_key).trim());
