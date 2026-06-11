@@ -86,6 +86,39 @@ function parseProducts(xml) {
   return out;
 }
 
+// Lightweight availability feed (/xmlapi/3/1/...): only stock fields, ~2 MB vs 29 MB.
+// Blocks are <product> (no attributes) and qty uses Polish decimal commas.
+function parseAvailability(xml) {
+  if (xml.charCodeAt(0) === 0xFEFF) xml = xml.slice(1);
+  const out = [];
+  const blocks = xml.split('<product>');
+  for (let i = 1; i < blocks.length; i++) {
+    const end = blocks[i].indexOf('</product>');
+    if (end === -1) continue;
+    const b = blocks[i].slice(0, end);
+    const sku = unwrapCdata(tagText(b, 'sku'));
+    if (!sku) continue;
+    out.push({
+      sku,
+      inStock: tagText(b, 'inStock').trim() === 'True' ? 1 : 0,
+      qty: plNum(tagText(b, 'qty')),
+      availability: unwrapCdata(tagText(b, 'availability')) || null,
+      // self-closing <backorderAvailability /> → null; <...>True/False<...> → 1/0
+      backorder: /<backorderAvailability>\s*True\s*<\/backorderAvailability>/i.test(b) ? 1
+        : /<backorderAvailability>\s*False\s*<\/backorderAvailability>/i.test(b) ? 0 : null,
+    });
+  }
+  return out;
+}
+
+// Availability feed URL is the product feed with the /xmlapi/1/3/ segment swapped to
+// /xmlapi/3/1/ (same token). Env VENDOR_XML_AVAILABILITY_URL overrides.
+function deriveAvailabilityUrl(feedUrl) {
+  if (process.env.VENDOR_XML_AVAILABILITY_URL) return process.env.VENDOR_XML_AVAILABILITY_URL;
+  if (feedUrl && feedUrl.includes('/xmlapi/1/3/')) return feedUrl.replace('/xmlapi/1/3/', '/xmlapi/3/1/');
+  return '';
+}
+
 // ── Schema ───────────────────────────────────────────────────────────────────
 
 async function ensureSchema() {
@@ -104,6 +137,7 @@ async function ensureSchema() {
     in_stock TINYINT(1) NOT NULL DEFAULT 0,
     qty DECIMAL(12,3) NULL,
     availability VARCHAR(64) NULL,
+    backorder_available TINYINT(1) NULL,
     photo_url VARCHAR(512) NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_loc_sku (location_id, sku),
@@ -113,6 +147,7 @@ async function ensureSchema() {
   for (const sql of [
     `ALTER TABLE vendors ADD COLUMN xml_feed_url VARCHAR(512) NULL`,
     `ALTER TABLE vendor_products ADD COLUMN photo_url VARCHAR(512) NULL`,
+    `ALTER TABLE vendor_products ADD COLUMN backorder_available TINYINT(1) NULL`,
   ]) {
     try { await db.run(sql); }
     catch (e) { if (e.code !== 'ER_DUP_FIELDNAME' && e.code !== 'ER_NO_SUCH_TABLE') throw e; }
@@ -152,6 +187,44 @@ function syncCatalogOnce(opts) {
   const key = String(opts.locationId);
   if (inFlight.has(key)) return inFlight.get(key);
   const p = syncCatalog(opts).finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
+}
+
+// Refresh only stock fields from the lightweight availability feed. UPDATE-only —
+// touches existing catalog rows by sku, never inserts (the feed has no name/price).
+async function syncAvailability({ locationId, availUrl }) {
+  if (!locationId) throw new Error('Brak ID lokalizacji.');
+  if (!availUrl) throw new Error('Brak adresu pliku XML dostępności.');
+  const xml = await fetchXml(availUrl);
+  const rows = parseAvailability(xml);
+  if (rows.length === 0) throw new Error('Plik dostępności nie zawiera produktów.');
+
+  await ensureSchema();
+  let matched = 0;
+  const CHUNK = 300;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    const params = [];
+    const caseFor = field => {
+      let s = `${field} = CASE sku `;
+      for (const r of slice) { s += 'WHEN ? THEN ? '; params.push(r.sku, r[field === 'in_stock' ? 'inStock' : field === 'backorder_available' ? 'backorder' : field]); }
+      return s + `ELSE ${field} END`;
+    };
+    const sql = `UPDATE vendor_products SET ` +
+      [caseFor('in_stock'), caseFor('qty'), caseFor('availability'), caseFor('backorder_available')].join(', ') +
+      ` WHERE location_id = ? AND sku IN (${slice.map(() => '?').join(',')})`;
+    params.push(locationId, ...slice.map(r => r.sku));
+    const res = await db.run(sql, params);
+    matched += res.affectedRows || 0;
+  }
+  return { count: rows.length, matched, syncedAt: new Date() };
+}
+
+function syncAvailabilityOnce(opts) {
+  const key = 'avail:' + String(opts.locationId);
+  if (inFlight.has(key)) return inFlight.get(key);
+  const p = syncAvailability(opts).finally(() => inFlight.delete(key));
   inFlight.set(key, p);
   return p;
 }
@@ -220,17 +293,27 @@ async function getCatalogBySku({ locationId, skus }) {
 async function catalogStatus(locationId) {
   await ensureSchema();
   const r = await db.get(
-    `SELECT COUNT(*) AS count, MAX(updated_at) AS syncedAt FROM vendor_products WHERE location_id=?`,
+    `SELECT COUNT(*) AS count, MAX(updated_at) AS syncedAt,
+            SUM(CASE WHEN in_stock = 0 THEN 1 ELSE 0 END) AS outOfStock
+       FROM vendor_products WHERE location_id=?`,
     [locationId]
   );
-  return { count: r?.count ?? 0, syncedAt: r?.syncedAt ?? null };
+  return {
+    count: r?.count ?? 0,
+    syncedAt: r?.syncedAt ?? null,
+    outOfStock: Number(r?.outOfStock ?? 0),
+  };
 }
 
 module.exports = {
   ensureSchema,
   parseProducts,
+  parseAvailability,
+  deriveAvailabilityUrl,
   syncCatalog,
   syncCatalogOnce,
+  syncAvailability,
+  syncAvailabilityOnce,
   searchCatalog,
   getCatalogBySku,
   catalogStatus,

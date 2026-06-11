@@ -128,36 +128,54 @@
           <% if (typeof catalogStatus !== 'undefined' && catalogStatus.count > 0) { %>
             <p class="text-xs text-slate-500 mt-0.5">
               <strong class="text-slate-700"><%= catalogStatus.count %></strong> produktów
+              <% if (catalogStatus.outOfStock > 0) { %>
+                · <span class="text-amber-600"><%= catalogStatus.outOfStock %> niedostępnych</span>
+              <% } %>
               <% if (catalogStatus.syncedAt) {
                    // stored UTC ("YYYY-MM-DD HH:MM:SS") — render in Polish local time
                    const _synced = new Date(String(catalogStatus.syncedAt).replace(' ', 'T') + 'Z'); %>
-                · ostatnia synchronizacja: <span class="font-mono"><%= _synced.toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' }) %></span>
+                · ostatnia aktualizacja: <span class="font-mono"><%= _synced.toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' }) %></span>
               <% } %>
             </p>
           <% } else { %>
             <p class="text-xs text-amber-600 mt-0.5">Katalog pusty – ustaw adres pliku XML u dostawcy i zsynchronizuj.</p>
           <% } %>
         </div>
-        <form method="POST" action="/orders/vendor/sync-catalog" id="syncCatalogForm">
-          <button type="submit" id="syncCatalogBtn" class="btn btn-primary text-sm inline-flex items-center gap-2">
-            <svg id="syncCatalogSpinner" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
-            </svg>
-            <span id="syncCatalogLabel">Synchronizuj katalog</span>
-          </button>
-        </form>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <form method="POST" action="/orders/vendor/refresh-availability" id="refreshAvailForm">
+            <button type="submit" id="refreshAvailBtn" class="btn btn-secondary text-sm inline-flex items-center gap-2" title="Szybkie odświeżenie stanów magazynowych (lekki plik)">
+              <svg id="refreshAvailSpinner" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+              </svg>
+              <span id="refreshAvailLabel">Odśwież dostępność</span>
+            </button>
+          </form>
+          <form method="POST" action="/orders/vendor/sync-catalog" id="syncCatalogForm">
+            <button type="submit" id="syncCatalogBtn" class="btn btn-primary text-sm inline-flex items-center gap-2">
+              <svg id="syncCatalogSpinner" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+              </svg>
+              <span id="syncCatalogLabel">Synchronizuj katalog</span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
 
     <script>
-      document.getElementById('syncCatalogForm')?.addEventListener('submit', function () {
-        const btn = document.getElementById('syncCatalogBtn');
-        btn.disabled = true;
-        btn.classList.add('opacity-70', 'cursor-wait');
-        document.getElementById('syncCatalogSpinner').classList.remove('hidden');
-        document.getElementById('syncCatalogLabel').textContent = 'Synchronizacja w toku…';
-      });
+      function bindSyncFeedback(formId, btnId, spinnerId, labelId, busyText) {
+        document.getElementById(formId)?.addEventListener('submit', function () {
+          const btn = document.getElementById(btnId);
+          btn.disabled = true;
+          btn.classList.add('opacity-70', 'cursor-wait');
+          document.getElementById(spinnerId).classList.remove('hidden');
+          document.getElementById(labelId).textContent = busyText;
+        });
+      }
+      bindSyncFeedback('syncCatalogForm', 'syncCatalogBtn', 'syncCatalogSpinner', 'syncCatalogLabel', 'Synchronizacja w toku…');
+      bindSyncFeedback('refreshAvailForm', 'refreshAvailBtn', 'refreshAvailSpinner', 'refreshAvailLabel', 'Odświeżanie…');
     </script>
 
     <!-- Vendors list -->

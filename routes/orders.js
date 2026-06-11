@@ -41,6 +41,37 @@ router.get('/cron/sync-catalog', async (req, res) => {
   }
 });
 
+// Lightweight availability refresh for all locations (Vercel cron). Same CRON_SECRET guard.
+router.get('/cron/sync-availability', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const authed = secret && (
+    req.headers.authorization === `Bearer ${secret}` || req.query.key === secret
+  );
+  if (!authed) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await vendorCatalog.ensureSchema();
+    const rows = await db.all(
+      `SELECT DISTINCT location_id, xml_feed_url FROM vendors
+         WHERE api_type='intermlecz' AND xml_feed_url IS NOT NULL AND xml_feed_url != ''`
+    );
+    const results = [];
+    for (const r of rows) {
+      const availUrl = vendorCatalog.deriveAvailabilityUrl(r.xml_feed_url);
+      if (!availUrl) { results.push({ locationId: r.location_id, error: 'no availability URL' }); continue; }
+      try {
+        const { matched } = await vendorCatalog.syncAvailabilityOnce({ locationId: r.location_id, availUrl });
+        results.push({ locationId: r.location_id, matched });
+      } catch (e) {
+        results.push({ locationId: r.location_id, error: e.message });
+      }
+    }
+    res.json({ ok: true, refreshed: results });
+  } catch (e) {
+    console.error('[catalog] cron availability failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.use(requireAuth);
 router.use(requireFeature('orders'));
 
@@ -396,6 +427,27 @@ router.post('/vendor/sync-catalog', requireAdmin, async (req, res) => {
   } catch (e) {
     console.error('[catalog] manual sync failed:', e.message);
     req.flash('error', `Błąd synchronizacji katalogu: ${e.message}`);
+    res.redirect('/orders/settings');
+  }
+});
+
+// Lightweight stock refresh from the availability feed (~2 MB) — no full re-download.
+router.post('/vendor/refresh-availability', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const feedUrl = await getCatalogFeedUrl(locationId);
+    const availUrl = vendorCatalog.deriveAvailabilityUrl(feedUrl);
+    if (!availUrl) {
+      req.flash('error', 'Brak adresu pliku dostępności. Ustaw adres pliku XML katalogu (format /xmlapi/1/3/…) lub VENDOR_XML_AVAILABILITY_URL.');
+      return res.redirect('/orders/settings');
+    }
+    const { matched } = await vendorCatalog.syncAvailabilityOnce({ locationId, availUrl });
+    await log(sessionUser(req), 'Zamówienia – odświeżenie dostępności', `${matched} produktów`);
+    req.flash('success', `Dostępność odświeżona: ${matched} produktów zaktualizowanych.`);
+    res.redirect('/orders/settings');
+  } catch (e) {
+    console.error('[catalog] availability refresh failed:', e.message);
+    req.flash('error', `Błąd odświeżania dostępności: ${e.message}`);
     res.redirect('/orders/settings');
   }
 });
