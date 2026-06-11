@@ -351,7 +351,7 @@ function addRow({ name = '', sku = '', unit = '', qty = 1, price = null, priceGr
     </td>
     <td class="px-4 py-2">${unitHtml}</td>
     <td class="px-4 py-2 text-right">
-      <input type="number" name="item_qty[]" value="${parseFloat(qty) || 1}" min="0.001" step="0.001" required
+      <input type="number" name="item_qty[]" value="${parseFloat(qty) || 1}" min="0.001" step="any" required
         class="qty-input w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-blue-400"
         oninput="updateTotal()">
     </td>
