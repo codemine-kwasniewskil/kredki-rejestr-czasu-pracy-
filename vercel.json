@@ -16,10 +16,6 @@
     {
       "path": "/orders/cron/sync-catalog",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/orders/cron/sync-availability",
-      "schedule": "0 * * * *"
     }
   ]
 }
