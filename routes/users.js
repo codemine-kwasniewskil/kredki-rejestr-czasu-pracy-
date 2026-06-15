@@ -205,4 +205,41 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
   }
 });
 
+// Hard delete (super_admin only). Permanently removes the user; contracts, availability,
+// schedule entries/comments and availability locks are removed via ON DELETE CASCADE.
+// If the user is referenced by records that don't cascade (orders/reports they created or
+// approved), the DB blocks the delete — we catch that and suggest deactivation instead.
+router.post('/:id/delete', requireRole('super_admin'), async (req, res) => {
+  try {
+    const user = await db.get('SELECT * FROM users WHERE id=?', [req.params.id]);
+    if (!user) {
+      req.flash('error', 'Użytkownik nie istnieje.');
+      return res.redirect('/users');
+    }
+    if (user.role === 'super_admin') {
+      req.flash('error', 'Nie można usunąć super administratora.');
+      return res.redirect('/users');
+    }
+    if (user.id === res.locals.user.id) {
+      req.flash('error', 'Nie można usunąć własnego konta.');
+      return res.redirect('/users');
+    }
+    try {
+      await db.run('DELETE FROM users WHERE id=?', [req.params.id]);
+    } catch (e) {
+      if (e && (e.errno === 1451 || e.code === 'ER_ROW_IS_REFERENCED_2' || e.code === 'ER_ROW_IS_REFERENCED')) {
+        req.flash('error', `Nie można trwale usunąć użytkownika "${user.name}" — ma powiązane rekordy (zamówienia/raporty). Użyj dezaktywacji.`);
+        return res.redirect('/users');
+      }
+      throw e;
+    }
+    log(res.locals.user, 'Trwałe usunięcie użytkownika', `${user.name} | ${user.role}`);
+    req.flash('success', `Użytkownik "${user.name}" został trwale usunięty.`);
+    res.redirect('/users');
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
 module.exports = router;

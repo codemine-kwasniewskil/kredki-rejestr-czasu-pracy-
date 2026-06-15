@@ -297,4 +297,69 @@ router.post('/:id/clone', async (req, res) => {
   }
 });
 
+// Delete a location and ALL of its data (super_admin only — whole router is gated).
+// Cascade is done with FOREIGN_KEY_CHECKS off inside a single-connection transaction, so
+// ordering between tables doesn't matter. Tables scoped only by a parent id or by user_id
+// (no location_id column) are cleaned explicitly first, then every table that has a
+// location_id column is swept, then the location row itself.
+router.delete('/:id', async (req, res) => {
+  let conn;
+  try {
+    const id = parseInt(req.params.id, 10);
+    const loc = await db.get('SELECT * FROM locations WHERE id=?', [id]);
+    if (!loc) {
+      req.flash('error', 'Lokalizacja nie istnieje.');
+      return res.redirect('/locations');
+    }
+    if (req.session.currentLocationId === id) {
+      req.flash('error', 'Nie można usunąć aktywnej lokalizacji — najpierw przełącz się na inną.');
+      return res.redirect('/locations');
+    }
+    const total = await db.get('SELECT COUNT(*) AS c FROM locations');
+    if (!total || total.c <= 1) {
+      req.flash('error', 'Nie można usunąć ostatniej lokalizacji.');
+      return res.redirect('/locations');
+    }
+
+    conn = await db.pool.getConnection();
+    await conn.beginTransaction();
+    await conn.query('SET FOREIGN_KEY_CHECKS=0');
+
+    // Grandchildren scoped only by a parent id (no location_id) — delete via their parent.
+    await conn.query('DELETE FROM stock_report_entries WHERE report_id IN (SELECT id FROM stock_reports WHERE location_id=?)', [id]);
+    await conn.query('DELETE FROM purchase_order_items WHERE order_id IN (SELECT id FROM purchase_orders WHERE location_id=?)', [id]);
+    await conn.query('DELETE FROM schedule_entries WHERE schedule_id IN (SELECT id FROM schedules WHERE location_id=?)', [id]);
+    await conn.query('DELETE FROM schedule_comments WHERE schedule_id IN (SELECT id FROM schedules WHERE location_id=?)', [id]);
+
+    // User-scoped tables without a location_id column — delete via the location's users.
+    await conn.query('DELETE FROM availability WHERE user_id IN (SELECT id FROM users WHERE location_id=?)', [id]);
+    await conn.query('DELETE FROM availability_month_locks WHERE user_id IN (SELECT id FROM users WHERE location_id=?)', [id]);
+
+    // Sweep every table that has a location_id column (users, contracts, schedules, stock_*,
+    // purchase_orders, deliveries, finance tables, vendor_products, location_features, …).
+    const [locTables] = await conn.query(
+      `SELECT DISTINCT TABLE_NAME AS t FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='location_id' AND TABLE_NAME<>'locations'`
+    );
+    for (const row of locTables) {
+      await conn.query(`DELETE FROM \`${row.t}\` WHERE location_id=?`, [id]);
+    }
+
+    await conn.query('DELETE FROM locations WHERE id=?', [id]);
+    await conn.query('SET FOREIGN_KEY_CHECKS=1');
+    await conn.commit();
+
+    delete req.session.cachedAllLocations;
+    log(res.locals.user, 'Usunięcie lokalizacji', `${loc.name} (ID ${id}) wraz z danymi`);
+    req.flash('success', `Lokalizacja "${loc.name}" i wszystkie jej dane zostały trwale usunięte.`);
+    res.redirect('/locations');
+  } catch (err) {
+    if (conn) { try { await conn.rollback(); } catch (_) {} }
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera podczas usuwania lokalizacji.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 module.exports = router;

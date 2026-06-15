@@ -110,6 +110,11 @@
               <form action="/users/<%= u.id %>?_method=DELETE" method="POST" onsubmit="return confirm('Dezaktywować użytkownika?')">
                 <button type="submit" class="btn btn-danger text-xs">Dezaktywuj</button>
               </form>
+              <% if (user.role === 'super_admin' && u.role !== 'super_admin') { %>
+              <form action="/users/<%= u.id %>/delete" method="POST" onsubmit="return confirm('Trwale usunąć użytkownika &quot;<%= u.name %>&quot; i jego dane (umowy, dostępność)?\n\nTej operacji NIE można cofnąć.')">
+                <button type="submit" class="btn btn-danger text-xs">Usuń trwale</button>
+              </form>
+              <% } %>
               <% } %>
             </td>
           </tr>

@@ -57,6 +57,12 @@
               <a href="/locations/<%= loc.id %>/features" class="btn btn-secondary text-xs">Funkcje</a>
               <button onclick="openClone(<%= JSON.stringify({id: loc.id, name: loc.name}) %>)" class="btn btn-secondary text-xs">Klonuj</button>
               <button onclick="openEdit(<%= JSON.stringify(loc) %>)" class="btn btn-secondary text-xs">Edytuj</button>
+              <% if (!currentLocation || currentLocation.id !== loc.id) { %>
+              <form method="POST" action="/locations/<%= loc.id %>?_method=DELETE"
+                    onsubmit="return confirm('Trwale usunąć lokalizację &quot;<%= loc.name %>&quot; wraz ze WSZYSTKIMI danymi (użytkownicy, grafiki, magazyn, umowy, finanse)?\n\nTej operacji NIE można cofnąć.')">
+                <button type="submit" class="btn btn-danger text-xs">Usuń</button>
+              </form>
+              <% } %>
             </td>
           </tr>
           <% }) %>
@@ -137,8 +143,8 @@
       </button>
     </div>
     <form id="cloneForm" method="POST" action="" class="px-6 py-4 space-y-4">
-      <p class="text-sm text-slate-600">Kopiuje: szablony zmian, stany magazynowe, ustawienia funkcji i użytkowników z lokalizacji <strong id="cloneSourceName"></strong>.</p>
-      <p class="text-xs text-slate-400">Nazwy użytkowników: <code>oryginalna_nazwa_{slug}</code>. Hasła bez zmian — wymagana zmiana przy logowaniu. Nie kopiuje: grafiku, umów.</p>
+      <p class="text-sm text-slate-600">Kopiuje: szablony zmian, stany magazynowe, ustawienia funkcji, użytkowników oraz ich umowy i dostępność z lokalizacji <strong id="cloneSourceName"></strong>.</p>
+      <p class="text-xs text-slate-400">Nazwy użytkowników: <code>oryginalna_nazwa_{slug}</code>. Hasła bez zmian — wymagana zmiana przy logowaniu. Nie kopiuje: grafiku.</p>
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa nowej lokalizacji *</label>
         <input type="text" name="name" required class="input w-full" placeholder="np. Graficzek Centrum">
