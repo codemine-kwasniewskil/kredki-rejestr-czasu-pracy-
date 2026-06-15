@@ -105,16 +105,12 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
-  // Step 1: Create basket with Lines in the creation body — this is the only supported way
-  // to populate a basket (there is no /api3/basketline endpoint; it returns 404). ShowOnFront
-  // is set here too so the basket is visible on the B2B platform from the moment it exists.
-  // Address and delivery date are applied via PATCH afterward so they can be confirmed
-  // against the additionalparameters the API reports for this basket.
+  // Step 1: Create an empty basket. The POST body (Lines, Comment, …) is ignored by the API —
+  // a GET on the new basket shows Items:[] and Comment:null regardless of what we send here.
+  // Everything that actually sticks (products, comment, address, delivery) is applied via PATCH.
   const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
   const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})`, ShowOnFront: true };
   if (paymentName) basketBody.PaymentName = paymentName;
-  if (comment) basketBody.Comment = comment;
-  basketBody.Lines = lines;
 
   console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
   const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
@@ -142,8 +138,11 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
-  // Step 3: PATCH basket — set address, delivery date, ShowOnFront, and explicit Delivery: null
-  const patchBody = { Delivery: null, ShowOnFront: true };
+  // Step 3: PATCH basket — this is what actually populates the basket. Products go in `Items`
+  // (the field name the GET response uses for lines); Comment, address, delivery date and
+  // ShowOnFront are applied here too. The create-body equivalents are ignored by the API.
+  const patchBody = { Delivery: null, ShowOnFront: true, Items: lines };
+  if (comment) patchBody.Comment = comment;
   if (addressId) {
     patchBody.AddressId = parseInt(addressId, 10);
   } else if (address) {
