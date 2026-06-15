@@ -105,15 +105,16 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
-  // Step 1: Create basket header only. Lines are NOT sent here — the API accepts the
-  // creation request but silently drops a Lines array, leaving the basket empty on the
-  // B2B platform. Products are added separately via POST /api3/basketline below.
+  // Step 1: Create basket with Lines in the creation body — this is the only supported way
+  // to populate a basket (there is no /api3/basketline endpoint; it returns 404). ShowOnFront
+  // is set here too so the basket is visible on the B2B platform from the moment it exists.
   // Address and delivery date are applied via PATCH afterward so they can be confirmed
   // against the additionalparameters the API reports for this basket.
   const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
-  const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})` };
+  const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})`, ShowOnFront: true };
   if (paymentName) basketBody.PaymentName = paymentName;
   if (comment) basketBody.Comment = comment;
+  basketBody.Lines = lines;
 
   console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
   const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
@@ -174,24 +175,7 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
   }
 
-  // Step 4: Add product lines one by one via POST /api3/basketline (BasketId in body).
-  // This is what actually populates the basket — sending Lines in the create body does not.
-  console.log(`[basket] adding ${lines.length} lines to basketId=${basketId}`);
-  for (const line of lines) {
-    const lineBody = { BasketId: basketId, KeyType: line.KeyType, Key: line.Key, Quantity: line.Quantity };
-    if (line.UnitId) lineBody.UnitId = line.UnitId;
-    console.log('[basket] POST /api3/basketline:', JSON.stringify(lineBody));
-    const lineResp = await apiRequest('/api3/basketline', 'POST', lineBody, token);
-    const lineBodyRaw = typeof lineResp.body === 'string' ? lineResp.body : JSON.stringify(lineResp.body);
-    const isHtml = typeof lineResp.body === 'string' && lineResp.body.trimStart().startsWith('<');
-    console.error('[basket] add line response:', lineResp.status, isHtml ? '(HTML)' : lineBodyRaw);
-    if (![200, 201].includes(lineResp.status)) {
-      const msg = isHtml ? `HTTP ${lineResp.status} HTML — wrong endpoint path` : lineBodyRaw;
-      throw new Error(`Błąd dodawania produktu ${line.Key} [basketId=${basketId}]: ${msg}`);
-    }
-  }
-
-  // Step 5: Verify the basket actually contains the lines before returning it.
+  // Step 4: Verify the basket actually contains the lines before returning it.
   try {
     const verifyResp = await apiRequest(`/api3/basket/${basketId}`, 'GET', null, token);
     const lineCount = verifyResp.body?.Lines?.length ?? verifyResp.body?.BasketLines?.length ?? null;
