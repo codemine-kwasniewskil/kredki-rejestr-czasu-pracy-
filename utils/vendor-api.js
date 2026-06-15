@@ -140,8 +140,8 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
-  // Step 3: PATCH basket — set address, delivery date, and explicit Delivery: null
-  const patchBody = { Delivery: null };
+  // Step 3: PATCH basket — set address, delivery date, ShowOnFront, and explicit Delivery: null
+  const patchBody = { Delivery: null, ShowOnFront: true };
   if (addressId) {
     patchBody.AddressId = parseInt(addressId, 10);
   } else if (address) {
