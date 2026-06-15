@@ -19,6 +19,21 @@
         <% if (user.role === 'admin' || user.role === 'location_manager') { %>
           <a href="/shifts" class="btn btn-secondary text-xs">⚙ Szablony zmian</a>
         <% } %>
+        <% if (user.role === 'admin' || user.role === 'location_manager' || user.role === 'super_admin') { %>
+          <div class="relative group">
+            <button type="button" class="btn btn-secondary text-xs" aria-label="Jak działa obieg grafiku">ⓘ Jak to działa</button>
+            <div class="hidden group-hover:block group-focus-within:block absolute right-0 z-50 mt-2 w-80 max-w-[90vw] p-3 bg-white border border-slate-200 rounded-lg shadow-xl text-left text-xs text-slate-600 normal-case font-normal">
+              <p class="font-semibold text-slate-800 mb-1.5">Obieg akceptacji grafiku</p>
+              <ol class="list-decimal list-inside space-y-1">
+                <li><span class="font-medium text-slate-700">● Szkic</span> – kierownik lub admin tworzy i edytuje grafik.</li>
+                <li><span class="font-medium text-slate-700">⏳ Oczekuje na akceptację</span> – kierownik wysyła grafik do akceptacji przyciskiem <span class="font-medium">📤 Wyślij do akceptacji</span>.</li>
+                <li><span class="font-medium text-slate-700">✓ Zatwierdzony</span> – admin akceptuje przyciskiem <span class="font-medium">✓ Zatwierdź</span>. Grafik staje się widoczny dla pracowników i jest tylko do odczytu.</li>
+                <li><span class="font-medium text-slate-700">✗ Odrzucony</span> – admin może odrzucić z uwagami (<span class="font-medium">✗ Odrzuć</span>); grafik wraca do kierownika do poprawy.</li>
+              </ol>
+              <p class="mt-2 text-slate-500"><span class="font-medium">↩ Przywróć do szkicu</span> – odblokowuje wysłany, odrzucony lub zatwierdzony (tylko admin) grafik do ponownej edycji.</p>
+            </div>
+          </div>
+        <% } %>
         <% if (schedule) { %>
           <span class="text-xs px-2.5 py-1 rounded-full font-medium badge-<%= schedule.status %>">
             <%= schedule.status === 'draft' ? '● Szkic' : schedule.status === 'submitted' ? '⏳ Oczekuje na akceptację' : schedule.status === 'approved' ? '✓ Zatwierdzony' : '✗ Odrzucony' %>
