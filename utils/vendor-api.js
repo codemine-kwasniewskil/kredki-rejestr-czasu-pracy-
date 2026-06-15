@@ -138,10 +138,11 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
-  // Step 3: PATCH basket — this is what actually populates the basket. Products go in `Items`
-  // (the field name the GET response uses for lines); Comment, address, delivery date and
-  // ShowOnFront are applied here too. The create-body equivalents are ignored by the API.
-  const patchBody = { Delivery: null, ShowOnFront: true, Items: lines };
+  // Step 3: PATCH basket — this is what actually populates the basket (confirmed: Comment set
+  // via PATCH sticks, while the create body is ignored). Products go in `Lines` on input; the
+  // GET response echoes them back under `Items`. Comment, address, delivery date and
+  // ShowOnFront are applied here too.
+  const patchBody = { Delivery: null, ShowOnFront: true, Lines: lines };
   if (comment) patchBody.Comment = comment;
   if (addressId) {
     patchBody.AddressId = parseInt(addressId, 10);
