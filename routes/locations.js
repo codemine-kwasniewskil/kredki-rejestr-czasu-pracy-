@@ -183,7 +183,8 @@ router.post('/:id/features', async (req, res) => {
   }
 });
 
-// Clone a location: copies shift_templates, stock_items, location_features to a new location
+// Clone a location: copies location_features, shift_templates, stock_items, users, and (for the
+// copied users) their contracts and availability to a new location
 router.post('/:id/clone', async (req, res) => {
   try {
     const sourceId = parseInt(req.params.id, 10);
@@ -242,30 +243,53 @@ router.post('/:id/clone', async (req, res) => {
       [newId, sourceId]
     );
 
-    // Copy users (active, non-super_admin) — generate unique username by appending new location slug
-    const bcrypt = require('bcryptjs');
+    // Copy users (active, non-super_admin) — generate unique username by appending new location slug.
+    // Track old user id → new user id so contracts and availability can be re-pointed to the copies.
     const sourceUsers = await db.all(
-      `SELECT name, username, role, password_hash FROM users
+      `SELECT id, name, username, role, password_hash FROM users
        WHERE location_id=? AND active=1 AND role != 'super_admin'
        AND (registration_pending IS NULL OR registration_pending=0)`,
       [sourceId]
     );
     let copiedUsers = 0;
+    const userIdMap = new Map(); // oldUserId → newUserId
     for (const u of sourceUsers) {
       const newUsername = `${u.username}_${cleanSlug}`.slice(0, 60);
       const conflict = await db.get('SELECT id FROM users WHERE username=?', [newUsername]);
       if (conflict) continue; // skip if username already exists
-      await db.run(
+      const ins = await db.run(
         `INSERT INTO users (name, username, role, password_hash, active, must_change_password, location_id)
          VALUES (?,?,?,?,1,1,?)`,
         [u.name, newUsername, u.role, u.password_hash, newId]
       );
+      userIdMap.set(u.id, ins.insertId);
       copiedUsers++;
+    }
+
+    // Copy contracts and availability for each copied user (re-pointed to the new user id)
+    let copiedContracts = 0;
+    let copiedAvailability = 0;
+    for (const [oldUserId, newUserId] of userIdMap) {
+      const cRes = await db.run(
+        `INSERT INTO contracts (user_id, min_hours_per_month, hourly_rate, start_date, end_date, active, notes)
+         SELECT ?, min_hours_per_month, hourly_rate, start_date, end_date, active, notes
+         FROM contracts WHERE user_id=?`,
+        [newUserId, oldUserId]
+      );
+      copiedContracts += cRes.affectedRows || 0;
+
+      const aRes = await db.run(
+        `INSERT INTO availability (user_id, date, status, start_time, end_time)
+         SELECT ?, date, status, start_time, end_time
+         FROM availability WHERE user_id=?`,
+        [newUserId, oldUserId]
+      );
+      copiedAvailability += aRes.affectedRows || 0;
     }
 
     delete req.session.cachedAllLocations;
     log(res.locals.user, 'Klonowanie lokalizacji', `${source.name} → ${name.trim()}`);
-    req.flash('success', `Lokalizacja "${name.trim()}" utworzona jako kopia "${source.name}" (skopiowano ${copiedUsers} użytkowników).`);
+    req.flash('success', `Lokalizacja "${name.trim()}" utworzona jako kopia "${source.name}" (skopiowano ${copiedUsers} użytkowników, ${copiedContracts} umów, ${copiedAvailability} wpisów dostępności).`);
     res.redirect('/locations');
   } catch (err) {
     console.error(err);
