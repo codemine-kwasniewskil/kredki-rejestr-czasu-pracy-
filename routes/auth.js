@@ -162,11 +162,23 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const identifier = (username || '').trim();
     const user = await db.get(
-      'SELECT * FROM users WHERE (username=? OR (email=? AND email IS NOT NULL)) AND active=1 AND (registration_pending IS NULL OR registration_pending=0)',
+      'SELECT * FROM users WHERE username=? OR (email=? AND email IS NOT NULL)',
       [identifier, identifier]
     );
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       log({ id: null, name: identifier || '?', role: '?' }, 'Nieudana próba logowania', identifier || '');
+      req.flash('error', 'Nieprawidłowa nazwa użytkownika/email lub hasło.');
+      return res.redirect('/login');
+    }
+    // Credentials are valid — surface a clear message for accounts still
+    // awaiting super admin approval instead of a misleading "wrong password".
+    if (user.registration_pending) {
+      log(user, 'Logowanie zablokowane – oczekuje na zatwierdzenie', identifier);
+      req.flash('error', 'Twoja rejestracja oczekuje na zatwierdzenie przez administratora.');
+      return res.redirect('/login');
+    }
+    if (!user.active) {
+      log(user, 'Logowanie zablokowane – konto nieaktywne', identifier);
       req.flash('error', 'Nieprawidłowa nazwa użytkownika/email lub hasło.');
       return res.redirect('/login');
     }

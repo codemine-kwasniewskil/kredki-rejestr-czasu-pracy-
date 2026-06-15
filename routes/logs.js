@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 
-router.get('/', requireRole('admin'), requireFeature('logs'), async (req, res) => {
+router.get('/', requireRole('super_admin'), requireFeature('logs'), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = 50;
