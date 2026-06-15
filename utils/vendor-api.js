@@ -95,13 +95,13 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   const token = await getToken(clientId, apiKey);
 
+  // Note: do NOT send UnitId. The catalog only has the unit *symbol* (e.g. "szt."), not the
+  // numeric UnitId the API expects, and an invalid UnitId makes the API silently drop the line
+  // (basket created but empty). The documented Create Basket example omits UnitId entirely, so
+  // we let the API apply each product's default unit.
   const lines = items
     .filter(i => i.vendor_product_key)
-    .map(i => {
-      const line = { KeyType: 'Sku', Key: String(i.vendor_product_key), Quantity: Number(i.quantity) };
-      if (i.unit) line.UnitId = String(i.unit);
-      return line;
-    });
+    .map(i => ({ KeyType: 'Sku', Key: String(i.vendor_product_key), Quantity: Number(i.quantity) }));
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
@@ -176,13 +176,12 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   }
 
   // Step 4: Verify the basket actually contains the lines before returning it.
+  // Dump the full body so we can see what field name holds the lines and whether the
+  // product (with UnitId "szt.") was accepted or silently dropped.
   try {
     const verifyResp = await apiRequest(`/api3/basket/${basketId}`, 'GET', null, token);
-    const lineCount = verifyResp.body?.Lines?.length ?? verifyResp.body?.BasketLines?.length ?? null;
-    console.error(`[basket] verify GET /api3/basket/${basketId}: status=${verifyResp.status} lineCount=${lineCount} (expected ${lines.length})`);
-    if (lineCount != null && lineCount < lines.length) {
-      console.error('[basket] WARNING: basket has fewer lines than expected — some products were not added.');
-    }
+    const bodyRaw = typeof verifyResp.body === 'string' ? verifyResp.body : JSON.stringify(verifyResp.body);
+    console.error(`[basket] verify GET /api3/basket/${basketId}: status=${verifyResp.status} body=${bodyRaw}`);
   } catch (e) {
     console.warn('[basket] verify fetch error:', e.message);
   }
