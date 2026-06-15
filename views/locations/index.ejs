@@ -144,7 +144,7 @@
     </div>
     <form id="cloneForm" method="POST" action="" class="px-6 py-4 space-y-4">
       <p class="text-sm text-slate-600">Kopiuje: szablony zmian, stany magazynowe, ustawienia funkcji, użytkowników oraz ich umowy i dostępność z lokalizacji <strong id="cloneSourceName"></strong>.</p>
-      <p class="text-xs text-slate-400">Nazwy użytkowników: <code>oryginalna_nazwa_{slug}</code>. Hasła bez zmian — wymagana zmiana przy logowaniu. Nie kopiuje: grafiku.</p>
+      <p class="text-xs text-slate-400">Nazwy użytkowników są generyczne: <code>{slug}_funkcja</code> (np. <code>{slug}_kierownik</code>, <code>{slug}_pracownik_1</code>), nazwa wyświetlana: „Nazwa lokalizacji + funkcja". Hasła bez zmian — wymagana zmiana przy logowaniu. Nie kopiuje: grafiku.</p>
       <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa nowej lokalizacji *</label>
         <input type="text" name="name" required class="input w-full" placeholder="np. Graficzek Centrum">

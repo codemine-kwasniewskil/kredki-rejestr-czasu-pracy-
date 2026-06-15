@@ -243,7 +243,9 @@ router.post('/:id/clone', async (req, res) => {
       [newId, sourceId]
     );
 
-    // Copy users (active, non-super_admin) — generate unique username by appending new location slug.
+    // Copy users (active, non-super_admin). Generate GENERIC names based on the new location +
+    // function (role) instead of copying the source names — e.g. username "kredki-centrum_kierownik",
+    // display name "Kredki Centrum Kierownik". Multiple users of the same role get a numeric suffix.
     // Track old user id → new user id so contracts and availability can be re-pointed to the copies.
     const sourceUsers = await db.all(
       `SELECT id, name, username, role, password_hash FROM users
@@ -251,16 +253,28 @@ router.post('/:id/clone', async (req, res) => {
        AND (registration_pending IS NULL OR registration_pending=0)`,
       [sourceId]
     );
+    const roleLabels = { admin: 'administrator', location_manager: 'kierownik', worker: 'pracownik' };
+    const roleTotals = {};
+    for (const u of sourceUsers) roleTotals[u.role] = (roleTotals[u.role] || 0) + 1;
+    const newLocName = name.trim();
+
     let copiedUsers = 0;
+    const roleSeen = {};
     const userIdMap = new Map(); // oldUserId → newUserId
     for (const u of sourceUsers) {
-      const newUsername = `${u.username}_${cleanSlug}`.slice(0, 60);
+      const label = roleLabels[u.role] || 'uzytkownik';
+      roleSeen[u.role] = (roleSeen[u.role] || 0) + 1;
+      const multi = roleTotals[u.role] > 1;
+      const suffix = multi ? `_${roleSeen[u.role]}` : '';
+      const newUsername = `${cleanSlug}_${label}${suffix}`.slice(0, 60);
       const conflict = await db.get('SELECT id FROM users WHERE username=?', [newUsername]);
       if (conflict) continue; // skip if username already exists
+      const labelCap = label.charAt(0).toUpperCase() + label.slice(1);
+      const displayName = `${newLocName} ${labelCap}${multi ? ' ' + roleSeen[u.role] : ''}`;
       const ins = await db.run(
         `INSERT INTO users (name, username, role, password_hash, active, must_change_password, location_id)
          VALUES (?,?,?,?,1,1,?)`,
-        [u.name, newUsername, u.role, u.password_hash, newId]
+        [displayName, newUsername, u.role, u.password_hash, newId]
       );
       userIdMap.set(u.id, ins.insertId);
       copiedUsers++;
