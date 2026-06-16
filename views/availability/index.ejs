@@ -110,7 +110,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
           const monthYearMonth = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}`;
           const isMonthAdminLocked = lockedMonths.has(monthYearMonth);
           const isMonthAdminUnlocked = unlockedMonths.has(monthYearMonth);
-          const isMonthAutoLocked = !isMonthAdminUnlocked && autoLockedMonth === monthYearMonth;
+          const isMonthAutoLocked = !isMonthAdminUnlocked && autoLockedMonths.has(monthYearMonth);
           // Workers cannot edit if admin-locked or auto-locked; admins can always edit
           const canSetMonth = user.role === 'worker'
             ? (!monthLocked && !isMonthAdminLocked && !isMonthAutoLocked)
@@ -167,7 +167,7 @@ if (lockBeforeStr && lockIsForFutureMonths) {
             const isPast = dateStr < todayStr;
             const dayYM = dateStr.substring(0, 7);
             const isMonthAdminLockedDay = lockedMonths.has(dayYM);
-            const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonth === dayYM;
+            const isMonthAutoLockedDay = !unlockedMonths.has(dayYM) && autoLockedMonths.has(dayYM);
             const isAdminUnlocked = unlockedMonths.has(dayYM);
             const isLocked = (isPast && !isAdminUnlocked)
               || !!(lockBeforeStr && dateStr < lockBeforeStr && !isAdminUnlocked)

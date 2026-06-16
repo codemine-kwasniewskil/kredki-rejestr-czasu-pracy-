@@ -60,12 +60,15 @@ router.get('/', requireAuth, requireFeature('availability'), async (req, res) =>
       lockBeforeStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
     }
 
-    // Auto-lock: after the 10th of each month, the next month is locked (standard scheduling cutoff)
-    // Computed for all roles so admin view can show it as informational
-    let autoLockedMonth = null;
+    // Auto-lock: after the 10th of each month, the next month is locked (standard scheduling cutoff).
+    // The current month is therefore always auto-locked (it was locked when we passed the 10th of the
+    // previous month); the next month is additionally auto-locked once we're past the 10th.
+    // Computed for all roles so admin view can show it as informational.
+    const autoLockedMonths = new Set();
+    autoLockedMonths.add(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
     if (today.getDate() > 10) {
       const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      autoLockedMonth = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+      autoLockedMonths.add(`${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`);
     }
 
     const currentWeekStart = toDateString(start);
@@ -86,7 +89,7 @@ router.get('/', requireAuth, requireFeature('availability'), async (req, res) =>
 
     res.render('availability/index', {
       weeks, availMap, todayStr, allUsers, targetUserId, targetUser,
-      lockBeforeStr, targetUserLocked, currentWeekStart, lockedMonths, unlockedMonths, autoLockedMonth
+      lockBeforeStr, targetUserLocked, currentWeekStart, lockedMonths, unlockedMonths, autoLockedMonths
     });
   } catch (err) {
     console.error(err);
