@@ -374,26 +374,12 @@ function _formatDate(d) {
 }
 
 // Resolves a payment method *name* to its numeric Id via GET /api3/order/payment.
-// Matching is tolerant because (a) some platform names carry a volatile suffix, e.g.
-// "Odroczony termin płatności dni (0)" — the "(0)" is the number of deferred-payment days and
-// changes per client; and (b) the value configured in settings is often a colloquial term
-// (e.g. "Gotówka") that shares no words with the platform's official name
-// ("Płatność za pobraniem"). Strategy (first hit wins): exact (ci) → normalized equal (drop
-// trailing "(…)" + collapse spaces) → either name is a prefix of the other → either contains
-// the other → synonym keyword match. Returns null when the list can't be fetched or nothing matches.
-//
-// Synonym groups: each entry maps regexes (matched against BOTH the configured value and the
-// platform option) to a shared payment "kind". If the configured value and an option resolve
-// to the same kind, they match. Lets "Gotówka"/"za pobraniem"/"COD" all hit one option.
-const PAYMENT_SYNONYMS = [
-  { kind: 'cod',      re: /(gotów|gotow|pobran|za pobr|cash|cod)/i },           // cash / cash on delivery
-  { kind: 'prepaid',  re: /(przedp|z g[oó]ry|awans|prepaid|z g[oó]ry)/i },      // prepayment
-  { kind: 'deferred', re: /(odrocz|termin|kredyt|przelew|faktur|deferred)/i },  // deferred term / transfer
-];
-function _paymentKind(name) {
-  const hit = PAYMENT_SYNONYMS.find(g => g.re.test(name || ''));
-  return hit ? hit.kind : null;
-}
+// The configured payment name is expected to be one of the platform's actual options (chosen
+// from the dropdown in order settings, populated from GET /api3/order/payment). Matching is by
+// exact name (case-insensitive); we also accept a "normalized" match that ignores a trailing
+// "(…)" suffix because the deferred-term option's name carries a volatile day count, e.g.
+// "Odroczony termin płatności dni (0)" → "(7)". No synonym/fuzzy mapping — the stored value must
+// be a real platform option. Returns null when the list can't be fetched or nothing matches.
 async function _resolvePaymentId(paymentName, token) {
   try {
     const resp = await apiRequest('/api3/order/payment', 'GET', null, token);
@@ -406,20 +392,12 @@ async function _resolvePaymentId(paymentName, token) {
     const norm = s => ci(s).replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
     const wanted = ci(paymentName);
     const wantedNorm = norm(paymentName);
-    const wantedKind = _paymentKind(paymentName);
 
-    const exact    = items.find(p => ci(p.Name) === wanted);
-    const normEq   = items.find(p => norm(p.Name) === wantedNorm);
-    const prefix   = items.find(p => { const n = norm(p.Name); return n.startsWith(wantedNorm) || wantedNorm.startsWith(n); });
-    const contains = items.find(p => { const n = norm(p.Name); return n.includes(wantedNorm) || wantedNorm.includes(n); });
-    const synonym  = wantedKind ? items.find(p => _paymentKind(p.Name) === wantedKind) : null;
-    const match = exact || normEq || prefix || contains || synonym;
-
+    const match = items.find(p => ci(p.Name) === wanted) || items.find(p => norm(p.Name) === wantedNorm);
     if (!match) {
       console.warn(`[basket] no payment match for "${paymentName}". Available: ${items.map(p => p.Name).join(' | ')}`);
       return null;
     }
-    if (match === synonym) console.log(`[basket] payment "${paymentName}" matched "${match.Name}" by synonym (${wantedKind})`);
     return match.Id ?? null;
   } catch (e) {
     console.warn('[basket] _resolvePaymentId error:', e.message);
@@ -439,6 +417,17 @@ async function getDeliveryOptions(creds = {}, addressId = null) {
   return resp.body?.Items || [];
 }
 
+async function getPaymentOptions(creds = {}) {
+  const { clientId, apiKey } = creds;
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
+  const token = await getToken(clientId, apiKey);
+  const resp = await apiRequest('/api3/order/payment', 'GET', null, token);
+  if (resp.status !== 200) {
+    throw new Error(`Payment API error: ${resp.status} — ${JSON.stringify(resp.body)}`);
+  }
+  return resp.body?.Items || [];
+}
+
 async function getClientAddresses(creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
@@ -450,4 +439,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getClientAddresses };

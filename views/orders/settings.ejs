@@ -106,12 +106,26 @@
           </div>
           <div class="sm:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1">
-              Nazwa płatności (PaymentName)
-              <span class="text-slate-400 font-normal ml-1">— opcjonalnie. Skontaktuj się z Inter-Mlecz, aby uzyskać poprawną wartość.</span>
+              Sposób płatności (PaymentName)
+              <span class="text-slate-400 font-normal ml-1">— opcje pobrane z platformy Inter-Mlecz.</span>
             </label>
-            <input type="text" name="cafe_payment_name" value="<%= orderSettings.cafe_payment_name || '' %>"
-              placeholder="np. PRZELEW"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            <% if (typeof paymentOptions !== 'undefined' && paymentOptions.length > 0) { %>
+              <select name="cafe_payment_name"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+                <option value="">— wybierz —</option>
+                <% paymentOptions.forEach(function(p) { %>
+                  <option value="<%= p.Name %>" <%= orderSettings.cafe_payment_name === p.Name ? 'selected' : '' %>><%= p.Name %></option>
+                <% }); %>
+              </select>
+              <% if (orderSettings.cafe_payment_name && !paymentOptions.some(p => p.Name === orderSettings.cafe_payment_name)) { %>
+                <p class="text-xs text-amber-600 mt-1">Zapisana wartość „<%= orderSettings.cafe_payment_name %>" nie pasuje do żadnej opcji platformy — wybierz z listy.</p>
+              <% } %>
+            <% } else { %>
+              <input type="text" name="cafe_payment_name" value="<%= orderSettings.cafe_payment_name || '' %>"
+                placeholder="np. Płatność za pobraniem"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+              <p class="text-xs text-slate-400 mt-1">Nie udało się pobrać opcji z platformy — wpisz dokładną nazwę sposobu płatności.</p>
+            <% } %>
           </div>
         </div>
         <div class="mt-3">

@@ -495,9 +495,18 @@ router.get('/settings', requireAdmin, async (req, res) => {
     const orderSettings = await getOrderSettings(locationId) || {};
     const catalogStatus = await vendorCatalog.catalogStatus(locationId).catch(() => ({ count: 0, syncedAt: null }));
 
+    // Live payment options from the API vendor, so the dropdown offers exactly what the B2B
+    // platform accepts (no fuzzy mapping). Empty list → the view falls back to a text input.
+    const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
+    let paymentOptions = [];
+    if (apiVendor) {
+      paymentOptions = await vendorApi.getPaymentOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key })
+        .catch(e => { console.warn('Payment options fetch failed:', e.message); return []; });
+    }
+
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor, orderSettings, catalogStatus,
+      vendors, editVendor, orderSettings, catalogStatus, paymentOptions,
     });
   } catch (e) {
     console.error(e);
