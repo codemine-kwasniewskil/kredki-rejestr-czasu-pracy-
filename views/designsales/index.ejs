@@ -1,6 +1,11 @@
 <% locals.currentPath = '/design-sales'; %>
 <%- include('../partials/head', { title: 'Sprzedaż Designu' }) %>
 <%- include('../partials/nav') %>
+<style>
+  /* iOS Safari ignores width on native date inputs unless appearance is reset;
+     this keeps the date field the same width as the other fields (picker still opens on tap) */
+  .ds-date { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+</style>
 
 <%
 function fmtDate(dateVal) {
@@ -37,7 +42,7 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
         <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Data <span class="text-red-500">*</span></label>
           <input type="date" name="sold_at" value="<%= today %>" required
-                 class="w-full min-w-0 max-w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                 class="ds-date block w-full min-w-0 max-w-full box-border border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
         </div>
         <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Marka</label>
