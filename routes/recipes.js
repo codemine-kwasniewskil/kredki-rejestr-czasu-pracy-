@@ -10,14 +10,12 @@ const canEdit = [requireAuth, requireFeature('recipes'), requireRole('admin', 'l
 
 // Recipe categories with icons — shared with the views.
 const CATEGORIES = [
-  { value: 'kawa',         label: 'Kawa',              icon: '☕' },
-  { value: 'herbata',      label: 'Herbata',           icon: '🍵' },
-  { value: 'napoje_zimne', label: 'Napoje zimne',      icon: '🧊' },
-  { value: 'koktajle',     label: 'Koktajle',          icon: '🍹' },
-  { value: 'smoothie',     label: 'Smoothie / Shake',  icon: '🥤' },
-  { value: 'czekolada',    label: 'Czekolada',         icon: '🍫' },
-  { value: 'desery',       label: 'Desery',            icon: '🍰' },
-  { value: 'inne',         label: 'Inne',              icon: '🧾' },
+  { value: 'kawa',         label: 'Kawa',          icon: '☕' },
+  { value: 'matcha',       label: 'Matcha',        icon: '🌿' },
+  { value: 'herbata',      label: 'Herbata',       icon: '🍵' },
+  { value: 'napoje_zimne', label: 'Napoje zimne',  icon: '🧊' },
+  { value: 'czekolada',    label: 'Czekolada',     icon: '🍫' },
+  { value: 'inne',         label: 'Inne',          icon: '🧾' },
 ];
 const CATEGORY_VALUES = CATEGORIES.map(c => c.value);
 

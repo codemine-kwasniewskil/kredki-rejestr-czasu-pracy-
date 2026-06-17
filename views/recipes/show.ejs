@@ -6,6 +6,7 @@
   const catMap = {};
   categories.forEach(c => catMap[c.value] = c);
   const c = catMap[recipe.category] || { icon: '🧾', label: recipe.category };
+  const isKawa = recipe.category === 'kawa';
   const ingredients = (recipe.ingredients || '').split('\n').map(l => l.trim()).filter(Boolean);
   const steps = (recipe.steps || '').split('\n').map(l => l.trim()).filter(Boolean);
   function fmtDate(v) {
@@ -91,8 +92,9 @@
       </div>
       <% } %>
 
-      <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Ingredients / flavor notes -->
+      <div class="p-5 <%= isKawa ? 'grid grid-cols-1 md:grid-cols-2 gap-6' : '' %>">
+        <!-- Ingredients / flavor notes (coffee only) -->
+        <% if (isKawa) { %>
         <div>
           <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2"><span>🧾</span> Nuty smakowe / składniki</h2>
           <% if (ingredients.length === 0) { %>
@@ -108,10 +110,11 @@
           </ul>
           <% } %>
         </div>
+        <% } %>
 
-        <!-- Steps -->
+        <!-- Steps / recipe -->
         <div>
-          <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2"><span>👩‍🍳</span> Przygotowanie</h2>
+          <h2 class="font-semibold text-slate-700 mb-3 flex items-center gap-2"><span>👩‍🍳</span> <%= isKawa ? 'Przygotowanie' : 'Przepis' %></h2>
           <% if (steps.length === 0) { %>
             <p class="text-slate-400 text-sm">Brak opisu przygotowania.</p>
           <% } else { %>

@@ -32,7 +32,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">Kategoria</label>
-          <select name="category" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+          <select name="category" id="catSelect" onchange="toggleCategoryFields()" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
             <% categories.forEach(c => { %>
               <option value="<%= c.value %>" <%= recipe.category === c.value ? 'selected' : '' %>><%= c.icon %> <%= c.label %></option>
             <% }) %>
@@ -52,8 +52,8 @@
         </div>
       </div>
 
-      <!-- Brewing parameters (coffee) -->
-      <div class="border border-slate-100 rounded-lg p-3 bg-slate-50/60">
+      <!-- Brewing parameters (coffee only) -->
+      <div class="kawa-only border border-slate-100 rounded-lg p-3 bg-slate-50/60">
         <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Parametry parzenia <span class="font-normal normal-case text-slate-400">(kawa — opcjonalne)</span></div>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
@@ -89,7 +89,7 @@
         </div>
       </div>
 
-      <div>
+      <div class="kawa-only">
         <label class="block text-xs font-medium text-slate-600 mb-1">Nuty smakowe / składniki <span class="text-slate-400 font-normal">(jeden w linii)</span></label>
         <textarea name="ingredients" rows="4"
           placeholder="np. 70% single origin choc, rum, raisins&#10;lub: Woda różana, maliny, kwiaty"
@@ -97,13 +97,16 @@
       </div>
 
       <div>
-        <label class="block text-xs font-medium text-slate-600 mb-1">Przygotowanie <span class="text-slate-400 font-normal">(jeden krok w linii)</span></label>
+        <label class="block text-xs font-medium text-slate-600 mb-1">
+          <span id="stepsLabel">Przygotowanie</span>
+          <span class="text-slate-400 font-normal cursor-help" title="Każda linia to osobny krok — zostanie automatycznie ponumerowany na podglądzie przepisu.">(każda linia = osobny krok ⓘ)</span>
+        </label>
         <textarea name="steps" rows="6"
           placeholder="Zaparz espresso&#10;Spień mleko&#10;Połącz i podaj"
           class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"><%= recipe.steps || '' %></textarea>
       </div>
 
-      <div>
+      <div class="kawa-only">
         <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi</label>
         <textarea name="notes" rows="2"
           placeholder="Opcjonalne wskazówki, warianty, alergeny…"
@@ -125,4 +128,15 @@
 
   </div>
 </div>
+
+<script>
+  // Show coffee-specific fields only for the "kawa" category; other categories keep just
+  // cena, naczynie and the long "Przepis" text.
+  function toggleCategoryFields() {
+    var isKawa = document.getElementById('catSelect').value === 'kawa';
+    document.querySelectorAll('.kawa-only').forEach(function (el) { el.style.display = isKawa ? '' : 'none'; });
+    document.getElementById('stepsLabel').textContent = isKawa ? 'Przygotowanie' : 'Przepis';
+  }
+  toggleCategoryFields();
+</script>
 <%- include('../partials/footer') %>

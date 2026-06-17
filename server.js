@@ -841,7 +841,7 @@ const migrationsReady = (async () => {
       const samples = [
         ['Tanat',     'kawa',     25, 94, '12.5/200', '40x5',        '15.5 prawy młynek', '70% single origin choc, rum, raisins'],
         ['Friedhats', 'kawa',     27, 94, '12.5/200', '40/40/40/80', '16 prawy młynek',   'Żurawina, cukier puder, herbata, cytryna'],
-        ['Rose Fizz', 'koktajle', 24, 93, '13/200',   '40x5',        '10 lewy młynek',    'Woda różana, maliny, kwiaty'],
+        ['Rose Fizz', 'napoje_zimne', 24, 93, '13/200', '40x5',      '10 lewy młynek',    'Woda różana, maliny, kwiaty'],
       ];
       for (const [name, category, price, temp, dose, pours, grind, ingredients] of samples) {
         await db.run(
@@ -853,6 +853,11 @@ const migrationsReady = (async () => {
       console.log('✓ Seeded sample recipes for Kredki');
     }
   } catch (e) { console.error('recipes seed error:', e.message); }
+  // Remap recipes left in removed categories (koktajle/smoothie/desery) — idempotent.
+  try {
+    await db.run(`UPDATE recipes SET category='napoje_zimne' WHERE category='koktajle'`);
+    await db.run(`UPDATE recipes SET category='inne' WHERE category IN ('smoothie','desery')`);
+  } catch (e) { console.error('recipes category remap error:', e.message); }
 
   // ── design_sales table (Kredki only) ──────────────────────────────────────
   await db.run(`CREATE TABLE IF NOT EXISTS design_sales (
