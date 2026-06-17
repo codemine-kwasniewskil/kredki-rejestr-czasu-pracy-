@@ -768,8 +768,11 @@ router.put('/:id(\\d+)', requireManager, async (req, res) => {
       return res.redirect(`/orders/${order.id}/edit`);
     }
 
+    // If we're editing an order whose basket is already created, mark it dirty so the UI forces
+    // an "Aktualizuj koszyk" sync before "Finalizuj" becomes available again.
+    const markDirty = order.status === 'basket_created' ? ', basket_dirty=1' : '';
     await db.run(
-      `UPDATE purchase_orders SET notes=?, delivery_date=?, own_order_number=?, payment_method=?, delivery_address=?, updated_at=NOW() WHERE id=?`,
+      `UPDATE purchase_orders SET notes=?, delivery_date=?, own_order_number=?, payment_method=?, delivery_address=?${markDirty}, updated_at=NOW() WHERE id=?`,
       [notes?.trim() || null, delivery_date || null, own_order_number?.trim() || null, payment_method || null, delivery_address?.trim() || null, order.id]
     );
 
@@ -1009,7 +1012,7 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
     });
 
     await db.run(
-      `UPDATE purchase_orders SET status='basket_created', vendor_basket_id=?, updated_at=NOW() WHERE id=?`,
+      `UPDATE purchase_orders SET status='basket_created', vendor_basket_id=?, basket_dirty=0, updated_at=NOW() WHERE id=?`,
       [String(basketId), order.id]
     );
     await log(sessionUser(req), 'Zamówienia – koszyk utworzony', `ID: ${order.id} | BasketId: ${basketId}`);
@@ -1060,7 +1063,7 @@ router.post('/:id/update-basket', requireAdmin, async (req, res) => {
       ...creds,
     });
 
-    await db.run(`UPDATE purchase_orders SET updated_at=NOW() WHERE id=?`, [order.id]);
+    await db.run(`UPDATE purchase_orders SET basket_dirty=0, updated_at=NOW() WHERE id=?`, [order.id]);
     await log(sessionUser(req), 'Zamówienia – koszyk zaktualizowany', `ID: ${order.id} | BasketId: ${order.vendor_basket_id}`);
 
     req.flash('success', `Koszyk u dostawcy zaktualizowany (ID: ${order.vendor_basket_id}). Sprawdź koszyk na platformie B2B.`);
@@ -1086,6 +1089,10 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
     }
     if (!order.vendor_basket_id) {
       req.flash('error', 'Brak ID koszyka — nie można sfinalizować.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+    if (order.basket_dirty) {
+      req.flash('error', 'Zamówienie zostało zmienione po utworzeniu koszyka. Najpierw kliknij „Aktualizuj koszyk”, aby zsynchronizować zmiany.');
       return res.redirect(`/orders/${order.id}`);
     }
 

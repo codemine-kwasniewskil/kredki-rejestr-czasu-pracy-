@@ -744,6 +744,7 @@ const migrationsReady = (async () => {
     { col: 'vendor_order_status',     ddl: 'VARCHAR(200) DEFAULT NULL' },
     { col: 'vendor_order_paid',       ddl: 'TINYINT(1) DEFAULT NULL' },
     { col: 'vendor_status_synced_at', ddl: 'DATETIME DEFAULT NULL' },
+    { col: 'basket_dirty',            ddl: 'TINYINT(1) DEFAULT 0' },
   ];
   for (const { col, ddl } of poExtraCols) {
     try {
