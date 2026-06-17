@@ -91,7 +91,7 @@ async function getProductsBySku(skus, opts = {}) {
 // Steps 1-5: create basket, add each product via the item endpoint, fetch additional
 // parameters, PATCH metadata (comment/address/delivery), verify. Returns the basket ID
 // so it can be inspected on the B2B platform before finalization.
-async function prepareBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate }) {
+async function prepareBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
@@ -209,6 +209,12 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     const dateValue = _formatDate(deliveryDate);
     additionalProperties.push({ Key: dateKey, Values: [dateValue] });
     console.log(`[basket] mapping deliveryDate → AdditionalProperties[${dateKey}]: ${dateValue}`);
+  }
+  // Own order number → platform's dedicated nr_wlasny field (NOT the comment).
+  if (ownOrderNumber) {
+    const ownKey = _resolveAdditionalParamName(additionalParams, ['nr_wlasny'], 'nr_wlasny');
+    additionalProperties.push({ Key: ownKey, Values: [String(ownOrderNumber)] });
+    console.log(`[basket] mapping ownOrderNumber → AdditionalProperties[${ownKey}]: ${ownOrderNumber}`);
   }
   if (additionalProperties.length > 0) patchBody.AdditionalProperties = additionalProperties;
 

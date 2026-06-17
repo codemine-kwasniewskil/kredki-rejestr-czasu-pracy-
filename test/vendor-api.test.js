@@ -181,6 +181,20 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(body.RequestedDeliveryDate, undefined, 'should NOT send a top-level RequestedDeliveryDate');
   });
 
+  // 4a. PATCH carries the own order number as an nr_wlasny AdditionalProperties entry
+  await test('PATCH includes own order number in AdditionalProperties as nr_wlasny', async () => {
+    const getBody = stubWithPatchCapture(fullSeq());
+    const api = loadVendorApi();
+    await api.placeOrderViaBasket({ ...BASE_INPUT, ownOrderNumber: 'PO-2026-17' });
+
+    const body = getBody();
+    assert.ok(Array.isArray(body.AdditionalProperties), 'AdditionalProperties should be an array');
+    const ownProp = body.AdditionalProperties.find(p => p.Key === 'nr_wlasny');
+    assert.ok(ownProp, 'expected an nr_wlasny entry');
+    assert.deepStrictEqual(ownProp.Values, ['PO-2026-17'],
+      `expected Values ['PO-2026-17'], got: ${JSON.stringify(ownProp.Values)}`);
+  });
+
   // 4b. PATCH resolves payment name to PaymentId via /api3/order/payment
   await test('PATCH includes PaymentId resolved from paymentName', async () => {
     // The payment lookup happens during prepareBasket, after additionalparameters and before PATCH.

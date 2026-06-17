@@ -953,12 +953,13 @@ async function _buildBasketParams(locationId, order) {
     };
   }
 
-  const commentParts = [order.notes];
-  if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
-  const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} - Kredki`;
+  // Own order number goes to the platform's dedicated nr_wlasny field (see prepareBasket),
+  // NOT into the comment. The "|" char is rejected by the platform, so it's stripped from notes.
+  const ownOrderNumber = order.own_order_number?.trim() || null;
+  const comment = (order.notes?.trim() || `Zamówienie #${order.id} - Kredki`).replace(/\|/g, '/');
   const paymentName = settings.cafe_payment_name?.trim() || null;
 
-  return { itemsWithSku, creds, address, addressId, comment, paymentName };
+  return { itemsWithSku, creds, address, addressId, comment, paymentName, ownOrderNumber };
 }
 
 // ── Step 1: Create basket (approved → basket_created) ─────────────────────
@@ -974,7 +975,7 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${req.params.id}`);
     }
 
-    const { itemsWithSku, creds, address, addressId, comment, paymentName } = await _buildBasketParams(locationId, order);
+    const { itemsWithSku, creds, address, addressId, comment, paymentName, ownOrderNumber } = await _buildBasketParams(locationId, order);
     if (itemsWithSku.length === 0) {
       req.flash('error', 'Żaden produkt nie ma przypisanego klucza SKU dostawcy.');
       return res.redirect(`/orders/${order.id}`);
@@ -984,6 +985,7 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
       items: itemsWithSku,
       comment,
       paymentName,
+      ownOrderNumber,
       address,
       addressId,
       deliveryDate: order.delivery_date || null,
