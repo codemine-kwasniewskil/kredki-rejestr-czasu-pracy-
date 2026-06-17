@@ -8,6 +8,11 @@
   const c = catMap[recipe.category] || { icon: '🧾', label: recipe.category };
   const ingredients = (recipe.ingredients || '').split('\n').map(l => l.trim()).filter(Boolean);
   const steps = (recipe.steps || '').split('\n').map(l => l.trim()).filter(Boolean);
+  function fmtDate(v) {
+    if (!v) return '';
+    const d = new Date(v); if (isNaN(d)) return '';
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+  }
 %>
 
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
@@ -40,6 +45,7 @@
             <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600"><%= c.icon %> <%= c.label %></span>
             <% if (recipe.glass) { %><span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">🥛 <%= recipe.glass %></span><% } %>
             <% if (recipe.prep_time_min) { %><span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">⏱ <%= recipe.prep_time_min %> min</span><% } %>
+            <% if (recipe.created_at) { %><span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">📅 <%= fmtDate(recipe.created_at) %></span><% } %>
             <% if (!recipe.active) { %><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Nieaktywny</span><% } %>
           </div>
         </div>

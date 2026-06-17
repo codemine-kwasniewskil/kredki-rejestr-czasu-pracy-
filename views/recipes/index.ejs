@@ -10,6 +10,27 @@
     const lines = txt.split('\n').map(l => l.trim()).filter(Boolean);
     return lines.slice(0, 3).join(' · ') + (lines.length > 3 ? ' …' : '');
   }
+  function fmtDate(v) {
+    if (!v) return '';
+    const d = new Date(v);
+    if (isNaN(d)) return '';
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+  }
+  function sortUrl(s) {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (cat) p.set('cat', cat);
+    p.set('sort', s);
+    return '/recipes?' + p.toString();
+  }
+  function catUrl(catVal) {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (catVal) p.set('cat', catVal);
+    if (sort && sort !== 'date') p.set('sort', sort);
+    const qs = p.toString();
+    return '/recipes' + (qs ? '?' + qs : '');
+  }
 %>
 
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
@@ -37,25 +58,32 @@
     <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"><%= error[0] %></div>
     <% } %>
 
-    <!-- Search -->
-    <form method="GET" action="/recipes" class="mb-4">
-      <% if (cat) { %><input type="hidden" name="cat" value="<%= cat %>"><% } %>
-      <div class="relative">
-        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-        <input type="text" name="q" value="<%= q %>" placeholder="Szukaj przepisu po nazwie…"
-          class="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+    <!-- Search + sort -->
+    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+      <form method="GET" action="/recipes" class="flex-1">
+        <% if (cat) { %><input type="hidden" name="cat" value="<%= cat %>"><% } %>
+        <% if (sort) { %><input type="hidden" name="sort" value="<%= sort %>"><% } %>
+        <div class="relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" name="q" value="<%= q %>" placeholder="Szukaj przepisu po nazwie…"
+            class="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        </div>
+      </form>
+      <div class="flex bg-white border border-slate-200 rounded-lg p-1 w-fit self-start">
+        <a href="<%= sortUrl('date') %>" class="px-3 py-1 text-sm rounded-md font-medium transition-colors <%= sort === 'date' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100' %>">Najnowsze</a>
+        <a href="<%= sortUrl('name') %>" class="px-3 py-1 text-sm rounded-md font-medium transition-colors <%= sort === 'name' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100' %>">A–Z</a>
       </div>
-    </form>
+    </div>
 
     <!-- Category filter chips -->
     <div class="flex flex-wrap gap-2 mb-5">
-      <a href="/recipes<%= q ? '?q=' + encodeURIComponent(q) : '' %>"
+      <a href="<%= catUrl('') %>"
         class="px-3 py-1.5 rounded-full text-sm border transition-colors <%= cat === '' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' %>">
         Wszystkie <span class="opacity-60">(<%= total %>)</span>
       </a>
       <% categories.forEach(c => { %>
         <% const cc = counts[c.value] || 0; %>
-        <a href="/recipes?cat=<%= c.value %><%= q ? '&q=' + encodeURIComponent(q) : '' %>"
+        <a href="<%= catUrl(c.value) %>"
           class="px-3 py-1.5 rounded-full text-sm border transition-colors <%= cat === c.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' %>">
           <%= c.icon %> <%= c.label %> <span class="opacity-60">(<%= cc %>)</span>
         </a>
@@ -93,6 +121,7 @@
             <% if (r.dose) { %><span class="inline-flex items-center gap-1">⚖ <%= r.dose %></span><% } %>
             <% if (r.glass) { %><span class="inline-flex items-center gap-1">🥛 <%= r.glass %></span><% } %>
             <% if (r.prep_time_min) { %><span class="inline-flex items-center gap-1">⏱ <%= r.prep_time_min %> min</span><% } %>
+            <% if (r.created_at) { %><span class="inline-flex items-center gap-1 ml-auto">📅 <%= fmtDate(r.created_at) %></span><% } %>
           </div>
         </a>
         <% }) %>

@@ -40,10 +40,14 @@ router.get('/', canView, async (req, res) => {
     if (q) { where.push('name LIKE ?'); params.push('%' + q + '%'); }
     if (cat) { where.push('category = ?'); params.push(cat); }
 
+    // Sort: by date added (newest first, default) or alphabetically.
+    const sort = req.query.sort === 'name' ? 'name' : 'date';
+    const orderBy = sort === 'name' ? 'name ASC' : 'created_at DESC, id DESC';
+
     const recipes = await db.all(
-      `SELECT id, name, category, price, temperature_c, dose, glass, prep_time_min, ingredients, active
+      `SELECT id, name, category, price, temperature_c, dose, glass, prep_time_min, ingredients, active, created_at
        FROM recipes WHERE ${where.join(' AND ')}
-       ORDER BY active DESC, name ASC`,
+       ORDER BY active DESC, ${orderBy}`,
       params
     );
 
@@ -58,7 +62,7 @@ router.get('/', canView, async (req, res) => {
 
     res.render('recipes/index', {
       currentPath: '/recipes', recipes, categories: CATEGORIES, counts, total,
-      q, cat, canEdit: isManager(req),
+      q, cat, sort, canEdit: isManager(req),
     });
   } catch (err) {
     console.error('recipes list error:', err);
