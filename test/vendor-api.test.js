@@ -354,6 +354,57 @@ function stubWithPatchCapture(responses) {
       'expected order to complete despite additionalparameters 404');
   });
 
+  // 10. updateBasket clears existing items, re-adds order lines, PATCHes — same basket ID
+  await test('updateBasket clears items, re-adds lines, and PATCHes the same basket', async () => {
+    const BASKET_WITH_ITEMS = { status: 200, body: { Id: 42, Items: [{ Sku: 'SKU-OLD' }, { Sku: 'SKU-1' }] } };
+    const DELETE_RESP = { status: 200, body: 'Basket item deleted.' };
+    // token → GET basket (read items) → DELETE x2 → findProduct → POST item → AP → PATCH → verify
+    const seq = [TOKEN_RESP, BASKET_WITH_ITEMS, DELETE_RESP, DELETE_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PATCH_RESP, VERIFY_RESP];
+    stubHttps(seq);
+
+    let deletedKeys = [];
+    let postedItem = null;
+    const inner = https.request;
+    https.request = (options, callback) => {
+      const req = inner(options, callback);
+      if (options.method === 'DELETE' && /\/api3\/basket\/42\/item$/.test(options.path)) {
+        const w = req.write.bind(req); req.write = d => { deletedKeys.push(JSON.parse(d)); return w(d); };
+      }
+      if (options.method === 'POST' && /\/api3\/basket\/42\/item$/.test(options.path)) {
+        const w = req.write.bind(req); req.write = d => { postedItem = JSON.parse(d); return w(d); };
+      }
+      return req;
+    };
+
+    const api = loadVendorApi();
+    const returnedId = await api.updateBasket({ basketId: 42, ...BASE_INPUT, paymentId: 52 });
+
+    assert.strictEqual(returnedId, 42, 'updateBasket should keep and return the same basket ID');
+    // Read current contents
+    assert.ok(capturedCalls.some(c => c.method === 'GET' && c.path === '/api3/basket/42'), 'should GET the basket to read items');
+    // Both existing lines removed
+    assert.strictEqual(deletedKeys.length, 2, `expected 2 DELETE item calls, got ${deletedKeys.length}`);
+    assert.deepStrictEqual(deletedKeys.map(k => k.Key).sort(), ['SKU-1', 'SKU-OLD']);
+    assert.ok(deletedKeys.every(k => k.KeyType === 'Sku'), 'delete keys should use KeyType Sku');
+    // Current order line re-added
+    assert.ok(postedItem, 'should POST the current order line');
+    assert.strictEqual(postedItem.ProductKey.Key, 'SKU-1');
+    assert.strictEqual(postedItem.UnitId, '7');
+    // No create call
+    assert.ok(!capturedCalls.some(c => c.method === 'POST' && c.path === '/api3/basket'),
+      'updateBasket must NOT create a new basket');
+  });
+
+  // 11. updateBasket requires a basket ID
+  await test('updateBasket throws without a basketId', async () => {
+    stubHttps([TOKEN_RESP]);
+    const api = loadVendorApi();
+    await assert.rejects(
+      () => api.updateBasket({ ...BASE_INPUT }),
+      e => { assert.ok(/Brak ID koszyka/.test(e.message), `unexpected: ${e.message}`); return true; }
+    );
+  });
+
   // ── Results ──────────────────────────────────────────────────────────────────
   console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

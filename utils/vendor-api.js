@@ -88,50 +88,22 @@ async function getProductsBySku(skus, opts = {}) {
   return catalog.getCatalogBySku({ locationId, skus });
 }
 
-// Steps 1-5: create basket, add each product via the item endpoint, fetch additional
-// parameters, PATCH metadata (comment/address/delivery), verify. Returns the basket ID
-// so it can be inspected on the B2B platform before finalization.
-async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
-  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
-
-  const token = await getToken(clientId, apiKey);
-
-  // Products are added one-by-one via POST /api3/basket/{id}/item (see Step 2). Passing
-  // products as `Lines` in the create body OR in the PATCH is silently ignored by the API
-  // (basket ends up with Items:[]). The item endpoint requires a real numeric UnitId — the
-  // "-3" sentinel is rejected ("does not have unit with id: -3"). The XML catalog only stores
-  // the unit *symbol* (e.g. "szt."), so we look up each product's numeric unit ids at order
-  // time via /api3/product/findProduct (see resolveUnitIds) and match on the symbol.
-  const lines = items
+// Maps order items to basket lines (SKU + quantity + unit symbol), dropping items without a
+// supplier SKU. Throws if nothing is left to order.
+function _orderLines(items) {
+  const lines = (items || [])
     .filter(i => i.vendor_product_key)
     .map(i => ({ Sku: String(i.vendor_product_key), Quantity: Number(i.quantity), Unit: i.unit || null }));
-
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
+  return lines;
+}
 
-  // Step 1: Create an empty basket. The POST body (Lines, Comment, …) is ignored by the API —
-  // a GET on the new basket shows Items:[] and Comment:null regardless of what we send here.
-  // Everything that actually sticks (products, comment, address, delivery) is applied via PATCH.
-  const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
-  const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})`, ShowOnFront: true };
-  if (paymentName) basketBody.PaymentName = paymentName;
-
-  console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
-  const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
-  console.error('[basket] create response:', createResp.status, JSON.stringify(createResp.body));
-  if (![200, 201].includes(createResp.status)) {
-    const msg = typeof createResp.body === 'string' ? createResp.body : JSON.stringify(createResp.body);
-    throw new Error(`Błąd tworzenia koszyka: ${msg}`);
-  }
-  const basketId = createResp.body?.Id ?? createResp.body?.BasketId ?? createResp.body?.id ?? null;
-  if (!basketId) {
-    console.error('[basket] create body (no ID field):', JSON.stringify(createResp.body));
-    throw new Error(`Brak ID koszyka w odpowiedzi: ${JSON.stringify(createResp.body)}`);
-  }
-  console.log(`[basket] created basket ID: ${basketId}`);
-
-  // Step 2: Resolve each product's numeric UnitId, then add it with its own
-  // POST /api3/basket/{id}/item call. This is the only way products actually land in the
-  // basket — `Lines` in the create body / PATCH is ignored.
+// Adds each line to the basket via POST /api3/basket/{id}/item. Products are added one-by-one —
+// `Lines` in the create body / PATCH is silently ignored by the API. The item endpoint requires
+// a real numeric UnitId (the "-3" sentinel is rejected), and the XML catalog only stores the unit
+// *symbol* (e.g. "szt."), so we resolve numeric unit ids via /api3/product/findProduct first.
+// Throws if not a single product could be added.
+async function _addItemsToBasket(basketId, lines, token) {
   const unitIdBySku = await resolveUnitIds(lines, token);
 
   let addedCount = 0;
@@ -165,8 +137,13 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paym
   if (addFailures.length > 0) {
     console.warn(`[basket] ${addFailures.length} produkt(ów) nie dodano: ${addFailures.join('; ')}`);
   }
+}
 
-  // Step 3: Fetch basket-specific additional parameters to learn what the API accepts
+// PATCHes basket metadata — comment, address, payment, delivery date and own order number.
+// Products are NOT sent here (added via the item endpoint); `Lines`/`Items` in PATCH are ignored.
+// Then verifies the basket via GET. Throws on a failed PATCH.
+async function _patchBasketFields(basketId, { comment, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }, token) {
+  // Fetch basket-specific additional parameters to learn what the API accepts.
   console.log(`[basket] GET /api3/basket/${basketId}/additionalparameters`);
   let additionalParams = null;
   try {
@@ -178,8 +155,6 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paym
     console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
-  // Step 4: PATCH basket metadata — comment, address, delivery date and ShowOnFront. Products
-  // are NOT sent here (they were added via the item endpoint in Step 2); `Lines` is ignored.
   const patchBody = { Delivery: null, ShowOnFront: true };
   if (comment) patchBody.Comment = comment;
   if (addressId) {
@@ -240,7 +215,7 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paym
     throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
   }
 
-  // Step 5: Verify the basket actually contains the items before returning it.
+  // Verify the basket contents before returning.
   try {
     const verifyResp = await apiRequest(`/api3/basket/${basketId}`, 'GET', null, token);
     const bodyRaw = typeof verifyResp.body === 'string' ? verifyResp.body : JSON.stringify(verifyResp.body);
@@ -248,6 +223,97 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paym
   } catch (e) {
     console.warn('[basket] verify fetch error:', e.message);
   }
+}
+
+// Derives a { KeyType, Key } removable handle from a basket item object. The basket GET response
+// shape varies, so we try the common fields (Sku preferred, then EAN/ProductKey). Returns null
+// when no usable key is present.
+function _extractItemKey(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (item.Sku) return { KeyType: 'Sku', Key: String(item.Sku) };
+  if (item.ProductSku) return { KeyType: 'Sku', Key: String(item.ProductSku) };
+  if (item.Product?.Sku) return { KeyType: 'Sku', Key: String(item.Product.Sku) };
+  if (item.ProductKey?.Key && item.ProductKey?.KeyType) return { KeyType: String(item.ProductKey.KeyType), Key: String(item.ProductKey.Key) };
+  if (item.Ean) return { KeyType: 'Ean', Key: String(item.Ean) };
+  return null;
+}
+
+// Removes every product currently in the basket (DELETE /api3/basket/{id}/item per line). There
+// is no "clear all" endpoint, so we GET the basket and delete each line by its product key.
+async function _clearBasketItems(basketId, token) {
+  const resp = await apiRequest(`/api3/basket/${basketId}`, 'GET', null, token);
+  if (resp.status !== 200) {
+    const raw = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+    throw new Error(`Nie można odczytać koszyka ${basketId}: HTTP ${resp.status} ${raw}`);
+  }
+  const items = (resp.body && Array.isArray(resp.body.Items)) ? resp.body.Items : [];
+  console.log(`[basket] clearing ${items.length} item(s) from basket ${basketId}`);
+  for (const it of items) {
+    const key = _extractItemKey(it);
+    if (!key) {
+      console.warn('[basket] clear: could not derive product key for item', JSON.stringify(it));
+      continue;
+    }
+    const delResp = await apiRequest(`/api3/basket/${basketId}/item`, 'DELETE', { Key: key.Key, KeyType: key.KeyType }, token);
+    const raw = typeof delResp.body === 'string' ? delResp.body : JSON.stringify(delResp.body);
+    if ([200, 201, 204].includes(delResp.status)) {
+      console.log(`[basket] removed item ${key.KeyType}=${key.Key}: ${delResp.status}`);
+    } else {
+      console.warn(`[basket] remove item ${key.KeyType}=${key.Key} failed: ${delResp.status} ${raw}`);
+    }
+  }
+}
+
+// Steps 1-5: create basket, add each product via the item endpoint, fetch additional
+// parameters, PATCH metadata (comment/address/delivery), verify. Returns the basket ID
+// so it can be inspected on the B2B platform before finalization.
+async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+
+  const token = await getToken(clientId, apiKey);
+  const lines = _orderLines(items);
+
+  // Step 1: Create an empty basket. The POST body (Lines, Comment, …) is ignored by the API —
+  // a GET on the new basket shows Items:[] and Comment:null regardless of what we send here.
+  // Everything that actually sticks (products, comment, address, delivery) is applied via PATCH.
+  const ts = new Date().toISOString().replace('T', ' ').substring(0, 16);
+  const basketBody = { BasketName: `${comment || 'Zamówienie'} (${ts})`, ShowOnFront: true };
+  if (paymentName) basketBody.PaymentName = paymentName;
+
+  console.log('[basket] POST /api3/basket:', JSON.stringify(basketBody, null, 2));
+  const createResp = await apiRequest('/api3/basket', 'POST', basketBody, token);
+  console.error('[basket] create response:', createResp.status, JSON.stringify(createResp.body));
+  if (![200, 201].includes(createResp.status)) {
+    const msg = typeof createResp.body === 'string' ? createResp.body : JSON.stringify(createResp.body);
+    throw new Error(`Błąd tworzenia koszyka: ${msg}`);
+  }
+  const basketId = createResp.body?.Id ?? createResp.body?.BasketId ?? createResp.body?.id ?? null;
+  if (!basketId) {
+    console.error('[basket] create body (no ID field):', JSON.stringify(createResp.body));
+    throw new Error(`Brak ID koszyka w odpowiedzi: ${JSON.stringify(createResp.body)}`);
+  }
+  console.log(`[basket] created basket ID: ${basketId}`);
+
+  await _addItemsToBasket(basketId, lines, token);
+  await _patchBasketFields(basketId, { comment, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }, token);
+
+  return basketId;
+}
+
+// Updates an EXISTING basket in place to match the current order, keeping the same basket ID
+// (no delete + recreate). The API has no quantity-change or clear-all endpoint, so we clear the
+// current lines (DELETE per item), re-add the current order lines, then PATCH metadata.
+async function updateBasket({ basketId, items, comment, clientId, apiKey, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  if (!basketId) throw new Error('Brak ID koszyka do aktualizacji.');
+
+  const token = await getToken(clientId, apiKey);
+  const lines = _orderLines(items);
+
+  console.log(`[basket] updating basket ${basketId} in place`);
+  await _clearBasketItems(basketId, token);
+  await _addItemsToBasket(basketId, lines, token);
+  await _patchBasketFields(basketId, { comment, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }, token);
 
   return basketId;
 }
@@ -442,4 +508,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, updateBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getClientAddresses };

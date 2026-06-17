@@ -1022,6 +1022,55 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
   }
 });
 
+// ── Step 1b: Update an existing basket in place (basket_created) ──────────
+// Re-syncs the already-created basket with the current order (items, quantities, comment,
+// payment, delivery date, nr_wlasny) without deleting it — the basket ID is preserved.
+
+router.post('/:id/update-basket', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
+    );
+    if (!order || order.status !== 'basket_created') {
+      req.flash('error', 'Tylko zamówienia z otwartym koszykiem można aktualizować.');
+      return res.redirect(`/orders/${req.params.id}`);
+    }
+    if (!order.vendor_basket_id) {
+      req.flash('error', 'Brak ID koszyka — nie można zaktualizować.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    const { itemsWithSku, creds, address, addressId, comment, paymentId, ownOrderNumber } = await _buildBasketParams(locationId, order);
+    if (itemsWithSku.length === 0) {
+      req.flash('error', 'Żaden produkt nie ma przypisanego klucza SKU dostawcy.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    await vendorApi.updateBasket({
+      basketId: order.vendor_basket_id,
+      items: itemsWithSku,
+      comment,
+      paymentId,
+      ownOrderNumber,
+      address,
+      addressId,
+      deliveryDate: order.delivery_date || null,
+      ...creds,
+    });
+
+    await db.run(`UPDATE purchase_orders SET updated_at=NOW() WHERE id=?`, [order.id]);
+    await log(sessionUser(req), 'Zamówienia – koszyk zaktualizowany', `ID: ${order.id} | BasketId: ${order.vendor_basket_id}`);
+
+    req.flash('success', `Koszyk u dostawcy zaktualizowany (ID: ${order.vendor_basket_id}). Sprawdź koszyk na platformie B2B.`);
+    res.redirect(`/orders/${order.id}`);
+  } catch (e) {
+    console.error('Update basket error:', e);
+    req.flash('error', e.message);
+    res.redirect(`/orders/${req.params.id}`);
+  }
+});
+
 // ── Step 2: Finalize basket (basket_created → placed) ─────────────────────
 
 router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {

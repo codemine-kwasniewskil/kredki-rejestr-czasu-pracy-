@@ -252,6 +252,12 @@
 
         <!-- BASKET_CREATED actions (admin only) -->
         <% if (order.status === 'basket_created' && isAdmin) { %>
+          <form method="POST" action="/orders/<%= order.id %>/update-basket"
+            onsubmit="return confirm('Zaktualizować istniejący koszyk u dostawcy bieżącą zawartością zamówienia? ID koszyka pozostanie bez zmian.')">
+            <button type="submit" class="btn btn-secondary">
+              🔄 Aktualizuj koszyk
+            </button>
+          </form>
           <form method="POST" action="/orders/<%= order.id %>/finalize-basket"
             onsubmit="return confirm('Sfinalizować koszyk i złożyć zamówienie u dostawcy Inter-Mlecz? Tej operacji nie można cofnąć.')">
             <button type="submit" class="btn btn-success">
