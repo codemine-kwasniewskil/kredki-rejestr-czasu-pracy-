@@ -663,6 +663,52 @@ router.delete('/schedule/week/:weekStart/entries', requireRole('admin', 'locatio
   }
 });
 
+// Copy all shifts from another week into this week (day-by-day, Mon→Mon …)
+router.post('/schedule/week/:weekStart/copy-from', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const { getWeekDates, toDateString } = require('../utils/helpers');
+    const targetWeekStart = req.params.weekStart;
+    const { sourceWeekStart } = req.body;
+    if (!sourceWeekStart) return res.status(400).json({ error: 'Wybierz tydzień źródłowy.' });
+    if (sourceWeekStart === targetWeekStart) return res.status(400).json({ error: 'Wybierz inny tydzień niż bieżący.' });
+
+    const locationId = getLocationId(req);
+    const isAdmin = res.locals.user.role === 'admin';
+
+    const target = await db.get('SELECT * FROM schedules WHERE week_start=? AND location_id=?', [targetWeekStart, locationId]);
+    if (!target) return res.status(404).json({ error: 'Brak grafiku docelowego.' });
+    if (target.status === 'approved' && !isAdmin) return res.status(403).json({ error: 'Nie można edytować zatwierdzonego grafiku.' });
+
+    const source = await db.get('SELECT * FROM schedules WHERE week_start=? AND location_id=?', [sourceWeekStart, locationId]);
+    if (!source) return res.status(404).json({ error: 'Brak grafiku w wybranym tygodniu źródłowym.' });
+
+    const sourceEntries = await db.all('SELECT * FROM schedule_entries WHERE schedule_id=?', [source.id]);
+    if (!sourceEntries.length) return res.json({ ok: true, copied: 0, message: 'Wybrany tydzień nie zawiera żadnych zmian.' });
+
+    const sourceDates = getWeekDates(sourceWeekStart).map(toDateString);
+    const targetDates = getWeekDates(targetWeekStart).map(toDateString);
+
+    let copied = 0;
+    for (const e of sourceEntries) {
+      const idx = sourceDates.indexOf(e.date);
+      if (idx < 0) continue;
+      // INSERT IGNORE: skip days where this worker already has a shift in the target week
+      const r = await db.run(
+        `INSERT IGNORE INTO schedule_entries (schedule_id, user_id, date, shift_template_id, custom_start, custom_end, notes)
+         VALUES (?,?,?,?,?,?,?)`,
+        [target.id, e.user_id, targetDates[idx], e.shift_template_id, e.custom_start, e.custom_end, e.notes]
+      );
+      if (r.affectedRows > 0) copied++;
+    }
+
+    log(res.locals.user, 'Kopiowanie grafiku z innego tygodnia', `Z: ${sourceWeekStart} → ${targetWeekStart} | ${copied} zmian`);
+    res.json({ ok: true, copied });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 // ── Schedule comments ─────────────────────────────────────────────────────────
 
 router.get('/schedule/:scheduleId/comments', requireAuth, async (req, res) => {

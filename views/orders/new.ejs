@@ -1,5 +1,8 @@
 <%- include('../partials/head') %>
 <%- include('../partials/nav') %>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4/dist/l10n/pl.js"></script>
 
 <div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
   <div class="max-w-5xl mx-auto px-4 py-6">
@@ -170,9 +173,9 @@
         <h3 class="font-semibold text-slate-700 mb-4">Szczegóły dostawy i płatności</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(min. jutro, bez niedziel)</span></label>
-            <input type="date" name="delivery_date" id="deliveryDate"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data dostawy <span class="text-slate-400">(bez niedziel)</span></label>
+            <input type="text" name="delivery_date" id="deliveryDate" autocomplete="off" placeholder="RRRR-MM-DD"
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 bg-white">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Własny numer zamówienia</label>
@@ -575,33 +578,23 @@ function onAddressTypeChange(type) {
   }
 }
 
-// Delivery date: minimum tomorrow, no Sundays
+// Delivery date: Sundays disabled; default = next day if ordering before 12:00,
+// otherwise the day after tomorrow (cutoff). Sundays are skipped for the default.
 (function() {
   const el = document.getElementById('deliveryDate');
-  if (!el) return;
+  if (!el || typeof flatpickr === 'undefined') return;
 
-  function localDate(y, m, d) { return new Date(y, m, d); }
-  function parseDate(str) { const [y,m,d] = str.split('-').map(Number); return localDate(y, m-1, d); }
-  function toIso(date) { return date.toISOString().split('T')[0]; }
-  function skipSunday(date) {
-    if (date.getDay() === 0) date.setDate(date.getDate() + 1);
-    return date;
-  }
+  const now = new Date();
+  const base = new Date(); base.setHours(0, 0, 0, 0);
+  base.setDate(base.getDate() + (now.getHours() < 12 ? 1 : 2));
+  if (base.getDay() === 0) base.setDate(base.getDate() + 1); // never default to Sunday
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0,0,0,0);
-
-  el.min = toIso(tomorrow);
-  el.value = toIso(skipSunday(new Date(tomorrow)));
-
-  el.addEventListener('change', function() {
-    if (!this.value) return;
-    const d = parseDate(this.value);
-    if (d.getDay() === 0) {
-      d.setDate(d.getDate() + 1);
-      this.value = toIso(d);
-    }
+  flatpickr(el, {
+    locale: 'pl',
+    dateFormat: 'Y-m-d',
+    minDate: base,
+    defaultDate: base,
+    disable: [ d => d.getDay() === 0 ],   // block all Sundays in the calendar
   });
 })();
 
