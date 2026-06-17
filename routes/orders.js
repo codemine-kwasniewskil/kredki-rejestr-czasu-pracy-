@@ -715,7 +715,8 @@ router.get('/:id(\\d+)/edit', requireManager, async (req, res) => {
     );
     if (!order) return res.status(404).render('error', { message: 'Zamówienie nie istnieje.' });
     const isAdmin = ['admin', 'super_admin'].includes(req.session.userRole);
-    const editableStatuses = isAdmin ? ['draft', 'approved'] : ['draft'];
+    // Admins can edit an open basket too — after editing, "Aktualizuj koszyk" re-syncs it.
+    const editableStatuses = isAdmin ? ['draft', 'approved', 'basket_created'] : ['draft'];
     if (!editableStatuses.includes(order.status)) {
       req.flash('error', 'Nie można edytować zamówienia w tym statusie.');
       return res.redirect(`/orders/${order.id}`);
@@ -748,7 +749,7 @@ router.put('/:id(\\d+)', requireManager, async (req, res) => {
       `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
     );
     const isAdminPut = ['admin', 'super_admin'].includes(req.session.userRole);
-    const editableStatusesPut = isAdminPut ? ['draft', 'approved'] : ['draft'];
+    const editableStatusesPut = isAdminPut ? ['draft', 'approved', 'basket_created'] : ['draft'];
     if (!order || !editableStatusesPut.includes(order.status)) {
       req.flash('error', 'Nie można edytować zamówienia w tym statusie.');
       return res.redirect(`/orders/${req.params.id}`);
