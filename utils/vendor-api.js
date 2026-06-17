@@ -335,6 +335,19 @@ async function finalizeBasket({ basketId, clientId, apiKey }) {
   console.error('[basket] finalize response:', resp.status, isHtml ? '(HTML)' : JSON.stringify(resp.body));
   if (![200, 201].includes(resp.status)) {
     const msg = isHtml ? `HTTP ${resp.status} HTML — wrong endpoint` : JSON.stringify(resp.body);
+    // The platform returns a generic BasketFinalizationProblem (often with an empty Error) when the
+    // basket can't be finalized on the frontend — most commonly the minimum order/delivery value
+    // isn't reached. Surface an actionable hint instead of the cryptic payload.
+    const items = (!isHtml && resp.body && Array.isArray(resp.body.Items)) ? resp.body.Items : [];
+    if (items.some(it => it.ErrorCode === 'BasketFinalizationProblem')) {
+      const detail = items.map(it => it.Error).filter(Boolean).join('; ');
+      throw new Error(
+        'Nie można sfinalizować koszyka — koszyk nie spełnia warunków dostawcy ' +
+        '(najczęściej nie osiągnięto minimalnej wartości zamówienia/dostawy). ' +
+        'Zwiększ ilość/wartość zamówienia, kliknij „Aktualizuj koszyk”, a następnie finalizuj. ' +
+        (detail ? `Szczegóły: ${detail}` : `(dostawca nie podał szczegółów; koszyk #${basketId})`)
+      );
+    }
     throw new Error(`Błąd finalizacji koszyka (HTTP ${resp.status}): ${msg}`);
   }
   const result = resp.body || {};

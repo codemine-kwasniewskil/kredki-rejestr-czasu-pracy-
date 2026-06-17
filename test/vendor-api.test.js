@@ -440,6 +440,17 @@ function stubWithPatchCapture(responses) {
     );
   });
 
+  // 14. BasketFinalizationProblem maps to an actionable minimum-order-value hint
+  await test('finalize maps BasketFinalizationProblem to a helpful message', async () => {
+    const FINAL_PROBLEM = { status: 400, body: { Items: [{ ContextId: '42', ContextIdName: 'BasketId', ErrorCode: 'BasketFinalizationProblem', Error: '' }] } };
+    stubHttps([TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PATCH_RESP, VERIFY_RESP, FINAL_PROBLEM]);
+    const api = loadVendorApi();
+    await assert.rejects(
+      () => api.placeOrderViaBasket(BASE_INPUT),
+      e => { assert.ok(/minimaln/i.test(e.message), `expected min-order hint, got: ${e.message}`); return true; }
+    );
+  });
+
   // ── Results ──────────────────────────────────────────────────────────────────
   console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
