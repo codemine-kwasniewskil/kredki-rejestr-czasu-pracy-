@@ -50,7 +50,12 @@ const FINDPROD_RESP = { status: 200, body: { Items: [{ Id: 100, Sku: 'SKU-1', Un
 ] }] } };
 const ITEM_RESP     = { status: 200, body: 'Basket item added.' };
 const AP_RESP       = { status: 200, body: { Items: [{ Key: 'DataRealizacjiZamowienia' }, { Key: 'nr_wlasny' }] } };
-const PAYMENT_RESP  = { status: 200, body: { Items: [{ Id: 3, Name: 'Przelew' }, { Id: 4, Name: 'Gotówka' }] } };
+// Real platform payment options (note the volatile "(0)" deferred-days suffix on the first).
+const PAYMENT_RESP  = { status: 200, body: { Items: [
+  { Id: 1, Name: 'Odroczony termin płatności dni (0)' },
+  { Id: 2, Name: 'Przedpłata' },
+  { Id: 3, Name: 'Płatność za pobraniem' },
+] } };
 const PATCH_RESP    = { status: 204, body: null };
 const VERIFY_RESP   = { status: 200, body: { Id: 42, Items: [{ Sku: 'SKU-1', Quantity: 2 }] } };
 const DELIVERY_RESP = { status: 200, body: { Items: [{ Id: 5, Name: 'Standardowa' }] } };
@@ -182,11 +187,23 @@ function stubWithPatchCapture(responses) {
     const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
     const getBody = stubWithPatchCapture(seq);
     const api = loadVendorApi();
-    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Gotówka' });
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Przedpłata' });
 
     const body = getBody();
     assert.ok(body !== null, 'PATCH body was not captured');
-    assert.strictEqual(body.PaymentId, 4, `expected PaymentId 4 (Gotówka), got: ${body.PaymentId}`);
+    assert.strictEqual(body.PaymentId, 2, `expected PaymentId 2 (Przedpłata), got: ${body.PaymentId}`);
+  });
+
+  // 4c. Payment matching tolerates the volatile "(N)" deferred-days suffix
+  await test('PaymentId resolves despite the "(0)" deferred-days suffix', async () => {
+    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
+    const getBody = stubWithPatchCapture(seq);
+    const api = loadVendorApi();
+    // Configured without the "dni (0)" suffix — should still match option Id 1.
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Odroczony termin płatności' });
+
+    const body = getBody();
+    assert.strictEqual(body.PaymentId, 1, `expected PaymentId 1 (deferred), got: ${body.PaymentId}`);
   });
 
   // 5. Each product is added via POST /api3/basket/{id}/item (not via Lines in create/PATCH)

@@ -368,7 +368,11 @@ function _formatDate(d) {
 }
 
 // Resolves a payment method *name* to its numeric Id via GET /api3/order/payment.
-// Returns null when the list can't be fetched or the name doesn't match.
+// Matching is tolerant because some platform names carry a volatile suffix, e.g.
+// "Odroczony termin płatności dni (0)" — the "(0)" is the number of deferred-payment days and
+// changes per client. Strategy (first hit wins): exact (ci) → normalized equal (drop trailing
+// "(…)" + collapse spaces) → either name is a prefix of the other → either contains the other.
+// Returns null when the list can't be fetched or nothing matches.
 async function _resolvePaymentId(paymentName, token) {
   try {
     const resp = await apiRequest('/api3/order/payment', 'GET', null, token);
@@ -376,10 +380,23 @@ async function _resolvePaymentId(paymentName, token) {
       console.warn('[basket] /api3/order/payment non-200:', resp.status, JSON.stringify(resp.body));
       return null;
     }
-    const items = resp.body?.Items || [];
-    const wanted = String(paymentName).trim().toLowerCase();
-    const match = items.find(p => String(p.Name ?? '').trim().toLowerCase() === wanted);
-    return match?.Id ?? null;
+    const items = (resp.body?.Items || []).filter(p => p?.Name != null);
+    const ci = s => String(s).trim().toLowerCase();
+    const norm = s => ci(s).replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+    const wanted = ci(paymentName);
+    const wantedNorm = norm(paymentName);
+
+    const exact   = items.find(p => ci(p.Name) === wanted);
+    const normEq  = items.find(p => norm(p.Name) === wantedNorm);
+    const prefix  = items.find(p => { const n = norm(p.Name); return n.startsWith(wantedNorm) || wantedNorm.startsWith(n); });
+    const contains = items.find(p => { const n = norm(p.Name); return n.includes(wantedNorm) || wantedNorm.includes(n); });
+    const match = exact || normEq || prefix || contains;
+
+    if (!match) {
+      console.warn(`[basket] no payment match for "${paymentName}". Available: ${items.map(p => p.Name).join(' | ')}`);
+      return null;
+    }
+    return match.Id ?? null;
   } catch (e) {
     console.warn('[basket] _resolvePaymentId error:', e.message);
     return null;
