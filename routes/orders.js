@@ -955,7 +955,7 @@ async function _buildBasketParams(locationId, order) {
 
   const commentParts = [order.notes];
   if (order.own_order_number) commentParts.push(`Nr własny: ${order.own_order_number}`);
-  const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} – Kredki`;
+  const comment = commentParts.filter(Boolean).join(' | ') || `Zamówienie #${order.id} - Kredki`;
   const paymentName = settings.cafe_payment_name?.trim() || null;
 
   return { itemsWithSku, creds, address, addressId, comment, paymentName };

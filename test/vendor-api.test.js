@@ -49,7 +49,8 @@ const FINDPROD_RESP = { status: 200, body: { Items: [{ Id: 100, Sku: 'SKU-1', Un
   { Id: '7', Name: 'szt.', Primary: true }, { Id: '8', Name: 'op.', Primary: false },
 ] }] } };
 const ITEM_RESP     = { status: 200, body: 'Basket item added.' };
-const AP_RESP       = { status: 200, body: { Items: [{ Name: 'RequestedDeliveryDate' }] } };
+const AP_RESP       = { status: 200, body: { Items: [{ Key: 'DataRealizacjiZamowienia' }, { Key: 'nr_wlasny' }] } };
+const PAYMENT_RESP  = { status: 200, body: { Items: [{ Id: 3, Name: 'Przelew' }, { Id: 4, Name: 'Gotówka' }] } };
 const PATCH_RESP    = { status: 204, body: null };
 const VERIFY_RESP   = { status: 200, body: { Id: 42, Items: [{ Sku: 'SKU-1', Quantity: 2 }] } };
 const DELIVERY_RESP = { status: 200, body: { Items: [{ Id: 5, Name: 'Standardowa' }] } };
@@ -159,16 +160,33 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(body.Delivery, null, `expected Delivery: null, got: ${body.Delivery}`);
   });
 
-  // 4. PATCH includes RequestedDeliveryDate when deliveryDate is provided
-  await test('PATCH includes RequestedDeliveryDate when deliveryDate is set', async () => {
+  // 4. PATCH carries the delivery date as a DataRealizacjiZamowienia AdditionalProperties entry
+  await test('PATCH includes delivery date in AdditionalProperties when deliveryDate is set', async () => {
     const getBody = stubWithPatchCapture(fullSeq());
     const api = loadVendorApi();
     await api.placeOrderViaBasket({ ...BASE_INPUT, deliveryDate: '2026-06-20' });
 
     const body = getBody();
     assert.ok(body !== null, 'PATCH body was not captured');
-    assert.strictEqual(body.RequestedDeliveryDate, '2026-06-20',
-      `expected RequestedDeliveryDate '2026-06-20', got: ${body.RequestedDeliveryDate}`);
+    assert.ok(Array.isArray(body.AdditionalProperties), 'AdditionalProperties should be an array');
+    const dateProp = body.AdditionalProperties.find(p => p.Key === 'DataRealizacjiZamowienia');
+    assert.ok(dateProp, 'expected a DataRealizacjiZamowienia entry');
+    assert.deepStrictEqual(dateProp.Values, ['2026-06-20'],
+      `expected Values ['2026-06-20'], got: ${JSON.stringify(dateProp.Values)}`);
+    assert.strictEqual(body.RequestedDeliveryDate, undefined, 'should NOT send a top-level RequestedDeliveryDate');
+  });
+
+  // 4b. PATCH resolves payment name to PaymentId via /api3/order/payment
+  await test('PATCH includes PaymentId resolved from paymentName', async () => {
+    // The payment lookup happens during prepareBasket, after additionalparameters and before PATCH.
+    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
+    const getBody = stubWithPatchCapture(seq);
+    const api = loadVendorApi();
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Gotówka' });
+
+    const body = getBody();
+    assert.ok(body !== null, 'PATCH body was not captured');
+    assert.strictEqual(body.PaymentId, 4, `expected PaymentId 4 (Gotówka), got: ${body.PaymentId}`);
   });
 
   // 5. Each product is added via POST /api3/basket/{id}/item (not via Lines in create/PATCH)

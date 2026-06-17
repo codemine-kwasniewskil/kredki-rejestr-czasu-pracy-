@@ -199,10 +199,30 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     if (address.TaxNumber)       addr.TaxNumber       = address.TaxNumber;
     patchBody.Address = addr;
   }
+  // Delivery (realization) date is a custom additional parameter, not a top-level basket field.
+  // It must be sent in the `AdditionalProperties` array as { Key, Values:[…] }; a top-level
+  // field (e.g. RequestedDeliveryDate) is ignored. The basket's own key is `DataRealizacjiZamowienia`.
+  const additionalProperties = [];
   if (deliveryDate) {
-    const dateField = _resolveAdditionalParamName(additionalParams, ['RequestedDeliveryDate', 'DeliveryDate'], 'RequestedDeliveryDate');
-    patchBody[dateField] = deliveryDate;
-    console.log(`[basket] mapping deliveryDate → ${dateField}: ${deliveryDate}`);
+    const dateKey = _resolveAdditionalParamName(
+      additionalParams, ['DataRealizacjiZamowienia', 'RequestedDeliveryDate', 'DeliveryDate'], 'DataRealizacjiZamowienia');
+    const dateValue = _formatDate(deliveryDate);
+    additionalProperties.push({ Key: dateKey, Values: [dateValue] });
+    console.log(`[basket] mapping deliveryDate → AdditionalProperties[${dateKey}]: ${dateValue}`);
+  }
+  if (additionalProperties.length > 0) patchBody.AdditionalProperties = additionalProperties;
+
+  // Payment method: the basket only accepts a numeric PaymentId, so resolve the configured
+  // payment *name* against /api3/order/payment. If it can't be resolved we skip it (the order
+  // can still be finalized with PaymentName at POST /api3/order time).
+  if (paymentName) {
+    const paymentId = await _resolvePaymentId(paymentName, token);
+    if (paymentId != null) {
+      patchBody.PaymentId = paymentId;
+      console.log(`[basket] resolved payment "${paymentName}" → PaymentId ${paymentId}`);
+    } else {
+      console.warn(`[basket] could not resolve PaymentId for "${paymentName}" — leaving payment unset on basket`);
+    }
   }
 
   console.log(`[basket] PATCH /api3/basket/${basketId}:`, JSON.stringify(patchBody, null, 2));
@@ -327,16 +347,43 @@ async function resolveUnitIds(lines, token) {
   return out;
 }
 
-// Looks for a parameter name in the additionalparameters API response, falling back to defaultName.
-// candidateNames is checked in priority order against Items[].Name (case-insensitive).
+// Looks for a parameter key in the additionalparameters API response, falling back to defaultName.
+// candidateNames is checked in priority order against each item's Key/Name (case-insensitive).
 function _resolveAdditionalParamName(additionalParams, candidateNames, defaultName) {
   const items = additionalParams?.Items || additionalParams?.AdditionalParameters || [];
+  const matches = (p, candidate) =>
+    String(p.Key ?? '').toLowerCase() === candidate.toLowerCase() ||
+    String(p.Name ?? '').toLowerCase() === candidate.toLowerCase();
   for (const candidate of candidateNames) {
-    if (items.some(p => String(p.Name).toLowerCase() === candidate.toLowerCase())) {
-      return candidate;
-    }
+    if (items.some(p => matches(p, candidate))) return candidate;
   }
   return defaultName;
+}
+
+// Normalizes a delivery date (Date or string) to YYYY-MM-DD, which is what the API expects.
+function _formatDate(d) {
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  const s = String(d).trim();
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+// Resolves a payment method *name* to its numeric Id via GET /api3/order/payment.
+// Returns null when the list can't be fetched or the name doesn't match.
+async function _resolvePaymentId(paymentName, token) {
+  try {
+    const resp = await apiRequest('/api3/order/payment', 'GET', null, token);
+    if (resp.status !== 200) {
+      console.warn('[basket] /api3/order/payment non-200:', resp.status, JSON.stringify(resp.body));
+      return null;
+    }
+    const items = resp.body?.Items || [];
+    const wanted = String(paymentName).trim().toLowerCase();
+    const match = items.find(p => String(p.Name ?? '').trim().toLowerCase() === wanted);
+    return match?.Id ?? null;
+  } catch (e) {
+    console.warn('[basket] _resolvePaymentId error:', e.message);
+    return null;
+  }
 }
 
 async function getDeliveryOptions(creds = {}, addressId = null) {
