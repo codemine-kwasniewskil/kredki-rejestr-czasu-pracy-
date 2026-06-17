@@ -374,11 +374,26 @@ function _formatDate(d) {
 }
 
 // Resolves a payment method *name* to its numeric Id via GET /api3/order/payment.
-// Matching is tolerant because some platform names carry a volatile suffix, e.g.
+// Matching is tolerant because (a) some platform names carry a volatile suffix, e.g.
 // "Odroczony termin płatności dni (0)" — the "(0)" is the number of deferred-payment days and
-// changes per client. Strategy (first hit wins): exact (ci) → normalized equal (drop trailing
-// "(…)" + collapse spaces) → either name is a prefix of the other → either contains the other.
-// Returns null when the list can't be fetched or nothing matches.
+// changes per client; and (b) the value configured in settings is often a colloquial term
+// (e.g. "Gotówka") that shares no words with the platform's official name
+// ("Płatność za pobraniem"). Strategy (first hit wins): exact (ci) → normalized equal (drop
+// trailing "(…)" + collapse spaces) → either name is a prefix of the other → either contains
+// the other → synonym keyword match. Returns null when the list can't be fetched or nothing matches.
+//
+// Synonym groups: each entry maps regexes (matched against BOTH the configured value and the
+// platform option) to a shared payment "kind". If the configured value and an option resolve
+// to the same kind, they match. Lets "Gotówka"/"za pobraniem"/"COD" all hit one option.
+const PAYMENT_SYNONYMS = [
+  { kind: 'cod',      re: /(gotów|gotow|pobran|za pobr|cash|cod)/i },           // cash / cash on delivery
+  { kind: 'prepaid',  re: /(przedp|z g[oó]ry|awans|prepaid|z g[oó]ry)/i },      // prepayment
+  { kind: 'deferred', re: /(odrocz|termin|kredyt|przelew|faktur|deferred)/i },  // deferred term / transfer
+];
+function _paymentKind(name) {
+  const hit = PAYMENT_SYNONYMS.find(g => g.re.test(name || ''));
+  return hit ? hit.kind : null;
+}
 async function _resolvePaymentId(paymentName, token) {
   try {
     const resp = await apiRequest('/api3/order/payment', 'GET', null, token);
@@ -391,17 +406,20 @@ async function _resolvePaymentId(paymentName, token) {
     const norm = s => ci(s).replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
     const wanted = ci(paymentName);
     const wantedNorm = norm(paymentName);
+    const wantedKind = _paymentKind(paymentName);
 
-    const exact   = items.find(p => ci(p.Name) === wanted);
-    const normEq  = items.find(p => norm(p.Name) === wantedNorm);
-    const prefix  = items.find(p => { const n = norm(p.Name); return n.startsWith(wantedNorm) || wantedNorm.startsWith(n); });
+    const exact    = items.find(p => ci(p.Name) === wanted);
+    const normEq   = items.find(p => norm(p.Name) === wantedNorm);
+    const prefix   = items.find(p => { const n = norm(p.Name); return n.startsWith(wantedNorm) || wantedNorm.startsWith(n); });
     const contains = items.find(p => { const n = norm(p.Name); return n.includes(wantedNorm) || wantedNorm.includes(n); });
-    const match = exact || normEq || prefix || contains;
+    const synonym  = wantedKind ? items.find(p => _paymentKind(p.Name) === wantedKind) : null;
+    const match = exact || normEq || prefix || contains || synonym;
 
     if (!match) {
       console.warn(`[basket] no payment match for "${paymentName}". Available: ${items.map(p => p.Name).join(' | ')}`);
       return null;
     }
+    if (match === synonym) console.log(`[basket] payment "${paymentName}" matched "${match.Name}" by synonym (${wantedKind})`);
     return match.Id ?? null;
   } catch (e) {
     console.warn('[basket] _resolvePaymentId error:', e.message);

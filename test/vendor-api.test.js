@@ -220,6 +220,17 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(body.PaymentId, 1, `expected PaymentId 1 (deferred), got: ${body.PaymentId}`);
   });
 
+  // 4d. Colloquial "Gotówka" resolves to "Płatność za pobraniem" via synonym matching
+  await test('PaymentId resolves "Gotówka" to the cash-on-delivery option', async () => {
+    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
+    const getBody = stubWithPatchCapture(seq);
+    const api = loadVendorApi();
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Gotówka' });
+
+    const body = getBody();
+    assert.strictEqual(body.PaymentId, 3, `expected PaymentId 3 (Płatność za pobraniem), got: ${body.PaymentId}`);
+  });
+
   // 5. Each product is added via POST /api3/basket/{id}/item (not via Lines in create/PATCH)
   await test('products are added via the basket item endpoint', async () => {
     let itemBody = null;
