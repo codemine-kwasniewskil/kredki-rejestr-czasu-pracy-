@@ -804,6 +804,11 @@ const migrationsReady = (async () => {
     location_id INT NOT NULL,
     name VARCHAR(200) NOT NULL,
     category VARCHAR(40) NOT NULL DEFAULT 'inne',
+    price DECIMAL(8,2) DEFAULT NULL,
+    temperature_c INT DEFAULT NULL,
+    dose VARCHAR(50) DEFAULT NULL,
+    pours VARCHAR(100) DEFAULT NULL,
+    grind VARCHAR(100) DEFAULT NULL,
     glass VARCHAR(150) DEFAULT NULL,
     prep_time_min INT DEFAULT NULL,
     ingredients TEXT DEFAULT NULL,
@@ -815,6 +820,19 @@ const migrationsReady = (async () => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_recipes_location (location_id, category, name)
   )`);
+  // Guarded ALTERs for the brew/price fields (table may have been created before these existed).
+  for (const { col, ddl } of [
+    { col: 'price',         ddl: 'DECIMAL(8,2) DEFAULT NULL' },
+    { col: 'temperature_c', ddl: 'INT DEFAULT NULL' },
+    { col: 'dose',          ddl: 'VARCHAR(50) DEFAULT NULL' },
+    { col: 'pours',         ddl: 'VARCHAR(100) DEFAULT NULL' },
+    { col: 'grind',         ddl: 'VARCHAR(100) DEFAULT NULL' },
+  ]) {
+    try {
+      const r = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='recipes' AND COLUMN_NAME=?`, [col]);
+      if (!r || r.cnt === 0) { await db.run(`ALTER TABLE recipes ADD COLUMN ${col} ${ddl}`); console.log(`✓ Added ${col} to recipes`); }
+    } catch (e) { console.error(`recipes.${col} migration error:`, e.message); }
+  }
 
   // ── design_sales table (Kredki only) ──────────────────────────────────────
   await db.run(`CREATE TABLE IF NOT EXISTS design_sales (

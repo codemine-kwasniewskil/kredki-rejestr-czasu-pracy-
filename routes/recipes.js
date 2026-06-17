@@ -41,7 +41,7 @@ router.get('/', canView, async (req, res) => {
     if (cat) { where.push('category = ?'); params.push(cat); }
 
     const recipes = await db.all(
-      `SELECT id, name, category, glass, prep_time_min, ingredients, active
+      `SELECT id, name, category, price, temperature_c, dose, glass, prep_time_min, ingredients, active
        FROM recipes WHERE ${where.join(' AND ')}
        ORDER BY active DESC, name ASC`,
       params
@@ -70,7 +70,8 @@ router.get('/', canView, async (req, res) => {
 router.get('/new', canEdit, (req, res) => {
   res.render('recipes/form', {
     currentPath: '/recipes', categories: CATEGORIES,
-    recipe: { name: '', category: 'kawa', glass: '', prep_time_min: '', ingredients: '', steps: '', notes: '', active: 1 },
+    recipe: { name: '', category: 'kawa', price: '', temperature_c: '', dose: '', pours: '', grind: '',
+              glass: '', prep_time_min: '', ingredients: '', steps: '', notes: '', active: 1 },
     isNew: true,
   });
 });
@@ -79,17 +80,20 @@ router.get('/new', canEdit, (req, res) => {
 router.post('/', canEdit, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, category, glass, prep_time_min, ingredients, steps, notes } = req.body;
+    const { name, category, price, temperature_c, dose, pours, grind, glass, prep_time_min, ingredients, steps, notes } = req.body;
     if (!name || !name.trim()) {
       req.flash('error', 'Nazwa przepisu jest wymagana.');
       return res.redirect('/recipes/new');
     }
     const cat = CATEGORY_VALUES.includes(category) ? category : 'inne';
     const result = await db.run(
-      `INSERT INTO recipes (location_id, name, category, glass, prep_time_min, ingredients, steps, notes, active, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [locationId, name.trim(), cat, glass?.trim() || null,
-       prep_time_min ? parseInt(prep_time_min, 10) : null,
+      `INSERT INTO recipes (location_id, name, category, price, temperature_c, dose, pours, grind, glass, prep_time_min, ingredients, steps, notes, active, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [locationId, name.trim(), cat,
+       price !== '' && price != null ? parseFloat(price) : null,
+       temperature_c ? parseInt(temperature_c, 10) : null,
+       dose?.trim() || null, pours?.trim() || null, grind?.trim() || null,
+       glass?.trim() || null, prep_time_min ? parseInt(prep_time_min, 10) : null,
        ingredients?.trim() || null, steps?.trim() || null, notes?.trim() || null,
        req.body.active ? 1 : 0, req.session.userId]
     );
@@ -140,17 +144,20 @@ router.get('/:id(\\d+)/edit', canEdit, async (req, res) => {
 router.put('/:id(\\d+)', canEdit, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { name, category, glass, prep_time_min, ingredients, steps, notes } = req.body;
+    const { name, category, price, temperature_c, dose, pours, grind, glass, prep_time_min, ingredients, steps, notes } = req.body;
     if (!name || !name.trim()) {
       req.flash('error', 'Nazwa przepisu jest wymagana.');
       return res.redirect(`/recipes/${req.params.id}/edit`);
     }
     const cat = CATEGORY_VALUES.includes(category) ? category : 'inne';
     await db.run(
-      `UPDATE recipes SET name=?, category=?, glass=?, prep_time_min=?, ingredients=?, steps=?, notes=?, active=?, updated_at=NOW()
+      `UPDATE recipes SET name=?, category=?, price=?, temperature_c=?, dose=?, pours=?, grind=?, glass=?, prep_time_min=?, ingredients=?, steps=?, notes=?, active=?, updated_at=NOW()
        WHERE id=? AND location_id=?`,
-      [name.trim(), cat, glass?.trim() || null,
-       prep_time_min ? parseInt(prep_time_min, 10) : null,
+      [name.trim(), cat,
+       price !== '' && price != null ? parseFloat(price) : null,
+       temperature_c ? parseInt(temperature_c, 10) : null,
+       dose?.trim() || null, pours?.trim() || null, grind?.trim() || null,
+       glass?.trim() || null, prep_time_min ? parseInt(prep_time_min, 10) : null,
        ingredients?.trim() || null, steps?.trim() || null, notes?.trim() || null,
        req.body.active ? 1 : 0, req.params.id, locationId]
     );
