@@ -746,6 +746,7 @@ const migrationsReady = (async () => {
     { col: 'vendor_status_synced_at', ddl: 'DATETIME DEFAULT NULL' },
     { col: 'basket_dirty',            ddl: 'TINYINT(1) DEFAULT 0' },
   ];
+  // cafe_delivery_id lives on order_settings (added with the osCols block below if missing).
   for (const { col, ddl } of poExtraCols) {
     try {
       const r = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='purchase_orders' AND COLUMN_NAME=?`, [col]);
@@ -840,6 +841,7 @@ const migrationsReady = (async () => {
     { col: 'cafe_delivery_name', ddl: 'VARCHAR(200) DEFAULT NULL' },
     { col: 'cafe_payment_name',  ddl: 'VARCHAR(200) DEFAULT NULL' },
     { col: 'cafe_payment_id',    ddl: 'INT DEFAULT NULL' },
+    { col: 'cafe_delivery_id',   ddl: 'INT DEFAULT NULL' },
   ];
   for (const { col, ddl } of osCols) {
     try {

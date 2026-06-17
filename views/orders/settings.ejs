@@ -97,12 +97,26 @@
           </div>
           <div class="sm:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1">
-              Nazwa dostawy (DeliveryName) <span class="text-red-500">*</span>
-              <span class="text-slate-400 font-normal ml-1">— wymagane przez API Inter-Mlecz. Skontaktuj się z Inter-Mlecz, aby uzyskać poprawną wartość dla Twojego konta.</span>
+              Sposób dostawy (Delivery) <span class="text-red-500">*</span>
+              <span class="text-slate-400 font-normal ml-1">— wymagane przez API Inter-Mlecz; opcje pobrane z platformy.</span>
             </label>
-            <input type="text" name="cafe_delivery_name" value="<%= orderSettings.cafe_delivery_name || '' %>"
-              placeholder="np. dost.7-9 TR24 GOTÓWKA"
-              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            <% if (typeof deliveryOptions !== 'undefined' && deliveryOptions.length > 0) { %>
+              <select name="cafe_delivery_id"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+                <option value="">— wybierz —</option>
+                <% deliveryOptions.forEach(function(d) { %>
+                  <option value="<%= d.Id %>" <%= (typeof selectedDeliveryId !== 'undefined' && Number(selectedDeliveryId) === Number(d.Id)) ? 'selected' : '' %>><%= d.Name %></option>
+                <% }); %>
+              </select>
+              <% if (typeof deliveryMismatch !== 'undefined' && deliveryMismatch) { %>
+                <p class="text-xs text-amber-600 mt-1">Zapisany sposób dostawy (ID <%= orderSettings.cafe_delivery_id %>) nie pasuje do żadnej opcji platformy — wybierz z listy.</p>
+              <% } %>
+            <% } else { %>
+              <input type="text" name="cafe_delivery_name" value="<%= orderSettings.cafe_delivery_name || '' %>"
+                placeholder="np. dost.7-9 TR24 GOTÓWKA"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+              <p class="text-xs text-slate-400 mt-1">Platforma nie zwróciła listy dostaw — wpisz dokładną nazwę sposobu dostawy (jak w adresie dostawy, np. „dost.7-9 TR24 GOTÓWKA").</p>
+            <% } %>
           </div>
           <div class="sm:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1">

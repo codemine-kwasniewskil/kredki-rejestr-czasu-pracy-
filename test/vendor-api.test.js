@@ -318,6 +318,30 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(finalizeBody.AddressId, 7, `order body must carry AddressId (got ${finalizeBody.AddressId})`);
   });
 
+  // 6b. A configured DeliveryId is sent directly, with no /api3/order/delivery lookup
+  await test('finalize sends configured DeliveryId without a delivery options lookup', async () => {
+    let finalizeBody = null;
+    // No DELIVERY_RESP needed before ORDER_RESP since no lookup happens.
+    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PATCH_RESP, VERIFY_RESP, ORDER_RESP];
+    stubHttps(seq);
+    const inner = https.request;
+    https.request = (options, callback) => {
+      const req = inner(options, callback);
+      if (options.method === 'POST' && options.path === '/api3/order') {
+        const w = req.write.bind(req); req.write = d => { finalizeBody = JSON.parse(d); return w(d); };
+      }
+      return req;
+    };
+    const api = loadVendorApi();
+    await api.placeOrderViaBasket({ ...BASE_INPUT, deliveryId: 88 });
+
+    assert.ok(finalizeBody, 'finalize call not captured');
+    assert.strictEqual(finalizeBody.DeliveryId, 88, `expected DeliveryId 88, got ${finalizeBody.DeliveryId}`);
+    assert.ok(!('DeliveryName' in finalizeBody), 'should not send DeliveryName when DeliveryId is set');
+    assert.ok(!capturedCalls.some(c => c.path.startsWith('/api3/order/delivery')),
+      'should NOT call /api3/order/delivery when DeliveryId is configured');
+  });
+
   // 7. Error on basket creation throws with Polish message
   await test('basket creation failure throws with Polish error message', async () => {
     stubHttps([TOKEN_RESP, { status: 400, body: { Message: 'Invalid basket' } }]);

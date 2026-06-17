@@ -323,51 +323,47 @@ async function updateBasket({ basketId, items, comment, clientId, apiKey, paymen
 // The order create requires a delivery address even if the basket already has one, so AddressId
 // (or a one-time Address) is sent in the order body too. Delivery availability can depend on the
 // address, so addressId is also passed to the delivery-options lookup.
-async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null, addressId = null, address = null }) {
+async function finalizeBasket({ basketId, clientId, apiKey, deliveryId = null, deliveryName = null, addressId = null, address = null }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
 
-  // Resolve a delivery method ONLY from the platform's own options list. Never forward an
-  // unvalidated configured name — an invalid DeliveryName makes the order endpoint 500. If no
-  // option matches (or none are returned), we send no delivery field and let the platform derive
-  // it from the delivery address (which already encodes the delivery window).
-  let deliveryId = null;
-  let chosenDeliveryName = null;
-  try {
-    const delPath = '/api3/order/delivery' + (addressId != null ? `?AddressId=${encodeURIComponent(addressId)}` : '');
-    const delResp = await apiRequest(delPath, 'GET', null, token);
-    console.log('[basket] delivery options:', delResp.status, JSON.stringify(delResp.body));
-    const opts = (delResp.body?.Items || []).filter(d => d.Name);
-    if (opts.length > 0) {
-      const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
-      deliveryId = chosen.Id ?? null;
-      chosenDeliveryName = chosen.Name ?? null;
-      console.log(`[basket] chosen delivery: id=${deliveryId} name=${chosenDeliveryName}`);
-      if (deliveryName && !opts.find(d => d.Name === deliveryName)) {
-        console.warn(`[basket] configured delivery "${deliveryName}" not among options (${opts.map(d => d.Name).join(', ')}) — using ${chosenDeliveryName}`);
-      }
-    } else {
-      console.warn('[basket] no delivery options returned by the API');
-    }
-  } catch (e) {
-    console.error('[basket] delivery options fetch error:', e.message);
-  }
-
   // Delivery is REQUIRED by the order endpoint ("Delivery should be specified by id or name").
-  // If the options lookup gave us nothing, fall back to the configured delivery name so the order
-  // can still be placed — it must be a REAL method name for this account (it appears in the
-  // delivery address, e.g. "dost.7-9 TR24 GOTÓWKA"). A wrong value (e.g. "kredki") makes the API 500.
-  if (deliveryId == null && !chosenDeliveryName && deliveryName) {
-    chosenDeliveryName = deliveryName;
-    console.warn(`[basket] no matched option — falling back to configured delivery name "${deliveryName}" (must be a real method)`);
+  // Preference order: (1) the configured numeric DeliveryId (chosen in settings) — used as-is;
+  // (2) otherwise resolve from the platform's options list (match the configured name, else first);
+  // (3) otherwise fall back to the configured name verbatim. An invalid name makes the API 500.
+  let resolvedDeliveryId = deliveryId != null ? parseInt(deliveryId, 10) : null;
+  let chosenDeliveryName = null;
+  if (resolvedDeliveryId == null) {
+    try {
+      const delPath = '/api3/order/delivery' + (addressId != null ? `?AddressId=${encodeURIComponent(addressId)}` : '');
+      const delResp = await apiRequest(delPath, 'GET', null, token);
+      console.log('[basket] delivery options:', delResp.status, JSON.stringify(delResp.body));
+      const opts = (delResp.body?.Items || []).filter(d => d.Name);
+      if (opts.length > 0) {
+        const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
+        resolvedDeliveryId = chosen.Id ?? null;
+        chosenDeliveryName = chosen.Name ?? null;
+        console.log(`[basket] chosen delivery: id=${resolvedDeliveryId} name=${chosenDeliveryName}`);
+      } else {
+        console.warn('[basket] no delivery options returned by the API');
+      }
+    } catch (e) {
+      console.error('[basket] delivery options fetch error:', e.message);
+    }
+  } else {
+    console.log(`[basket] using configured DeliveryId ${resolvedDeliveryId}`);
   }
-
+  // Fallback: if still no id, send the configured name verbatim (must be a real method).
+  if (resolvedDeliveryId == null && !chosenDeliveryName && deliveryName) {
+    chosenDeliveryName = deliveryName;
+    console.warn(`[basket] no DeliveryId resolved — falling back to configured delivery name "${deliveryName}"`);
+  }
   const body = {
     BasketId: basketId,
     Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
   };
   // DeliveryId and DeliveryName are alternatives per the docs — send only one (prefer the Id).
-  if (deliveryId != null) body.DeliveryId = deliveryId;
+  if (resolvedDeliveryId != null) body.DeliveryId = resolvedDeliveryId;
   else if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
   // Delivery address — required by the order create even when the basket has one set.
   if (addressId != null) {
@@ -408,7 +404,8 @@ async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
   return finalizeBasket({
     basketId, clientId: opts.clientId, apiKey: opts.apiKey,
-    deliveryName: opts.deliveryName || null, addressId: opts.addressId || null, address: opts.address || null,
+    deliveryId: opts.deliveryId || null, deliveryName: opts.deliveryName || null,
+    addressId: opts.addressId || null, address: opts.address || null,
   });
 }
 

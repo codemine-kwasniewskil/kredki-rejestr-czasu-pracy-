@@ -499,19 +499,25 @@ router.get('/settings', requireAdmin, async (req, res) => {
     // platform accepts (no fuzzy mapping). Empty list → the view falls back to a text input.
     const apiVendor = vendors.find(v => v.api_type === 'intermlecz' && v.client_id && v.api_key);
     let paymentOptions = [];
+    let deliveryOptions = [];
     if (apiVendor) {
-      paymentOptions = await vendorApi.getPaymentOptions({ clientId: apiVendor.client_id, apiKey: apiVendor.api_key })
+      const creds = { clientId: apiVendor.client_id, apiKey: apiVendor.api_key };
+      paymentOptions = await vendorApi.getPaymentOptions(creds)
         .catch(e => { console.warn('Payment options fetch failed:', e.message); return []; });
+      deliveryOptions = await vendorApi.getDeliveryOptions(creds, orderSettings.cafe_address_id || null)
+        .catch(e => { console.warn('Delivery options fetch failed:', e.message); return []; });
     }
 
-    // Payment is stored as a numeric platform Id, so preselect by Id (no name matching).
+    // Payment & delivery are stored as numeric platform Ids, so preselect by Id (no name matching).
     const selectedPaymentId = orderSettings.cafe_payment_id != null ? parseInt(orderSettings.cafe_payment_id, 10) : null;
     const paymentMismatch = selectedPaymentId != null && !paymentOptions.some(p => Number(p.Id) === selectedPaymentId);
+    const selectedDeliveryId = orderSettings.cafe_delivery_id != null ? parseInt(orderSettings.cafe_delivery_id, 10) : null;
+    const deliveryMismatch = selectedDeliveryId != null && !deliveryOptions.some(d => Number(d.Id) === selectedDeliveryId);
 
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
-      vendors, editVendor, orderSettings, catalogStatus, paymentOptions,
-      selectedPaymentId, paymentMismatch,
+      vendors, editVendor, orderSettings, catalogStatus, paymentOptions, deliveryOptions,
+      selectedPaymentId, paymentMismatch, selectedDeliveryId, deliveryMismatch,
     });
   } catch (e) {
     console.error(e);
@@ -552,13 +558,13 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
-            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_id } = req.body;
+            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id } = req.body;
     const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
       .filter(Boolean).join(' ').trim() || null;
     await db.run(
       `INSERT INTO order_settings
-         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
          cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
@@ -566,13 +572,15 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
          cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email),
          cafe_address_id=VALUES(cafe_address_id),
          cafe_delivery_name=VALUES(cafe_delivery_name),
+         cafe_delivery_id=VALUES(cafe_delivery_id),
          cafe_payment_id=VALUES(cafe_payment_id)`,
       [locationId, cafeAddress,
        cafe_name?.trim() || null, cafe_street?.trim() || null,
        cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
        cafe_city?.trim() || null, cafe_phone?.trim() || null,
        cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null,
-       cafe_delivery_name?.trim() || null, cafe_payment_id ? parseInt(cafe_payment_id, 10) : null]
+       cafe_delivery_name?.trim() || null, cafe_delivery_id ? parseInt(cafe_delivery_id, 10) : null,
+       cafe_payment_id ? parseInt(cafe_payment_id, 10) : null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -975,10 +983,13 @@ async function _buildBasketParams(locationId, order) {
   // NOT into the comment. The "|" char is rejected by the platform, so it's stripped from notes.
   const ownOrderNumber = order.own_order_number?.trim() || null;
   const comment = (order.notes?.trim() || `Zamówienie #${order.id} - Kredki`).replace(/\|/g, '/');
-  // Payment is configured as a numeric platform Id (see settings dropdown), sent straight through.
+  // Payment & delivery are configured as numeric platform Ids (see settings dropdowns), sent
+  // straight through. deliveryName is kept as a fallback for accounts without a delivery-id list.
   const paymentId = settings.cafe_payment_id != null ? parseInt(settings.cafe_payment_id, 10) : null;
+  const deliveryId = settings.cafe_delivery_id != null ? parseInt(settings.cafe_delivery_id, 10) : null;
+  const deliveryName = settings.cafe_delivery_name?.trim() || null;
 
-  return { itemsWithSku, creds, address, addressId, comment, paymentId, ownOrderNumber };
+  return { itemsWithSku, creds, address, addressId, comment, paymentId, deliveryId, deliveryName, ownOrderNumber };
 }
 
 // ── Step 1: Create basket (approved → basket_created) ─────────────────────
@@ -1096,13 +1107,10 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${order.id}`);
     }
 
-    const { creds, address, addressId } = await _buildBasketParams(locationId, order);
-
-    const settings = await getOrderSettings(locationId) || {};
-    const deliveryName = settings.cafe_delivery_name?.trim() || null;
+    const { creds, address, addressId, deliveryId, deliveryName } = await _buildBasketParams(locationId, order);
 
     const vendorResult = await vendorApi.finalizeBasket({
-      basketId: order.vendor_basket_id, deliveryName, address, addressId, ...creds,
+      basketId: order.vendor_basket_id, deliveryId, deliveryName, address, addressId, ...creds,
     });
 
     // The order create response's OrderId is the supplier's order number (integer; can be
