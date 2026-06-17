@@ -109,6 +109,59 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         )
       : [];
 
+    // Orders awaiting approval (admin / super_admin action items)
+    const pendingOrders = (role === 'admin' || role === 'super_admin')
+      ? await db.all(
+          `SELECT id, total_netto, created_at FROM purchase_orders
+           WHERE status='pending_approval' AND location_id=? ORDER BY created_at ASC`,
+          [locationId]
+        )
+      : [];
+
+    // Per-worker availability completeness for the current and next month (managers + admins).
+    // "Filled" = every day of the month has an availability row for that worker.
+    const MONTHS_PL_AV = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+    let workerAvailability = [];
+    let availCurLabel = '', availNextLabel = '';
+    if (role === 'location_manager' || role === 'admin' || role === 'super_admin') {
+      const now = new Date();
+      const curM = new Date(now.getFullYear(), now.getMonth(), 1);
+      const nextM = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const ymOf = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const curYM = ymOf(curM), nextYM = ymOf(nextM);
+      const curDays = new Date(curM.getFullYear(), curM.getMonth() + 1, 0).getDate();
+      const nextDays = new Date(nextM.getFullYear(), nextM.getMonth() + 1, 0).getDate();
+      availCurLabel = `${MONTHS_PL_AV[curM.getMonth()]} ${curM.getFullYear()}`;
+      availNextLabel = `${MONTHS_PL_AV[nextM.getMonth()]} ${nextM.getFullYear()}`;
+
+      const workersList = await db.all(
+        `SELECT id, name FROM users WHERE role='worker' AND active=1 AND location_id=? ORDER BY name`,
+        [locationId]
+      );
+      const ids = workersList.map(w => w.id);
+      let counts = [];
+      if (ids.length > 0) {
+        counts = await db.all(
+          `SELECT user_id, LEFT(date,7) AS ym, COUNT(DISTINCT date) AS cnt
+           FROM availability
+           WHERE user_id IN (?) AND (date LIKE ? OR date LIKE ?)
+           GROUP BY user_id, LEFT(date,7)`,
+          [ids, curYM + '%', nextYM + '%']
+        );
+      }
+      const cntMap = {};
+      for (const c of counts) cntMap[`${c.user_id}:${c.ym}`] = Number(c.cnt);
+      workerAvailability = workersList.map(w => {
+        const curCnt = cntMap[`${w.id}:${curYM}`] || 0;
+        const nextCnt = cntMap[`${w.id}:${nextYM}`] || 0;
+        return {
+          id: w.id, name: w.name,
+          curCnt, curDays, curFilled: curCnt >= curDays,
+          nextCnt, nextDays, nextFilled: nextCnt >= nextDays,
+        };
+      });
+    }
+
     const { calcHours } = require('../utils/helpers');
     const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
     const monthlyHoursHistory = [];
@@ -145,7 +198,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       monthlyHoursHistory.push({ prefix: currentPrefix, label, hours });
     }
 
-    res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory });
+    res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory, pendingOrders, workerAvailability, availCurLabel, availNextLabel });
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });
