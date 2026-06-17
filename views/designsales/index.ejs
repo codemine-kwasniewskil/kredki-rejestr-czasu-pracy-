@@ -34,30 +34,30 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
     <form method="POST" action="/design-sales" class="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 mb-5">
       <div class="text-sm font-semibold text-slate-800 mb-3">Dodaj sprzedaż</div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Data <span class="text-red-500">*</span></label>
           <input type="date" name="sold_at" value="<%= today %>" required
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                 class="w-full min-w-0 max-w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Marka</label>
           <input type="text" name="brand" placeholder="np. Nike"
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                 class="w-full min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Kolor</label>
           <input type="text" name="color" placeholder="np. czarny"
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                 class="w-full min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Ilość</label>
           <input type="number" name="quantity" min="1" step="1" placeholder="np. 1"
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                 class="w-full min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi</label>
-          <input type="text" name="notes" placeholder="Opcjonalnie"
-                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+          <textarea name="notes" rows="2" placeholder="Opcjonalnie"
+                 class="w-full min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-y"></textarea>
         </div>
       </div>
       <div class="mt-3">
@@ -96,7 +96,7 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
               <td class="px-4 py-3 text-slate-700"><%= s.brand || '—' %></td>
               <td class="px-4 py-3 text-slate-700"><%= s.color || '—' %></td>
               <td class="px-4 py-3 text-slate-600 whitespace-nowrap"><%= (s.quantity !== null && s.quantity !== undefined) ? s.quantity : '—' %></td>
-              <td class="px-4 py-3 text-slate-600 max-w-xs"><%= s.notes || '—' %></td>
+              <td class="px-4 py-3 text-slate-600 max-w-xs whitespace-pre-line"><%= s.notes || '—' %></td>
               <td class="px-4 py-3 text-slate-500 whitespace-nowrap text-xs"><%= s.created_by_name || '—' %></td>
               <% if (isManager) { %>
               <td class="px-4 py-3 text-right whitespace-nowrap">
