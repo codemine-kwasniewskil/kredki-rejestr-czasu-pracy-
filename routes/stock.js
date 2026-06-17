@@ -151,7 +151,7 @@ router.get('/form/:type', async (req, res) => {
       title: meta.label, currentPath: '/stock',
       type, meta, reportDate, existing,
       grouped: groupByCategory(items), entries, REPORT_META, minQtyMap, lastValues,
-      hiddenSet: [...hiddenSet], canManageItems,
+      hiddenSet: [...hiddenSet], canManageItems, todayStr: today(),
     });
   } catch (e) {
     console.error(e);
@@ -208,6 +208,13 @@ router.post('/save', async (req, res) => {
       // Store without trailing zeros: "0.50" → "0.5", "2.0" → "2"
       return String(parseFloat(n.toPrecision(10)));
     };
+    // Date inputs (delivery date) come from dual mobile/desktop layout → may be an array
+    const pickDate = (v) => {
+      const raw = (Array.isArray(v)
+        ? ([...v].reverse().find(x => x && x.trim()) || '')
+        : v || '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    };
 
     for (const item of items) {
       const id = item.id;
@@ -216,6 +223,8 @@ router.post('/save', async (req, res) => {
       const hqStr = Array.isArray(hqRaw) ? (hqRaw.find(v => v && v.trim()) || '') : (hqRaw || '');
       const hq = hqStr.trim() ? parseFloat(hqStr) || null : null;
 
+      const deliveryDate = pickDate(req.body[`delivery_date_${id}`]);
+
       if (meta.isShift) {
         const s_o = pick(req.body[`stan_otwarcie_${id}`]);
         const d   = pick(req.body[`dostawa_${id}`]);
@@ -223,20 +232,20 @@ router.post('/save', async (req, res) => {
         const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
         const usz = pick(req.body[`uszkodzone_${id}`]);
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty)
-           VALUES (?,?,?,?,?,?,?,?)
+          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty,delivery_date)
+           VALUES (?,?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE stan_otwarcie=VALUES(stan_otwarcie),dostawa=VALUES(dostawa),
-             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty)`,
-          [report.id, id, s_o, d, s16, s_z, usz, hq]
+             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date)`,
+          [report.id, id, s_o, d, s16, s_z, usz, hq, deliveryDate]
         );
       } else {
         const qty = pick(req.body[`qty_${id}`]);
         const n   = (req.body[`notes_${id}`] || '').trim() || null;
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty)
-           VALUES (?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty)`,
-          [report.id, id, qty, n, hq]
+          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty,delivery_date)
+           VALUES (?,?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date)`,
+          [report.id, id, qty, n, hq, deliveryDate]
         );
       }
     }
@@ -267,7 +276,7 @@ router.get('/view/:id', async (req, res) => {
     const meta = REPORT_META[report.report_type] || { label: report.report_type, icon: '📋', isShift: false };
 
     const items = await db.all(
-      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty
+      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
        WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
@@ -276,7 +285,7 @@ router.get('/view/:id', async (req, res) => {
 
     res.render('stock/view', {
       title: meta.label, currentPath: '/stock',
-      report, grouped: groupByCategory(items), meta, REPORT_META,
+      report, grouped: groupByCategory(items), meta, REPORT_META, todayStr: today(),
     });
   } catch (e) {
     console.error(e);
@@ -471,7 +480,7 @@ router.post('/admin/items/bulk-update', requireManager, async (req, res) => {
 // Add item
 router.post('/admin/items', requireManager, async (req, res) => {
   try {
-    const { report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight } = req.body;
+    const { report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, shelf_life_days } = req.body;
     if (!name || !report_type) {
       req.flash('error', 'Nazwa i typ raportu są wymagane.');
       return res.redirect(`/stock/admin?type=${report_type || ''}`);
@@ -479,20 +488,21 @@ router.post('/admin/items', requireManager, async (req, res) => {
     const locationId = getLocationId(req);
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
+    const shelfLifeVal = shelf_life_days && String(shelf_life_days).trim() !== '' ? parseInt(shelf_life_days, 10) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
     const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
     try {
       await db.run(
-        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, vendor_id, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, shelf_life_days, vendor_product_key, vendor_id, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, vendorId, locationId]
+         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, shelfLifeVal, vendorKey, vendorId, locationId]
       );
     } catch (e) {
       if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
       await db.run(
-        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, vendor_product_key, location_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO stock_items (report_type, category, name, unit, target_qty, sort_order, min_qty, hopper_weight, shelf_life_days, vendor_product_key, location_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
         [report_type, category?.trim() || null, name.trim(), unit?.trim() || null,
-         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, vendorKey, locationId]
+         target_qty?.trim() || null, parseInt(sort_order) || 0, minQtyVal, hopperWeightVal, shelfLifeVal, vendorKey, locationId]
       );
     }
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
@@ -508,23 +518,24 @@ router.post('/admin/items', requireManager, async (req, res) => {
 // Update item
 router.post('/admin/items/:id', requireManager, async (req, res) => {
   try {
-    const { report_type, category, name, unit, target_qty, sort_order, active, min_qty, hopper_weight, hopper_enabled } = req.body;
+    const { report_type, category, name, unit, target_qty, sort_order, active, min_qty, hopper_weight, hopper_enabled, shelf_life_days } = req.body;
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
+    const shelfLifeVal = shelf_life_days && String(shelf_life_days).trim() !== '' ? parseInt(shelf_life_days, 10) : null;
     const vendorKey = req.body.vendor_product_key?.trim() || null;
     const vendorId  = req.body.vendor_id ? parseInt(req.body.vendor_id, 10) : null;
     try {
       await db.run(
-        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=?,vendor_id=? WHERE id=?`,
+        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,shelf_life_days=?,vendor_product_key=?,vendor_id=? WHERE id=?`,
         [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
-         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, vendorId || null, req.params.id]
+         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, shelfLifeVal, vendorKey, vendorId || null, req.params.id]
       );
     } catch (e) {
       if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
       await db.run(
-        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,vendor_product_key=? WHERE id=?`,
+        `UPDATE stock_items SET report_type=?,category=?,name=?,unit=?,target_qty=?,sort_order=?,active=?,min_qty=?,hopper_weight=?,hopper_enabled=?,shelf_life_days=?,vendor_product_key=? WHERE id=?`,
         [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
-         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, vendorKey, req.params.id]
+         target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, shelfLifeVal, vendorKey, req.params.id]
       );
     }
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);

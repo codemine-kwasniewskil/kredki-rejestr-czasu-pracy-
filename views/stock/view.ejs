@@ -39,6 +39,21 @@
       if (q === 0.75) return '3/4';
       return '4/4';
     }
+    function isCakeCategory(cat) {
+      if (!cat) return false;
+      const c = cat.toLowerCase();
+      return c.includes('ciast') || c.includes('cake') || c.includes('cookie');
+    }
+    function addDaysStr(dateStr, days) {
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function shelfDaysOf(item) { return item.shelf_life_days != null ? Number(item.shelf_life_days) : 3; }
+    function isExpiredOn(deliveryDate, days, today) {
+      if (!deliveryDate) return false;
+      return today >= addDaysStr(deliveryDate, days);
+    }
     %>
     <% if (report.report_type === 'products_shift') { %>
       <% for (const group of grouped) { %>
@@ -80,6 +95,20 @@
                   <div class="text-sm font-medium <%= item.uszkodzone && item.uszkodzone !== '0' ? 'text-red-600' : 'text-slate-700' %>"><%= item.uszkodzone || '—' %></div>
                 </div>
               </div>
+              <% if (isCakeCategory(item.category) && item.delivery_date) { %>
+                <% const shelfDays = shelfDaysOf(item); const expired = isExpiredOn(item.delivery_date, shelfDays, todayStr); %>
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap text-xs">
+                  <span class="text-slate-400">Dostawa:</span>
+                  <span class="font-medium text-slate-700"><%= item.delivery_date %></span>
+                  <span class="text-slate-400">· przydatność do <%= addDaysStr(item.delivery_date, shelfDays) %></span>
+                  <% if (expired) { %>
+                    <span class="inline-flex items-center gap-1 font-semibold text-red-600">
+                      <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
+                      przeterminowane
+                    </span>
+                  <% } %>
+                </div>
+              <% } %>
             </div>
           <% } %>
         </div>
@@ -101,7 +130,20 @@
               <% for (const item of group.items) { %>
                 <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone; %>
                 <tr class="border-b border-slate-50 last:border-0 <%= !hasData ? 'opacity-40' : '' %>">
-                  <td class="px-3 py-2 text-xs font-medium text-slate-800 leading-tight"><%= item.name %></td>
+                  <td class="px-3 py-2 text-xs font-medium text-slate-800 leading-tight">
+                    <%= item.name %>
+                    <% if (isCakeCategory(item.category) && item.delivery_date) { %>
+                      <% const shelfDaysD = shelfDaysOf(item); const expiredD = isExpiredOn(item.delivery_date, shelfDaysD, todayStr); %>
+                      <div class="mt-0.5 flex items-center gap-1 flex-wrap font-normal text-slate-400">
+                        <span>dostawa <%= item.delivery_date %> · do <%= addDaysStr(item.delivery_date, shelfDaysD) %></span>
+                        <% if (expiredD) { %>
+                          <span class="inline-flex items-center gap-0.5 font-semibold text-red-600">
+                            <span class="bg-red-500 text-white w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold text-[10px]">!</span>
+                          </span>
+                        <% } %>
+                      </div>
+                    <% } %>
+                  </td>
                   <td class="px-3 py-2 text-center text-slate-700"><%= item.stan_otwarcie || '—' %></td>
                   <td class="px-3 py-2 text-center text-slate-700"><%= item.dostawa || '—' %></td>
                   <td class="px-3 py-2 text-center text-slate-700"><%= item.stan_16 || '—' %></td>
@@ -133,6 +175,18 @@
                 </div>
                 <% if (item.min_qty !== null) { %>
                   <div class="text-xs text-amber-600">Min: <%= item.min_qty %></div>
+                <% } %>
+                <% if (isCakeCategory(item.category) && item.delivery_date) { %>
+                  <% const shelfDaysS = shelfDaysOf(item); const expiredS = isExpiredOn(item.delivery_date, shelfDaysS, todayStr); %>
+                  <div class="text-xs mt-0.5 flex items-center gap-1 flex-wrap <%= expiredS ? 'text-red-600 font-semibold' : 'text-slate-400' %>">
+                    <span>Dostawa <%= item.delivery_date %> · do <%= addDaysStr(item.delivery_date, shelfDaysS) %></span>
+                    <% if (expiredS) { %>
+                      <span class="inline-flex items-center gap-0.5">
+                        <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
+                        przeterminowane
+                      </span>
+                    <% } %>
+                  </div>
                 <% } %>
                 <% if (isCoffee && item.hopper_qty) { %>
                   <% const hKg = parseFloat(item.hopper_qty) * (parseFloat(item.hopper_weight) || 1.2); %>

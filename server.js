@@ -268,6 +268,16 @@ const migrationsReady = (async () => {
     if (!hopperQtyCol || hopperQtyCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_report_entries ADD COLUMN hopper_qty DECIMAL(4,2) DEFAULT NULL`);
     }
+    // delivery_date on stock_report_entries (cake/cookie shelf-life tracking)
+    const deliveryDateCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_report_entries' AND COLUMN_NAME='delivery_date'`);
+    if (!deliveryDateCol || deliveryDateCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_report_entries ADD COLUMN delivery_date DATE DEFAULT NULL`);
+    }
+    // shelf_life_days on stock_items (cake/cookie validity period in days, default 3 in UI)
+    const shelfLifeCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='shelf_life_days'`);
+    if (!shelfLifeCol || shelfLifeCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN shelf_life_days INT DEFAULT NULL`);
+    }
     // hopper_weight on stock_items (full hopper capacity in kg, default 1.2)
     const hopperWeightCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='hopper_weight'`);
     if (!hopperWeightCol || hopperWeightCol.cnt === 0) {
