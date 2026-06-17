@@ -286,7 +286,12 @@
               🔄 Aktualizuj koszyk
             </button>
           </form>
-          <% if (basketDirty) { %>
+          <% if (belowMin) { %>
+            <button type="button" disabled title="Wartość zamówienia (<%= total.toFixed(2) %> PLN) jest poniżej minimum dostawcy (<%= minOrderValue.toFixed(2) %> PLN). Zwiększ ilość, zaktualizuj koszyk i spróbuj ponownie."
+              class="btn btn-success opacity-50 cursor-not-allowed">
+              ✓ Finalizuj zamówienie
+            </button>
+          <% } else if (basketDirty) { %>
             <button type="button" disabled title="Zamówienie zostało zmienione — najpierw kliknij „Aktualizuj koszyk”, aby zsynchronizować zmiany u dostawcy."
               class="btn btn-success opacity-50 cursor-not-allowed">
               ✓ Finalizuj zamówienie
@@ -298,6 +303,9 @@
                 ✓ Finalizuj zamówienie
               </button>
             </form>
+          <% } %>
+          <% if (belowMin) { %>
+            <span class="text-sm text-red-600 italic self-center">⚠ Poniżej minimum dostawcy (<%= minOrderValue.toFixed(2) %> PLN) — zwiększ wartość zamówienia, aby finalizować</span>
           <% } %>
         <% } %>
 

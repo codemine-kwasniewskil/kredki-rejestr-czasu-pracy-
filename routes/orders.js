@@ -1106,6 +1106,13 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       req.flash('error', 'Zamówienie zostało zmienione po utworzeniu koszyka. Najpierw kliknij „Aktualizuj koszyk”, aby zsynchronizować zmiany.');
       return res.redirect(`/orders/${order.id}`);
     }
+    // Block finalize below the supplier minimum — the platform rejects it anyway
+    // (BasketFinalizationProblem), so fail fast with a clear message.
+    const minOrderValue = await getMinOrderValue(locationId, order.vendor_id);
+    if (parseFloat(order.total_netto || 0) < minOrderValue) {
+      req.flash('error', `Wartość zamówienia (${parseFloat(order.total_netto || 0).toFixed(2)} PLN) jest poniżej minimum dostawcy (${minOrderValue.toFixed(2)} PLN). Zwiększ ilość, zaktualizuj koszyk i finalizuj ponownie.`);
+      return res.redirect(`/orders/${order.id}`);
+    }
 
     const { creds } = await _buildBasketParams(locationId, order);
 
