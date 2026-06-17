@@ -558,13 +558,14 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
-            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id } = req.body;
+            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id,
+            default_payment_method } = req.body;
     const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
       .filter(Boolean).join(' ').trim() || null;
     await db.run(
       `INSERT INTO order_settings
-         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_delivery_id, cafe_payment_id, default_payment_method)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
          cafe_street=VALUES(cafe_street), cafe_house_number=VALUES(cafe_house_number),
@@ -573,14 +574,15 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
          cafe_address_id=VALUES(cafe_address_id),
          cafe_delivery_name=VALUES(cafe_delivery_name),
          cafe_delivery_id=VALUES(cafe_delivery_id),
-         cafe_payment_id=VALUES(cafe_payment_id)`,
+         cafe_payment_id=VALUES(cafe_payment_id),
+         default_payment_method=VALUES(default_payment_method)`,
       [locationId, cafeAddress,
        cafe_name?.trim() || null, cafe_street?.trim() || null,
        cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
        cafe_city?.trim() || null, cafe_phone?.trim() || null,
        cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null,
        cafe_delivery_name?.trim() || null, cafe_delivery_id ? parseInt(cafe_delivery_id, 10) : null,
-       cafe_payment_id ? parseInt(cafe_payment_id, 10) : null]
+       cafe_payment_id ? parseInt(cafe_payment_id, 10) : null, default_payment_method?.trim() || null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -611,6 +613,7 @@ router.get('/new', requireManager, async (req, res) => {
     res.render('orders/new', {
       title: 'Nowe zamówienie', currentPath: '/orders',
       lowStock, priceMap, minOrderValue, vendors, cafeAddress,
+      defaultPaymentMethod: orderSettings.default_payment_method || '',
     });
   } catch (e) {
     console.error(e);
@@ -639,11 +642,18 @@ router.post('/', requireManager, async (req, res) => {
       return res.redirect('/orders/new');
     }
 
+    // Default the payment method from order settings when the form didn't specify one.
+    let effectivePayment = payment_method?.trim() || null;
+    if (!effectivePayment) {
+      const s = await getOrderSettings(locationId) || {};
+      effectivePayment = s.default_payment_method || null;
+    }
+
     const result = await db.run(
       `INSERT INTO purchase_orders (location_id, created_by, vendor_id, notes, status, total_netto, delivery_date, delivery_address, payment_method, own_order_number) VALUES (?,?,?,?,'draft',0,?,?,?,?)`,
       [locationId, userId, parseInt(vendor_id) || null, notes?.trim() || null,
        delivery_date?.trim() || null, delivery_address?.trim() || null,
-       payment_method?.trim() || null, own_order_number?.trim() || null]
+       effectivePayment, own_order_number?.trim() || null]
     );
     const orderId = result.insertId;
 

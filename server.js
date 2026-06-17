@@ -842,6 +842,7 @@ const migrationsReady = (async () => {
     { col: 'cafe_payment_name',  ddl: 'VARCHAR(200) DEFAULT NULL' },
     { col: 'cafe_payment_id',    ddl: 'INT DEFAULT NULL' },
     { col: 'cafe_delivery_id',   ddl: 'INT DEFAULT NULL' },
+    { col: 'default_payment_method', ddl: 'VARCHAR(20) DEFAULT NULL' },
   ];
   for (const { col, ddl } of osCols) {
     try {
