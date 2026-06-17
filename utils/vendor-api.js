@@ -350,8 +350,9 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null,
     BasketId: basketId,
     Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
   };
+  // DeliveryId and DeliveryName are alternatives per the docs — send only one (prefer the Id).
   if (deliveryId != null) body.DeliveryId = deliveryId;
-  if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
+  else if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
   // Delivery address — required by the order create even when the basket has one set.
   if (addressId != null) {
     body.AddressId = parseInt(addressId, 10);
@@ -377,7 +378,9 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null,
   console.error('[basket] finalize response:', orderResp.status, isHtml ? '(HTML)' : JSON.stringify(orderResp.body));
   if (![200, 201].includes(orderResp.status)) {
     const msg = isHtml ? `HTTP ${orderResp.status} HTML — wrong endpoint or body` : JSON.stringify(orderResp.body);
-    throw new Error(`Błąd finalizacji koszyka: ${msg}`);
+    // Include the request body — the platform's own message is often a generic "check the logs".
+    console.error('[basket] finalize FAILED. Request body was:', JSON.stringify(body));
+    throw new Error(`Błąd finalizacji koszyka (HTTP ${orderResp.status}): ${msg} | wysłano: ${JSON.stringify(body)}`);
   }
   const result = orderResp.body;
   console.log(`[basket] created order ID: ${result?.OrderId || result?.Id || '(unknown)'}`);
