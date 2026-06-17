@@ -19,6 +19,37 @@ const CATEGORIES = [
 ];
 const CATEGORY_VALUES = CATEGORIES.map(c => c.value);
 
+// House recipes for Kredki (location 1). Seeded per-recipe (by name) on list view, so newly added
+// house recipes appear even if the location already has others. Robust against serverless cold
+// starts. kawa = brew params + nuty (ingredients); others = simple step-based "przepis" (steps).
+const SAMPLE_RECIPES = [
+  { name: 'Tanat',         category: 'kawa',         price: 25, temperature_c: 94, dose: '12.5/200', pours: '40x5',        grind: '15.5 prawy młynek', ingredients: '70% single origin choc, rum, raisins' },
+  { name: 'Friedhats',     category: 'kawa',         price: 27, temperature_c: 94, dose: '12.5/200', pours: '40/40/40/80', grind: '16 prawy młynek',   ingredients: 'Żurawina, cukier puder, herbata, cytryna' },
+  { name: 'Rose Fizz',     category: 'napoje_zimne', price: 24, temperature_c: 93, dose: '13/200',   pours: '40x5',        grind: '10 lewy młynek',    ingredients: 'Woda różana, maliny, kwiaty' },
+  { name: 'Cascara Candy', category: 'napoje_zimne', glass: 'Szklanka z lodem',
+    steps: 'Koncentrat z Cascary 40 ml\nWoda gazowana\nSlice cytryny i limonki' },
+  { name: 'Chai Tonic',    category: 'napoje_zimne', glass: 'Szklanka z lodem',
+    steps: 'Najpierw tonic\nKoncentrat Chai 30 ml\nSlice limonki' },
+  { name: 'Nitro Kredki',  category: 'napoje_zimne', glass: 'Mała szklanka do wody, 2 kostki lodu',
+    steps: 'Ice przelew 1 l przelać do Sifon Nitro (ten srebrny), dać 2 naboje i wstrząsnąć\nSerwować w małej szklance do wody z 2 kostkami lodu' },
+];
+async function ensureSamplesSeeded(locationId) {
+  if (Number(locationId) !== 1) return;
+  try {
+    for (const s of SAMPLE_RECIPES) {
+      const ex = await db.get(`SELECT id FROM recipes WHERE location_id=1 AND name=?`, [s.name]);
+      if (ex) continue;
+      await db.run(
+        `INSERT INTO recipes (location_id, name, category, price, temperature_c, dose, pours, grind, glass, ingredients, steps, active)
+         VALUES (1,?,?,?,?,?,?,?,?,?,?,1)`,
+        [s.name, s.category, s.price ?? null, s.temperature_c ?? null, s.dose ?? null, s.pours ?? null,
+         s.grind ?? null, s.glass ?? null, s.ingredients ?? null, s.steps ?? null]
+      );
+      console.log('✓ Seeded recipe:', s.name);
+    }
+  } catch (e) { console.error('recipes lazy-seed error:', e.message); }
+}
+
 function isManager(req) {
   return ['admin', 'location_manager', 'super_admin'].includes(req.session.userRole);
 }
@@ -30,6 +61,7 @@ function actor(req) {
 router.get('/', canView, async (req, res) => {
   try {
     const locationId = getLocationId(req);
+    await ensureSamplesSeeded(locationId);
     const q = (req.query.q || '').trim();
     const cat = CATEGORY_VALUES.includes(req.query.cat) ? req.query.cat : '';
 

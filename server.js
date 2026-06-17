@@ -833,26 +833,7 @@ const migrationsReady = (async () => {
       if (!r || r.cnt === 0) { await db.run(`ALTER TABLE recipes ADD COLUMN ${col} ${ddl}`); console.log(`✓ Added ${col} to recipes`); }
     } catch (e) { console.error(`recipes.${col} migration error:`, e.message); }
   }
-  // Seed Kredki (location 1) sample recipes once — only when the location has no recipes yet
-  // (so deleting a sample won't make it reappear).
-  try {
-    const rc = await db.get(`SELECT COUNT(*) AS cnt FROM recipes WHERE location_id=1`);
-    if (rc && Number(rc.cnt) === 0) {
-      const samples = [
-        ['Tanat',     'kawa',     25, 94, '12.5/200', '40x5',        '15.5 prawy młynek', '70% single origin choc, rum, raisins'],
-        ['Friedhats', 'kawa',     27, 94, '12.5/200', '40/40/40/80', '16 prawy młynek',   'Żurawina, cukier puder, herbata, cytryna'],
-        ['Rose Fizz', 'napoje_zimne', 24, 93, '13/200', '40x5',      '10 lewy młynek',    'Woda różana, maliny, kwiaty'],
-      ];
-      for (const [name, category, price, temp, dose, pours, grind, ingredients] of samples) {
-        await db.run(
-          `INSERT INTO recipes (location_id, name, category, price, temperature_c, dose, pours, grind, ingredients, active)
-           VALUES (1,?,?,?,?,?,?,?,?,1)`,
-          [name, category, price, temp, dose, pours, grind, ingredients]
-        );
-      }
-      console.log('✓ Seeded sample recipes for Kredki');
-    }
-  } catch (e) { console.error('recipes seed error:', e.message); }
+  // (House recipes for Kredki are seeded lazily on first list view — see routes/recipes.js.)
   // Remap recipes left in removed categories (koktajle/smoothie/desery) — idempotent.
   try {
     await db.run(`UPDATE recipes SET category='napoje_zimne' WHERE category='koktajle'`);
