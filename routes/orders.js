@@ -1089,16 +1089,14 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${order.id}`);
     }
 
-    let creds = await getVendorCreds(locationId);
-    if (order.vendor_id) {
-      const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
-      if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
-    }
+    const { creds, address, addressId } = await _buildBasketParams(locationId, order);
 
     const settings = await getOrderSettings(locationId) || {};
     const deliveryName = settings.cafe_delivery_name?.trim() || null;
 
-    const vendorResult = await vendorApi.finalizeBasket({ basketId: order.vendor_basket_id, deliveryName, ...creds });
+    const vendorResult = await vendorApi.finalizeBasket({
+      basketId: order.vendor_basket_id, deliveryName, address, addressId, ...creds,
+    });
 
     const vendorOrderId = vendorResult?.OrderId || vendorResult?.Id || JSON.stringify(vendorResult);
     await db.run(

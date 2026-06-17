@@ -315,6 +315,7 @@ function stubWithPatchCapture(responses) {
 
     assert.ok(finalizeBody !== null, 'finalize call to /api3/order not captured');
     assert.strictEqual(finalizeBody.BasketId, 42, `expected BasketId=42, got ${finalizeBody.BasketId}`);
+    assert.strictEqual(finalizeBody.AddressId, 7, `order body must carry AddressId (got ${finalizeBody.AddressId})`);
   });
 
   // 7. Error on basket creation throws with Polish message

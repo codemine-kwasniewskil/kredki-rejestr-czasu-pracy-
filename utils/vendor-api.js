@@ -320,14 +320,18 @@ async function updateBasket({ basketId, items, comment, clientId, apiKey, paymen
 
 // Step 5: Finalize an open basket into an order via POST /api3/order with BasketId.
 // Delivery must be specified — fetches available options and picks by name or first available.
-async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null }) {
+// The order create requires a delivery address even if the basket already has one, so AddressId
+// (or a one-time Address) is sent in the order body too. Delivery availability can depend on the
+// address, so addressId is also passed to the delivery-options lookup.
+async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null, addressId = null, address = null }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
 
   let deliveryId = null;
   let chosenDeliveryName = deliveryName;
   try {
-    const delResp = await apiRequest('/api3/order/delivery', 'GET', null, token);
+    const delPath = '/api3/order/delivery' + (addressId != null ? `?AddressId=${encodeURIComponent(addressId)}` : '');
+    const delResp = await apiRequest(delPath, 'GET', null, token);
     console.log('[basket] delivery options:', delResp.status, JSON.stringify(delResp.body));
     const opts = (delResp.body?.Items || []).filter(d => d.Name);
     if (opts.length > 0) {
@@ -348,6 +352,24 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null 
   };
   if (deliveryId != null) body.DeliveryId = deliveryId;
   if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
+  // Delivery address — required by the order create even when the basket has one set.
+  if (addressId != null) {
+    body.AddressId = parseInt(addressId, 10);
+  } else if (address) {
+    const addr = { OneTimeAdress: true };
+    if (address.Name)            addr.Name            = address.Name;
+    if (address.Street)          addr.Street          = address.Street;
+    if (address.City)            addr.City            = address.City;
+    if (address.PostalCode)      addr.PostalCode      = address.PostalCode;
+    if (address.Phone)           addr.Phone           = address.Phone;
+    if (address.CountryId != null) addr.CountryId     = address.CountryId;
+    if (address.RegionId  != null) addr.RegionId      = address.RegionId;
+    if (address.Email)           addr.Email           = address.Email;
+    if (address.ApartmentNumber) addr.ApartmentNumber = address.ApartmentNumber;
+    if (address.HouseNumber)     addr.HouseNumber     = address.HouseNumber;
+    if (address.TaxNumber)       addr.TaxNumber       = address.TaxNumber;
+    body.Address = addr;
+  }
 
   console.log(`[basket] POST /api3/order (BasketId=${basketId}):`, JSON.stringify(body));
   const orderResp = await apiRequest('/api3/order', 'POST', body, token);
@@ -365,7 +387,10 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null 
 // Convenience wrapper: prepare then immediately finalize (single-step flow).
 async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
-  return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey, deliveryName: opts.deliveryName || null });
+  return finalizeBasket({
+    basketId, clientId: opts.clientId, apiKey: opts.apiKey,
+    deliveryName: opts.deliveryName || null, addressId: opts.addressId || null, address: opts.address || null,
+  });
 }
 
 // Resolves the numeric UnitId for each order line. The basket item endpoint requires a real
