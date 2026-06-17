@@ -347,10 +347,19 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null,
         console.warn(`[basket] configured delivery "${deliveryName}" not among options (${opts.map(d => d.Name).join(', ')}) — using ${chosenDeliveryName}`);
       }
     } else {
-      console.warn('[basket] no delivery options returned — finalizing without an explicit delivery method');
+      console.warn('[basket] no delivery options returned by the API');
     }
   } catch (e) {
     console.error('[basket] delivery options fetch error:', e.message);
+  }
+
+  // Delivery is REQUIRED by the order endpoint ("Delivery should be specified by id or name").
+  // If the options lookup gave us nothing, fall back to the configured delivery name so the order
+  // can still be placed — it must be a REAL method name for this account (it appears in the
+  // delivery address, e.g. "dost.7-9 TR24 GOTÓWKA"). A wrong value (e.g. "kredki") makes the API 500.
+  if (deliveryId == null && !chosenDeliveryName && deliveryName) {
+    chosenDeliveryName = deliveryName;
+    console.warn(`[basket] no matched option — falling back to configured delivery name "${deliveryName}" (must be a real method)`);
   }
 
   const body = {
