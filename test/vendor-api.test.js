@@ -83,7 +83,6 @@ function fullSeq(overrides = {}) {
     overrides.ap       ?? AP_RESP,
     overrides.patch    ?? PATCH_RESP,
     overrides.verify   ?? VERIFY_RESP,
-    overrides.delivery ?? DELIVERY_RESP,
     overrides.order    ?? ORDER_RESP,
   ];
 }
@@ -297,49 +296,35 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(itemBody.UnitId, '7', 'UnitId should be resolved from findProduct, matching the "szt." unit');
   });
 
-  // 6. Finalization posts to /api3/order with BasketId in body
-  await test('finalization uses POST /api3/order with correct BasketId', async () => {
-    let finalizeBody = null;
+  // 6. Finalization POSTs to /api3/basket/{id}/finalize (no /api3/order, no delivery lookup)
+  await test('finalization uses POST /api3/basket/{id}/finalize', async () => {
+    stubHttps(fullSeq());
+    const api = loadVendorApi();
+    const result = await api.placeOrderViaBasket(BASE_INPUT);
+
+    const finalizeCall = capturedCalls.find(c => c.method === 'POST' && c.path === '/api3/basket/42/finalize');
+    assert.ok(finalizeCall, 'POST /api3/basket/42/finalize not called');
+    assert.ok(!capturedCalls.some(c => c.path === '/api3/order'), 'should NOT call the old /api3/order endpoint');
+    assert.ok(!capturedCalls.some(c => c.path.startsWith('/api3/order/delivery')), 'should NOT look up delivery options');
+    assert.strictEqual(result.OrderId, 'ORD-99', 'should return the finalize response');
+  });
+
+  // 6b. The finalize request body is empty (the basket already carries everything)
+  await test('finalize sends an empty body', async () => {
+    let finalizeBody = 'NOT_CAPTURED';
     stubHttps(fullSeq());
     const inner = https.request;
     https.request = (options, callback) => {
       const req = inner(options, callback);
-      if (options.method === 'POST' && options.path === '/api3/order') {
-        const origWrite = req.write.bind(req);
-        req.write = (data) => { finalizeBody = JSON.parse(data); return origWrite(data); };
+      if (options.method === 'POST' && options.path === '/api3/basket/42/finalize') {
+        const w = req.write.bind(req); req.write = d => { finalizeBody = JSON.parse(d); return w(d); };
       }
       return req;
     };
     const api = loadVendorApi();
     await api.placeOrderViaBasket(BASE_INPUT);
 
-    assert.ok(finalizeBody !== null, 'finalize call to /api3/order not captured');
-    assert.strictEqual(finalizeBody.BasketId, 42, `expected BasketId=42, got ${finalizeBody.BasketId}`);
-    assert.strictEqual(finalizeBody.AddressId, 7, `order body must carry AddressId (got ${finalizeBody.AddressId})`);
-  });
-
-  // 6b. A configured DeliveryId is sent directly, with no /api3/order/delivery lookup
-  await test('finalize sends configured DeliveryId without a delivery options lookup', async () => {
-    let finalizeBody = null;
-    // No DELIVERY_RESP needed before ORDER_RESP since no lookup happens.
-    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PATCH_RESP, VERIFY_RESP, ORDER_RESP];
-    stubHttps(seq);
-    const inner = https.request;
-    https.request = (options, callback) => {
-      const req = inner(options, callback);
-      if (options.method === 'POST' && options.path === '/api3/order') {
-        const w = req.write.bind(req); req.write = d => { finalizeBody = JSON.parse(d); return w(d); };
-      }
-      return req;
-    };
-    const api = loadVendorApi();
-    await api.placeOrderViaBasket({ ...BASE_INPUT, deliveryId: 88 });
-
-    assert.ok(finalizeBody, 'finalize call not captured');
-    assert.strictEqual(finalizeBody.DeliveryId, 88, `expected DeliveryId 88, got ${finalizeBody.DeliveryId}`);
-    assert.ok(!('DeliveryName' in finalizeBody), 'should not send DeliveryName when DeliveryId is set');
-    assert.ok(!capturedCalls.some(c => c.path.startsWith('/api3/order/delivery')),
-      'should NOT call /api3/order/delivery when DeliveryId is configured');
+    assert.deepStrictEqual(finalizeBody, {}, `finalize body should be {}, got ${JSON.stringify(finalizeBody)}`);
   });
 
   // 7. Error on basket creation throws with Polish message
@@ -372,7 +357,7 @@ function stubWithPatchCapture(responses) {
 
   // 9. Additional parameters 404 does not abort the flow
   await test('additional parameters 404 does not abort the flow', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, { status: 404, body: null }, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, { status: 404, body: null }, PATCH_RESP, VERIFY_RESP, ORDER_RESP]);
     const api = loadVendorApi();
     const result = await api.placeOrderViaBasket(BASE_INPUT);
     assert.strictEqual(result.OrderId, 'ORD-99',

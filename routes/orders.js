@@ -1107,32 +1107,26 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${order.id}`);
     }
 
-    const { creds, address, addressId, deliveryId, deliveryName } = await _buildBasketParams(locationId, order);
+    const { creds } = await _buildBasketParams(locationId, order);
 
-    const vendorResult = await vendorApi.finalizeBasket({
-      basketId: order.vendor_basket_id, deliveryId, deliveryName, address, addressId, ...creds,
-    });
+    const vendorResult = await vendorApi.finalizeBasket({ basketId: order.vendor_basket_id, ...creds });
 
-    // The order create response's OrderId is the supplier's order number (integer; can be
-    // negative for test orders). Use != null so 0/negatives aren't lost, and never fall back to
-    // storing a raw JSON blob.
+    // basketFinalize returns { OrderId (int, the B2B order id used as the status/document key),
+    // OrderNumber (human order number), ResultMessage }. Store OrderId as vendor_order_id (so the
+    // status sync can query the document by B2BId); show OrderNumber to the user when present.
     const vendorOrderId = vendorResult?.OrderId != null ? String(vendorResult.OrderId)
-      : (vendorResult?.Id != null ? String(vendorResult.Id) : null);
+      : (vendorResult?.OrderNumber != null ? String(vendorResult.OrderNumber) : null);
     if (vendorOrderId == null) {
-      console.error('[basket] finalize succeeded but no OrderId in response:', JSON.stringify(vendorResult));
+      console.error('[basket] finalize succeeded but no OrderId/OrderNumber in response:', JSON.stringify(vendorResult));
     }
     await db.run(
       `UPDATE purchase_orders SET status='placed', vendor_order_id=?, updated_at=NOW() WHERE id=?`,
       [vendorOrderId, order.id]
     );
-    await log(sessionUser(req), 'Zamówienia – złożono u dostawcy', `ID: ${order.id} | Vendor: ${vendorOrderId ?? '(brak OrderId)'}`);
+    await log(sessionUser(req), 'Zamówienia – złożono u dostawcy', `ID: ${order.id} | Vendor: ${vendorOrderId ?? '(brak)'} | Nr: ${vendorResult?.OrderNumber ?? '—'}`);
 
-    const statements = [
-      ...(vendorResult?.BasketStatements || []),
-      ...(vendorResult?.BasketProductsStatements || []),
-    ].map(s => s.Message).filter(Boolean);
-
-    req.flash('success', `Zamówienie złożone u dostawcy${vendorOrderId ? ` (nr ${vendorOrderId})` : ''}.${statements.length ? ' ' + statements.join('; ') : ''}`);
+    const human = vendorResult?.OrderNumber || vendorOrderId;
+    req.flash('success', `Zamówienie złożone u dostawcy${human ? ` (nr ${human})` : ''}.${vendorResult?.ResultMessage ? ' ' + vendorResult.ResultMessage : ''}`);
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
     console.error('Finalize basket error:', e);

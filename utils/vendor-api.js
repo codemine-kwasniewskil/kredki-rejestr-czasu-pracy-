@@ -318,102 +318,34 @@ async function updateBasket({ basketId, items, comment, clientId, apiKey, paymen
   return basketId;
 }
 
-// Step 5: Finalize an open basket into an order via POST /api3/order with BasketId.
-// Delivery must be specified — fetches available options and picks by name or first available.
-// The order create requires a delivery address even if the basket already has one, so AddressId
-// (or a one-time Address) is sent in the order body too. Delivery availability can depend on the
-// address, so addressId is also passed to the delivery-options lookup.
-async function finalizeBasket({ basketId, clientId, apiKey, deliveryId = null, deliveryName = null, addressId = null, address = null }) {
+// Step 5: Finalize an open basket into an order via POST /api3/basket/{id}/finalize.
+// The basket already carries items, payment, delivery address and additional properties, so the
+// body is empty {} — finalize confirms the basket and converts it to an order. (The older
+// POST /api3/order approach needed DeliveryName/AddressId and 500d on this account, which has no
+// selectable delivery list — delivery is derived from the address.)
+// Response: { OrderId (int), OrderNumber (string), ResultMessage (string) }.
+async function finalizeBasket({ basketId, clientId, apiKey }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  if (!basketId) throw new Error('Brak ID koszyka do finalizacji.');
   const token = await getToken(clientId, apiKey);
 
-  // Delivery is REQUIRED by the order endpoint ("Delivery should be specified by id or name").
-  // Preference order: (1) the configured numeric DeliveryId (chosen in settings) — used as-is;
-  // (2) otherwise resolve from the platform's options list (match the configured name, else first);
-  // (3) otherwise fall back to the configured name verbatim. An invalid name makes the API 500.
-  let resolvedDeliveryId = deliveryId != null ? parseInt(deliveryId, 10) : null;
-  let chosenDeliveryName = null;
-  let deliveryOptionsDump = '(nie pobrano)';
-  if (resolvedDeliveryId == null) {
-    // Try the address-scoped list first, then the unscoped list if that returns nothing.
-    let opts = [];
-    for (const q of (addressId != null ? [`?AddressId=${encodeURIComponent(addressId)}`, ''] : [''])) {
-      try {
-        const delResp = await apiRequest('/api3/order/delivery' + q, 'GET', null, token);
-        console.log(`[basket] delivery options (${q || 'no-addr'}):`, delResp.status, JSON.stringify(delResp.body));
-        deliveryOptionsDump = JSON.stringify(delResp.body);
-        opts = (delResp.body?.Items || []).filter(d => d.Name);
-        if (opts.length > 0) break;
-      } catch (e) {
-        console.error('[basket] delivery options fetch error:', e.message);
-      }
-    }
-    if (opts.length > 0) {
-      const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
-      resolvedDeliveryId = chosen.Id ?? null;
-      chosenDeliveryName = chosen.Name ?? null;
-      console.log(`[basket] chosen delivery: id=${resolvedDeliveryId} name=${chosenDeliveryName}`);
-    } else {
-      console.warn('[basket] no delivery options returned by the API (scoped or unscoped)');
-    }
-  } else {
-    console.log(`[basket] using configured DeliveryId ${resolvedDeliveryId}`);
+  console.log(`[basket] POST /api3/basket/${basketId}/finalize`);
+  const resp = await apiRequest(`/api3/basket/${basketId}/finalize`, 'POST', {}, token);
+  const isHtml = typeof resp.body === 'string' && resp.body.trimStart().startsWith('<');
+  console.error('[basket] finalize response:', resp.status, isHtml ? '(HTML)' : JSON.stringify(resp.body));
+  if (![200, 201].includes(resp.status)) {
+    const msg = isHtml ? `HTTP ${resp.status} HTML — wrong endpoint` : JSON.stringify(resp.body);
+    throw new Error(`Błąd finalizacji koszyka (HTTP ${resp.status}): ${msg}`);
   }
-  // Fallback: if still no id, send the configured name verbatim (must be a real method).
-  if (resolvedDeliveryId == null && !chosenDeliveryName && deliveryName) {
-    chosenDeliveryName = deliveryName;
-    console.warn(`[basket] no DeliveryId resolved — falling back to configured delivery name "${deliveryName}"`);
-  }
-  const body = {
-    BasketId: basketId,
-    Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
-  };
-  // DeliveryId and DeliveryName are alternatives per the docs — send only one (prefer the Id).
-  if (resolvedDeliveryId != null) body.DeliveryId = resolvedDeliveryId;
-  else if (chosenDeliveryName) body.DeliveryName = chosenDeliveryName;
-  // Delivery address — required by the order create even when the basket has one set.
-  if (addressId != null) {
-    body.AddressId = parseInt(addressId, 10);
-  } else if (address) {
-    const addr = { OneTimeAdress: true };
-    if (address.Name)            addr.Name            = address.Name;
-    if (address.Street)          addr.Street          = address.Street;
-    if (address.City)            addr.City            = address.City;
-    if (address.PostalCode)      addr.PostalCode      = address.PostalCode;
-    if (address.Phone)           addr.Phone           = address.Phone;
-    if (address.CountryId != null) addr.CountryId     = address.CountryId;
-    if (address.RegionId  != null) addr.RegionId      = address.RegionId;
-    if (address.Email)           addr.Email           = address.Email;
-    if (address.ApartmentNumber) addr.ApartmentNumber = address.ApartmentNumber;
-    if (address.HouseNumber)     addr.HouseNumber     = address.HouseNumber;
-    if (address.TaxNumber)       addr.TaxNumber       = address.TaxNumber;
-    body.Address = addr;
-  }
-
-  console.log(`[basket] POST /api3/order (BasketId=${basketId}):`, JSON.stringify(body));
-  const orderResp = await apiRequest('/api3/order', 'POST', body, token);
-  const isHtml = typeof orderResp.body === 'string' && orderResp.body.trimStart().startsWith('<');
-  console.error('[basket] finalize response:', orderResp.status, isHtml ? '(HTML)' : JSON.stringify(orderResp.body));
-  if (![200, 201].includes(orderResp.status)) {
-    const msg = isHtml ? `HTTP ${orderResp.status} HTML — wrong endpoint or body` : JSON.stringify(orderResp.body);
-    // Include the request body and the delivery options the platform offered — its own message is
-    // often a generic "check the logs", and the usual cause is an invalid delivery/payment value.
-    console.error('[basket] finalize FAILED. Request body was:', JSON.stringify(body), '| delivery options:', deliveryOptionsDump);
-    throw new Error(`Błąd finalizacji koszyka (HTTP ${orderResp.status}): ${msg} | wysłano: ${JSON.stringify(body)} | dostępne dostawy: ${deliveryOptionsDump}`);
-  }
-  const result = orderResp.body;
-  console.log(`[basket] created order ID: ${result?.OrderId || result?.Id || '(unknown)'}`);
+  const result = resp.body || {};
+  console.log(`[basket] created order: OrderId=${result.OrderId} OrderNumber=${result.OrderNumber} msg=${result.ResultMessage || ''}`);
   return result;
 }
 
 // Convenience wrapper: prepare then immediately finalize (single-step flow).
 async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
-  return finalizeBasket({
-    basketId, clientId: opts.clientId, apiKey: opts.apiKey,
-    deliveryId: opts.deliveryId || null, deliveryName: opts.deliveryName || null,
-    addressId: opts.addressId || null, address: opts.address || null,
-  });
+  return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey });
 }
 
 // Resolves the numeric UnitId for each order line. The basket item endpoint requires a real
