@@ -388,8 +388,10 @@ async function _resolvePaymentId(paymentName, token) {
       return null;
     }
     const items = (resp.body?.Items || []).filter(p => p?.Name != null);
-    const ci = s => String(s).trim().toLowerCase();
-    const norm = s => ci(s).replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+    // normalize('NFC') + \s (which includes NBSP) so invisible char/whitespace differences
+    // between the saved value and the API's option name don't defeat the match.
+    const ci = s => String(s).normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+    const norm = s => ci(s).replace(/\s*\([^)]*\)\s*$/, '').trim();
     const wanted = ci(paymentName);
     const wantedNorm = norm(paymentName);
 

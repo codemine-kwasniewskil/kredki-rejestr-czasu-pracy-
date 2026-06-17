@@ -504,9 +504,23 @@ router.get('/settings', requireAdmin, async (req, res) => {
         .catch(e => { console.warn('Payment options fetch failed:', e.message); return []; });
     }
 
+    // Match the saved value to an option tolerantly (NBSP/whitespace/case/unicode differences,
+    // plus the deferred option's volatile "(N)" suffix) — the stored string can differ from the
+    // API's by invisible chars even when it's "the same" option. selectedPaymentName drives the
+    // <option selected> in the view; paymentMismatch shows the warning only when truly unmatched.
+    const pnorm = s => String(s ?? '').normalize('NFC').replace(/ /g, ' ')
+      .replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const savedPayment = orderSettings.cafe_payment_name || null;
+    const matchedPayment = savedPayment
+      ? (paymentOptions.find(p => p.Name === savedPayment) || paymentOptions.find(p => pnorm(p.Name) === pnorm(savedPayment)))
+      : null;
+    const selectedPaymentName = matchedPayment ? matchedPayment.Name : null;
+    const paymentMismatch = !!savedPayment && !matchedPayment;
+
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
       vendors, editVendor, orderSettings, catalogStatus, paymentOptions,
+      selectedPaymentName, paymentMismatch,
     });
   } catch (e) {
     console.error(e);

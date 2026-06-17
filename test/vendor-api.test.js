@@ -247,6 +247,18 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(body.PaymentId, undefined, `expected no PaymentId for non-matching name, got: ${body.PaymentId}`);
   });
 
+  // 4f. Invisible-char differences (NBSP) between saved value and API option still match
+  await test('PaymentId resolves when the saved value uses a non-breaking space', async () => {
+    const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
+    const getBody = stubWithPatchCapture(seq);
+    const api = loadVendorApi();
+    // Saved value has a NBSP ( ) where the API option has a regular space.
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentName: 'Płatność za pobraniem' });
+
+    const body = getBody();
+    assert.strictEqual(body.PaymentId, 3, `expected PaymentId 3 despite NBSP, got: ${body.PaymentId}`);
+  });
+
   // 5. Each product is added via POST /api3/basket/{id}/item (not via Lines in create/PATCH)
   await test('products are added via the basket item endpoint', async () => {
     let itemBody = null;
