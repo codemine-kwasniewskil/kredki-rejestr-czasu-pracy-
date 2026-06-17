@@ -91,7 +91,7 @@ async function getProductsBySku(skus, opts = {}) {
 // Steps 1-5: create basket, add each product via the item endpoint, fetch additional
 // parameters, PATCH metadata (comment/address/delivery), verify. Returns the basket ID
 // so it can be inspected on the B2B platform before finalization.
-async function prepareBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
+async function prepareBasket({ items, comment, clientId, apiKey, paymentId, paymentName, address, addressId, deliveryDate, ownOrderNumber }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
@@ -218,17 +218,18 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   }
   if (additionalProperties.length > 0) patchBody.AdditionalProperties = additionalProperties;
 
-  // Payment method: the basket only accepts a numeric PaymentId, so resolve the configured
-  // payment *name* against /api3/order/payment. If it can't be resolved we skip it (the order
-  // can still be finalized with PaymentName at POST /api3/order time).
-  if (paymentName) {
-    const paymentId = await _resolvePaymentId(paymentName, token);
-    if (paymentId != null) {
-      patchBody.PaymentId = paymentId;
-      console.log(`[basket] resolved payment "${paymentName}" → PaymentId ${paymentId}`);
-    } else {
-      console.warn(`[basket] could not resolve PaymentId for "${paymentName}" — leaving payment unset on basket`);
-    }
+  // Payment method: the basket takes the numeric platform PaymentId directly (configured in
+  // order settings). Optional name resolution kept as a fallback for legacy settings that only
+  // stored a name.
+  let resolvedPaymentId = paymentId != null ? parseInt(paymentId, 10) : null;
+  if (resolvedPaymentId == null && paymentName) {
+    resolvedPaymentId = await _resolvePaymentId(paymentName, token);
+  }
+  if (resolvedPaymentId != null && !Number.isNaN(resolvedPaymentId)) {
+    patchBody.PaymentId = resolvedPaymentId;
+    console.log(`[basket] PaymentId ${resolvedPaymentId}`);
+  } else if (paymentId != null || paymentName) {
+    console.warn(`[basket] no PaymentId set (paymentId=${paymentId}, paymentName=${paymentName})`);
   }
 
   console.log(`[basket] PATCH /api3/basket/${basketId}:`, JSON.stringify(patchBody, null, 2));

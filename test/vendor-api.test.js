@@ -195,8 +195,21 @@ function stubWithPatchCapture(responses) {
       `expected Values ['PO-2026-17'], got: ${JSON.stringify(ownProp.Values)}`);
   });
 
-  // 4b. PATCH resolves payment name to PaymentId via /api3/order/payment
-  await test('PATCH includes PaymentId resolved from paymentName', async () => {
+  // 4-pay. PATCH sends the configured numeric PaymentId directly (no /api3/order/payment lookup)
+  await test('PATCH sends paymentId directly without a payment lookup', async () => {
+    // No PAYMENT_RESP in the sequence — a lookup would consume the wrong response and break the flow.
+    const getBody = stubWithPatchCapture(fullSeq());
+    const api = loadVendorApi();
+    await api.placeOrderViaBasket({ ...BASE_INPUT, paymentId: 52 });
+
+    const body = getBody();
+    assert.strictEqual(body.PaymentId, 52, `expected PaymentId 52, got: ${body.PaymentId}`);
+    assert.ok(!capturedCalls.some(c => c.path === '/api3/order/payment'),
+      'should NOT call /api3/order/payment when paymentId is provided');
+  });
+
+  // 4b. Fallback: resolves a legacy payment *name* to PaymentId via /api3/order/payment
+  await test('PATCH includes PaymentId resolved from paymentName (legacy fallback)', async () => {
     // The payment lookup happens during prepareBasket, after additionalparameters and before PATCH.
     const seq = [TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, PAYMENT_RESP, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP];
     const getBody = stubWithPatchCapture(seq);

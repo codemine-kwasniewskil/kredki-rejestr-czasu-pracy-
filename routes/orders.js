@@ -504,23 +504,14 @@ router.get('/settings', requireAdmin, async (req, res) => {
         .catch(e => { console.warn('Payment options fetch failed:', e.message); return []; });
     }
 
-    // Match the saved value to an option tolerantly (NBSP/whitespace/case/unicode differences,
-    // plus the deferred option's volatile "(N)" suffix) — the stored string can differ from the
-    // API's by invisible chars even when it's "the same" option. selectedPaymentName drives the
-    // <option selected> in the view; paymentMismatch shows the warning only when truly unmatched.
-    const pnorm = s => String(s ?? '').normalize('NFC').replace(/ /g, ' ')
-      .replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const savedPayment = orderSettings.cafe_payment_name || null;
-    const matchedPayment = savedPayment
-      ? (paymentOptions.find(p => p.Name === savedPayment) || paymentOptions.find(p => pnorm(p.Name) === pnorm(savedPayment)))
-      : null;
-    const selectedPaymentName = matchedPayment ? matchedPayment.Name : null;
-    const paymentMismatch = !!savedPayment && !matchedPayment;
+    // Payment is stored as a numeric platform Id, so preselect by Id (no name matching).
+    const selectedPaymentId = orderSettings.cafe_payment_id != null ? parseInt(orderSettings.cafe_payment_id, 10) : null;
+    const paymentMismatch = selectedPaymentId != null && !paymentOptions.some(p => Number(p.Id) === selectedPaymentId);
 
     res.render('orders/settings', {
       title: 'Ustawienia zamówień', currentPath: '/orders',
       vendors, editVendor, orderSettings, catalogStatus, paymentOptions,
-      selectedPaymentName, paymentMismatch,
+      selectedPaymentId, paymentMismatch,
     });
   } catch (e) {
     console.error(e);
@@ -561,12 +552,12 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
   try {
     const locationId = getLocationId(req);
     const { cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city,
-            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_name } = req.body;
+            cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_id } = req.body;
     const cafeAddress = [cafe_street, cafe_house_number, cafe_postal_code, cafe_city]
       .filter(Boolean).join(' ').trim() || null;
     await db.run(
       `INSERT INTO order_settings
-         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_name)
+         (location_id, cafe_address, cafe_name, cafe_street, cafe_house_number, cafe_postal_code, cafe_city, cafe_phone, cafe_email, cafe_address_id, cafe_delivery_name, cafe_payment_id)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          cafe_address=VALUES(cafe_address), cafe_name=VALUES(cafe_name),
@@ -575,13 +566,13 @@ router.post('/settings/address', requireAdmin, async (req, res) => {
          cafe_phone=VALUES(cafe_phone), cafe_email=VALUES(cafe_email),
          cafe_address_id=VALUES(cafe_address_id),
          cafe_delivery_name=VALUES(cafe_delivery_name),
-         cafe_payment_name=VALUES(cafe_payment_name)`,
+         cafe_payment_id=VALUES(cafe_payment_id)`,
       [locationId, cafeAddress,
        cafe_name?.trim() || null, cafe_street?.trim() || null,
        cafe_house_number?.trim() || null, cafe_postal_code?.trim() || null,
        cafe_city?.trim() || null, cafe_phone?.trim() || null,
        cafe_email?.trim() || null, cafe_address_id ? parseInt(cafe_address_id) : null,
-       cafe_delivery_name?.trim() || null, cafe_payment_name?.trim() || null]
+       cafe_delivery_name?.trim() || null, cafe_payment_id ? parseInt(cafe_payment_id, 10) : null]
     );
     req.flash('success', 'Adres kawiarni zapisany.');
     res.redirect('/orders/settings');
@@ -980,9 +971,10 @@ async function _buildBasketParams(locationId, order) {
   // NOT into the comment. The "|" char is rejected by the platform, so it's stripped from notes.
   const ownOrderNumber = order.own_order_number?.trim() || null;
   const comment = (order.notes?.trim() || `Zamówienie #${order.id} - Kredki`).replace(/\|/g, '/');
-  const paymentName = settings.cafe_payment_name?.trim() || null;
+  // Payment is configured as a numeric platform Id (see settings dropdown), sent straight through.
+  const paymentId = settings.cafe_payment_id != null ? parseInt(settings.cafe_payment_id, 10) : null;
 
-  return { itemsWithSku, creds, address, addressId, comment, paymentName, ownOrderNumber };
+  return { itemsWithSku, creds, address, addressId, comment, paymentId, ownOrderNumber };
 }
 
 // ── Step 1: Create basket (approved → basket_created) ─────────────────────
@@ -998,7 +990,7 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
       return res.redirect(`/orders/${req.params.id}`);
     }
 
-    const { itemsWithSku, creds, address, addressId, comment, paymentName, ownOrderNumber } = await _buildBasketParams(locationId, order);
+    const { itemsWithSku, creds, address, addressId, comment, paymentId, ownOrderNumber } = await _buildBasketParams(locationId, order);
     if (itemsWithSku.length === 0) {
       req.flash('error', 'Żaden produkt nie ma przypisanego klucza SKU dostawcy.');
       return res.redirect(`/orders/${order.id}`);
@@ -1007,7 +999,7 @@ router.post('/:id/create-basket', requireAdmin, async (req, res) => {
     const basketId = await vendorApi.prepareBasket({
       items: itemsWithSku,
       comment,
-      paymentName,
+      paymentId,
       ownOrderNumber,
       address,
       addressId,
