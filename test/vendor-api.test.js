@@ -44,8 +44,10 @@ function loadVendorApi() {
 
 const TOKEN_RESP    = { status: 200, body: { AccessToken: 'tok123', ExpiresIn: 3600 } };
 const BASKET_RESP   = { status: 201, body: { Id: 42 } };
+const ITEM_RESP     = { status: 200, body: 'Basket item added.' };
 const AP_RESP       = { status: 200, body: { Items: [{ Name: 'RequestedDeliveryDate' }] } };
 const PATCH_RESP    = { status: 204, body: null };
+const VERIFY_RESP   = { status: 200, body: { Id: 42, Items: [{ Sku: 'SKU-1', Quantity: 2 }] } };
 const DELIVERY_RESP = { status: 200, body: { Items: [{ Id: 5, Name: 'Standardowa' }] } };
 const ORDER_RESP    = { status: 200, body: { OrderId: 'ORD-99' } };
 
@@ -61,11 +63,15 @@ const BASE_INPUT = {
 };
 
 function fullSeq(overrides = {}) {
+  // One ITEM_RESP per product line (BASE_INPUT has a single item).
+  const items = overrides.items ?? [ITEM_RESP];
   return [
     TOKEN_RESP,
     overrides.basket   ?? BASKET_RESP,
+    ...items,
     overrides.ap       ?? AP_RESP,
     overrides.patch    ?? PATCH_RESP,
+    overrides.verify   ?? VERIFY_RESP,
     overrides.delivery ?? DELIVERY_RESP,
     overrides.order    ?? ORDER_RESP,
   ];
@@ -160,26 +166,29 @@ function stubWithPatchCapture(responses) {
       `expected RequestedDeliveryDate '2026-06-20', got: ${body.RequestedDeliveryDate}`);
   });
 
-  // 5. Lines are included in basket creation body (not a separate call)
-  await test('product lines are included in basket creation body', async () => {
-    let createBody = null;
+  // 5. Each product is added via POST /api3/basket/{id}/item (not via Lines in create/PATCH)
+  await test('products are added via the basket item endpoint', async () => {
+    let itemBody = null;
     stubHttps(fullSeq());
     const inner = https.request;
     https.request = (options, callback) => {
       const req = inner(options, callback);
-      if (options.method === 'POST' && options.path === '/api3/basket') {
+      if (options.method === 'POST' && /^\/api3\/basket\/42\/item$/.test(options.path)) {
         const origWrite = req.write.bind(req);
-        req.write = (data) => { createBody = JSON.parse(data); return origWrite(data); };
+        req.write = (data) => { itemBody = JSON.parse(data); return origWrite(data); };
       }
       return req;
     };
     const api = loadVendorApi();
     await api.placeOrderViaBasket(BASE_INPUT);
 
-    assert.ok(createBody !== null, 'basket creation body not captured');
-    assert.ok(Array.isArray(createBody.Lines), 'Lines should be an array in basket creation body');
-    assert.strictEqual(createBody.Lines.length, 1, 'expected 1 line');
-    assert.strictEqual(createBody.Lines[0].Key, 'SKU-1');
+    const itemCall = capturedCalls.find(c => c.method === 'POST' && c.path === '/api3/basket/42/item');
+    assert.ok(itemCall, 'POST /api3/basket/42/item call not found');
+    assert.ok(itemBody !== null, 'item body not captured');
+    assert.strictEqual(itemBody.ProductKey.KeyType, 'Sku');
+    assert.strictEqual(itemBody.ProductKey.Key, 'SKU-1');
+    assert.strictEqual(itemBody.Quantity, '2', 'quantity should be the stringified line quantity');
+    assert.strictEqual(itemBody.UnitId, '-3', 'UnitId should be the default-unit sentinel');
   });
 
   // 6. Finalization posts to /api3/order with BasketId in body
@@ -218,7 +227,7 @@ function stubWithPatchCapture(responses) {
 
   // 8. Error on PATCH throws with Polish message
   await test('PATCH failure throws with Polish error message', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, AP_RESP, { status: 422, body: { Message: 'Validation failed' } }]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, ITEM_RESP, AP_RESP, { status: 422, body: { Message: 'Validation failed' } }]);
     const api = loadVendorApi();
     await assert.rejects(
       () => api.placeOrderViaBasket(BASE_INPUT),
@@ -232,7 +241,7 @@ function stubWithPatchCapture(responses) {
 
   // 9. Additional parameters 404 does not abort the flow
   await test('additional parameters 404 does not abort the flow', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, { status: 404, body: null }, PATCH_RESP, DELIVERY_RESP, ORDER_RESP]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, ITEM_RESP, { status: 404, body: null }, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP]);
     const api = loadVendorApi();
     const result = await api.placeOrderViaBasket(BASE_INPUT);
     assert.strictEqual(result.OrderId, 'ORD-99',

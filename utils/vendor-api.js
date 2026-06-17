@@ -88,20 +88,22 @@ async function getProductsBySku(skus, opts = {}) {
   return catalog.getCatalogBySku({ locationId, skus });
 }
 
-// Steps 1-4: create basket, fetch additional parameters, PATCH, add product lines.
-// Returns the basket ID so it can be inspected on the B2B platform before finalization.
+// Steps 1-5: create basket, add each product via the item endpoint, fetch additional
+// parameters, PATCH metadata (comment/address/delivery), verify. Returns the basket ID
+// so it can be inspected on the B2B platform before finalization.
 async function prepareBasket({ items, comment, clientId, apiKey, paymentName, address, addressId, deliveryDate }) {
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
 
   const token = await getToken(clientId, apiKey);
 
-  // Note: do NOT send UnitId. The catalog only has the unit *symbol* (e.g. "szt."), not the
-  // numeric UnitId the API expects, and an invalid UnitId makes the API silently drop the line
-  // (basket created but empty). The documented Create Basket example omits UnitId entirely, so
-  // we let the API apply each product's default unit.
+  // Products are added one-by-one via POST /api3/basket/{id}/item (see Step 2). Passing
+  // products as `Lines` in the create body OR in the PATCH is silently ignored by the API
+  // (basket ends up with Items:[]). The item endpoint requires a UnitId; "-3" is the
+  // documented sentinel meaning "the product's default unit", which avoids needing the
+  // numeric UnitId we don't have (the catalog only stores the unit symbol, e.g. "szt.").
   const lines = items
     .filter(i => i.vendor_product_key)
-    .map(i => ({ KeyType: 'Sku', Key: String(i.vendor_product_key), Quantity: Number(i.quantity) }));
+    .map(i => ({ Sku: String(i.vendor_product_key), Quantity: Number(i.quantity) }));
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
@@ -126,7 +128,36 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   }
   console.log(`[basket] created basket ID: ${basketId}`);
 
-  // Step 2: Fetch basket-specific additional parameters to learn what the API accepts
+  // Step 2: Add each product with its own POST /api3/basket/{id}/item call. This is the only
+  // way products actually land in the basket — `Lines` in the create body / PATCH is ignored.
+  const DEFAULT_UNIT_ID = '-3'; // documented sentinel for "product's default unit"
+  let addedCount = 0;
+  const addFailures = [];
+  for (const line of lines) {
+    const itemBody = {
+      ProductKey: { KeyType: 'Sku', Key: line.Sku },
+      Quantity: String(line.Quantity),
+      UnitId: DEFAULT_UNIT_ID,
+      Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
+    };
+    const itemResp = await apiRequest(`/api3/basket/${basketId}/item`, 'POST', itemBody, token);
+    const itemBodyRaw = typeof itemResp.body === 'string' ? itemResp.body : JSON.stringify(itemResp.body);
+    if ([200, 201, 204].includes(itemResp.status)) {
+      addedCount++;
+      console.log(`[basket] added item SKU=${line.Sku} qty=${line.Quantity}: ${itemResp.status}`);
+    } else {
+      addFailures.push(`${line.Sku}: HTTP ${itemResp.status} ${itemBodyRaw}`);
+      console.error(`[basket] add item SKU=${line.Sku} FAILED: ${itemResp.status} ${itemBodyRaw}`);
+    }
+  }
+  if (addedCount === 0) {
+    throw new Error(`Nie udało się dodać żadnego produktu do koszyka: ${addFailures.join('; ')}`);
+  }
+  if (addFailures.length > 0) {
+    console.warn(`[basket] ${addFailures.length} produkt(ów) nie dodano: ${addFailures.join('; ')}`);
+  }
+
+  // Step 3: Fetch basket-specific additional parameters to learn what the API accepts
   console.log(`[basket] GET /api3/basket/${basketId}/additionalparameters`);
   let additionalParams = null;
   try {
@@ -138,11 +169,9 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     console.warn('[basket] additionalparameters fetch error:', e.message);
   }
 
-  // Step 3: PATCH basket — this is what actually populates the basket (confirmed: Comment set
-  // via PATCH sticks, while the create body is ignored). Products go in `Lines` on input; the
-  // GET response echoes them back under `Items`. Comment, address, delivery date and
-  // ShowOnFront are applied here too.
-  const patchBody = { Delivery: null, ShowOnFront: true, Lines: lines };
+  // Step 4: PATCH basket metadata — comment, address, delivery date and ShowOnFront. Products
+  // are NOT sent here (they were added via the item endpoint in Step 2); `Lines` is ignored.
+  const patchBody = { Delivery: null, ShowOnFront: true };
   if (comment) patchBody.Comment = comment;
   if (addressId) {
     patchBody.AddressId = parseInt(addressId, 10);
@@ -175,9 +204,7 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
     throw new Error(`Błąd aktualizacji koszyka: ${msg}`);
   }
 
-  // Step 4: Verify the basket actually contains the lines before returning it.
-  // Dump the full body so we can see what field name holds the lines and whether the
-  // product (with UnitId "szt.") was accepted or silently dropped.
+  // Step 5: Verify the basket actually contains the items before returning it.
   try {
     const verifyResp = await apiRequest(`/api3/basket/${basketId}`, 'GET', null, token);
     const bodyRaw = typeof verifyResp.body === 'string' ? verifyResp.body : JSON.stringify(verifyResp.body);
