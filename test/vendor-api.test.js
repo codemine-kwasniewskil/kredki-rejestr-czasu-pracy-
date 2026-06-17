@@ -44,6 +44,10 @@ function loadVendorApi() {
 
 const TOKEN_RESP    = { status: 200, body: { AccessToken: 'tok123', ExpiresIn: 3600 } };
 const BASKET_RESP   = { status: 201, body: { Id: 42 } };
+// findProduct (resolveUnitIds): SKU-1 has units szt. (id 7, primary) and op. (id 8).
+const FINDPROD_RESP = { status: 200, body: { Items: [{ Id: 100, Sku: 'SKU-1', Units: [
+  { Id: '7', Name: 'szt.', Primary: true }, { Id: '8', Name: 'op.', Primary: false },
+] }] } };
 const ITEM_RESP     = { status: 200, body: 'Basket item added.' };
 const AP_RESP       = { status: 200, body: { Items: [{ Name: 'RequestedDeliveryDate' }] } };
 const PATCH_RESP    = { status: 204, body: null };
@@ -68,6 +72,7 @@ function fullSeq(overrides = {}) {
   return [
     TOKEN_RESP,
     overrides.basket   ?? BASKET_RESP,
+    overrides.findprod ?? FINDPROD_RESP,
     ...items,
     overrides.ap       ?? AP_RESP,
     overrides.patch    ?? PATCH_RESP,
@@ -188,7 +193,7 @@ function stubWithPatchCapture(responses) {
     assert.strictEqual(itemBody.ProductKey.KeyType, 'Sku');
     assert.strictEqual(itemBody.ProductKey.Key, 'SKU-1');
     assert.strictEqual(itemBody.Quantity, '2', 'quantity should be the stringified line quantity');
-    assert.strictEqual(itemBody.UnitId, '-3', 'UnitId should be the default-unit sentinel');
+    assert.strictEqual(itemBody.UnitId, '7', 'UnitId should be resolved from findProduct, matching the "szt." unit');
   });
 
   // 6. Finalization posts to /api3/order with BasketId in body
@@ -227,7 +232,7 @@ function stubWithPatchCapture(responses) {
 
   // 8. Error on PATCH throws with Polish message
   await test('PATCH failure throws with Polish error message', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, ITEM_RESP, AP_RESP, { status: 422, body: { Message: 'Validation failed' } }]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, AP_RESP, { status: 422, body: { Message: 'Validation failed' } }]);
     const api = loadVendorApi();
     await assert.rejects(
       () => api.placeOrderViaBasket(BASE_INPUT),
@@ -241,7 +246,7 @@ function stubWithPatchCapture(responses) {
 
   // 9. Additional parameters 404 does not abort the flow
   await test('additional parameters 404 does not abort the flow', async () => {
-    stubHttps([TOKEN_RESP, BASKET_RESP, ITEM_RESP, { status: 404, body: null }, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP]);
+    stubHttps([TOKEN_RESP, BASKET_RESP, FINDPROD_RESP, ITEM_RESP, { status: 404, body: null }, PATCH_RESP, VERIFY_RESP, DELIVERY_RESP, ORDER_RESP]);
     const api = loadVendorApi();
     const result = await api.placeOrderViaBasket(BASE_INPUT);
     assert.strictEqual(result.OrderId, 'ORD-99',

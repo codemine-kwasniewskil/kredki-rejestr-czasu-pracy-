@@ -98,12 +98,13 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
 
   // Products are added one-by-one via POST /api3/basket/{id}/item (see Step 2). Passing
   // products as `Lines` in the create body OR in the PATCH is silently ignored by the API
-  // (basket ends up with Items:[]). The item endpoint requires a UnitId; "-3" is the
-  // documented sentinel meaning "the product's default unit", which avoids needing the
-  // numeric UnitId we don't have (the catalog only stores the unit symbol, e.g. "szt.").
+  // (basket ends up with Items:[]). The item endpoint requires a real numeric UnitId — the
+  // "-3" sentinel is rejected ("does not have unit with id: -3"). The XML catalog only stores
+  // the unit *symbol* (e.g. "szt."), so we look up each product's numeric unit ids at order
+  // time via /api3/product/findProduct (see resolveUnitIds) and match on the symbol.
   const lines = items
     .filter(i => i.vendor_product_key)
-    .map(i => ({ Sku: String(i.vendor_product_key), Quantity: Number(i.quantity) }));
+    .map(i => ({ Sku: String(i.vendor_product_key), Quantity: Number(i.quantity), Unit: i.unit || null }));
 
   if (lines.length === 0) throw new Error('Brak produktów z kluczem SKU dostawcy.');
 
@@ -128,23 +129,31 @@ async function prepareBasket({ items, comment, clientId, apiKey, paymentName, ad
   }
   console.log(`[basket] created basket ID: ${basketId}`);
 
-  // Step 2: Add each product with its own POST /api3/basket/{id}/item call. This is the only
-  // way products actually land in the basket — `Lines` in the create body / PATCH is ignored.
-  const DEFAULT_UNIT_ID = '-3'; // documented sentinel for "product's default unit"
+  // Step 2: Resolve each product's numeric UnitId, then add it with its own
+  // POST /api3/basket/{id}/item call. This is the only way products actually land in the
+  // basket — `Lines` in the create body / PATCH is ignored.
+  const unitIdBySku = await resolveUnitIds(lines, token);
+
   let addedCount = 0;
   const addFailures = [];
   for (const line of lines) {
+    const unitId = unitIdBySku.get(line.Sku);
+    if (!unitId) {
+      addFailures.push(`${line.Sku}: brak jednostki (UnitId) — nie znaleziono produktu w katalogu dostawcy`);
+      console.error(`[basket] add item SKU=${line.Sku} SKIPPED: could not resolve UnitId`);
+      continue;
+    }
     const itemBody = {
       ProductKey: { KeyType: 'Sku', Key: line.Sku },
       Quantity: String(line.Quantity),
-      UnitId: DEFAULT_UNIT_ID,
+      UnitId: String(unitId),
       Config: { ErrorOnProductQuantityChange: false, ErrorOnProductWarning: false },
     };
     const itemResp = await apiRequest(`/api3/basket/${basketId}/item`, 'POST', itemBody, token);
     const itemBodyRaw = typeof itemResp.body === 'string' ? itemResp.body : JSON.stringify(itemResp.body);
     if ([200, 201, 204].includes(itemResp.status)) {
       addedCount++;
-      console.log(`[basket] added item SKU=${line.Sku} qty=${line.Quantity}: ${itemResp.status}`);
+      console.log(`[basket] added item SKU=${line.Sku} qty=${line.Quantity} unitId=${unitId}: ${itemResp.status}`);
     } else {
       addFailures.push(`${line.Sku}: HTTP ${itemResp.status} ${itemBodyRaw}`);
       console.error(`[basket] add item SKU=${line.Sku} FAILED: ${itemResp.status} ${itemBodyRaw}`);
@@ -264,6 +273,58 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null 
 async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
   return finalizeBasket({ basketId, clientId: opts.clientId, apiKey: opts.apiKey, deliveryName: opts.deliveryName || null });
+}
+
+// Resolves the numeric UnitId for each order line. The basket item endpoint requires a real
+// UnitId (the "-3" sentinel is rejected), but the XML catalog only stores the unit *symbol*.
+// So we query /api3/product/findProduct (which returns a Units array with numeric Ids) for the
+// order's SKUs, then pick — per line — the unit whose Name matches the line's symbol, falling
+// back to the Primary unit, then the first available unit.
+// Returns Map<Sku, unitId>. SKUs not found in the catalog response are simply absent.
+async function resolveUnitIds(lines, token) {
+  const out = new Map();
+  const skus = [...new Set(lines.map(l => l.Sku))];
+  if (skus.length === 0) return out;
+
+  // Fetch products' Units arrays from findProduct. Try one batched call first
+  // (productsSku may accept a comma-separated list — covers the whole order in 1 request,
+  // keeping us under the 100 req/hour /api3 limit), then fall back to per-SKU calls for any
+  // SKU the batched response didn't return.
+  const unitBySku = new Map();
+  const fetchUnits = async (skuParam) => {
+    const path = `/api3/product/findProduct?field=Id,Sku,Unit,Units&productsSku=${encodeURIComponent(skuParam)}`;
+    try {
+      const resp = await apiRequest(path, 'GET', null, token);
+      if (resp.status !== 200) {
+        console.error('[basket] resolveUnitIds findProduct non-200:', resp.status, JSON.stringify(resp.body));
+        return;
+      }
+      for (const p of (resp.body?.Items || [])) {
+        if (p.Sku != null) unitBySku.set(String(p.Sku), Array.isArray(p.Units) ? p.Units : []);
+      }
+    } catch (e) {
+      console.error('[basket] resolveUnitIds findProduct error:', e.message);
+    }
+  };
+
+  await fetchUnits(skus.join(','));
+  const missing = skus.filter(s => !unitBySku.has(s));
+  for (const sku of missing) await fetchUnits(sku);
+
+  for (const line of lines) {
+    const units = unitBySku.get(line.Sku);
+    if (!units || units.length === 0) continue;
+    const wanted = (line.Unit || '').trim().toLowerCase();
+    const byName = wanted ? units.find(u => String(u.Name || '').trim().toLowerCase() === wanted) : null;
+    const chosen = byName || units.find(u => u.Primary) || units[0];
+    if (chosen?.Id != null) {
+      out.set(line.Sku, chosen.Id);
+      if (!byName && wanted) {
+        console.warn(`[basket] SKU=${line.Sku} unit "${line.Unit}" not in product units (${units.map(u => u.Name).join(', ')}) — using ${chosen.Name} (id=${chosen.Id})`);
+      }
+    }
+  }
+  return out;
 }
 
 // Looks for a parameter name in the additionalparameters API response, falling back to defaultName.
