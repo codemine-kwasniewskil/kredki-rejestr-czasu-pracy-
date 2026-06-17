@@ -188,10 +188,9 @@
             <select name="payment_method"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
               <option value="" <%= dpm === '' ? 'selected' : '' %>>— wybierz —</option>
-              <option value="przelew"   <%= dpm === 'przelew'   ? 'selected' : '' %>>Przelew</option>
-              <option value="gotowka"   <%= dpm === 'gotowka'   ? 'selected' : '' %>>Gotówka</option>
-              <option value="karta"     <%= dpm === 'karta'     ? 'selected' : '' %>>Karta</option>
+              <option value="pobranie"  <%= dpm === 'pobranie'  ? 'selected' : '' %>>Płatność za pobraniem</option>
               <option value="odroczona" <%= dpm === 'odroczona' ? 'selected' : '' %>>Płatność odroczona</option>
+              <option value="przelew"   <%= dpm === 'przelew'   ? 'selected' : '' %>>Przelew</option>
             </select>
           </div>
           <div>

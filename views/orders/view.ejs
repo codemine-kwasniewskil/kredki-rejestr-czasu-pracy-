@@ -207,9 +207,13 @@
         </div>
         <% } %>
         <% if (order.payment_method) { %>
+        <%
+          const paymentLabels = { pobranie: 'Płatność za pobraniem', odroczona: 'Płatność odroczona', przelew: 'Przelew',
+                                  gotowka: 'Gotówka', karta: 'Karta' };
+        %>
         <div>
           <dt class="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Forma płatności</dt>
-          <dd class="text-slate-700 capitalize"><%= order.payment_method %></dd>
+          <dd class="text-slate-700"><%= paymentLabels[order.payment_method] || order.payment_method %></dd>
         </div>
         <% } %>
         <% if (order.delivery_address) { %>

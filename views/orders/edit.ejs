@@ -175,10 +175,9 @@
             <select name="payment_method"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
               <option value="">— wybierz —</option>
-              <option value="przelew"   <%= order.payment_method === 'przelew'   ? 'selected' : '' %>>Przelew</option>
-              <option value="gotowka"   <%= order.payment_method === 'gotowka'   ? 'selected' : '' %>>Gotówka</option>
-              <option value="karta"     <%= order.payment_method === 'karta'     ? 'selected' : '' %>>Karta</option>
+              <option value="pobranie"  <%= order.payment_method === 'pobranie'  ? 'selected' : '' %>>Płatność za pobraniem</option>
               <option value="odroczona" <%= order.payment_method === 'odroczona' ? 'selected' : '' %>>Płatność odroczona</option>
+              <option value="przelew"   <%= order.payment_method === 'przelew'   ? 'selected' : '' %>>Przelew</option>
             </select>
           </div>
           <div>
