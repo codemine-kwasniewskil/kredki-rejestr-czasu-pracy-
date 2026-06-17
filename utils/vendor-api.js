@@ -333,22 +333,28 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryId = null, d
   // (3) otherwise fall back to the configured name verbatim. An invalid name makes the API 500.
   let resolvedDeliveryId = deliveryId != null ? parseInt(deliveryId, 10) : null;
   let chosenDeliveryName = null;
+  let deliveryOptionsDump = '(nie pobrano)';
   if (resolvedDeliveryId == null) {
-    try {
-      const delPath = '/api3/order/delivery' + (addressId != null ? `?AddressId=${encodeURIComponent(addressId)}` : '');
-      const delResp = await apiRequest(delPath, 'GET', null, token);
-      console.log('[basket] delivery options:', delResp.status, JSON.stringify(delResp.body));
-      const opts = (delResp.body?.Items || []).filter(d => d.Name);
-      if (opts.length > 0) {
-        const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
-        resolvedDeliveryId = chosen.Id ?? null;
-        chosenDeliveryName = chosen.Name ?? null;
-        console.log(`[basket] chosen delivery: id=${resolvedDeliveryId} name=${chosenDeliveryName}`);
-      } else {
-        console.warn('[basket] no delivery options returned by the API');
+    // Try the address-scoped list first, then the unscoped list if that returns nothing.
+    let opts = [];
+    for (const q of (addressId != null ? [`?AddressId=${encodeURIComponent(addressId)}`, ''] : [''])) {
+      try {
+        const delResp = await apiRequest('/api3/order/delivery' + q, 'GET', null, token);
+        console.log(`[basket] delivery options (${q || 'no-addr'}):`, delResp.status, JSON.stringify(delResp.body));
+        deliveryOptionsDump = JSON.stringify(delResp.body);
+        opts = (delResp.body?.Items || []).filter(d => d.Name);
+        if (opts.length > 0) break;
+      } catch (e) {
+        console.error('[basket] delivery options fetch error:', e.message);
       }
-    } catch (e) {
-      console.error('[basket] delivery options fetch error:', e.message);
+    }
+    if (opts.length > 0) {
+      const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
+      resolvedDeliveryId = chosen.Id ?? null;
+      chosenDeliveryName = chosen.Name ?? null;
+      console.log(`[basket] chosen delivery: id=${resolvedDeliveryId} name=${chosenDeliveryName}`);
+    } else {
+      console.warn('[basket] no delivery options returned by the API (scoped or unscoped)');
     }
   } else {
     console.log(`[basket] using configured DeliveryId ${resolvedDeliveryId}`);
@@ -390,9 +396,10 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryId = null, d
   console.error('[basket] finalize response:', orderResp.status, isHtml ? '(HTML)' : JSON.stringify(orderResp.body));
   if (![200, 201].includes(orderResp.status)) {
     const msg = isHtml ? `HTTP ${orderResp.status} HTML — wrong endpoint or body` : JSON.stringify(orderResp.body);
-    // Include the request body — the platform's own message is often a generic "check the logs".
-    console.error('[basket] finalize FAILED. Request body was:', JSON.stringify(body));
-    throw new Error(`Błąd finalizacji koszyka (HTTP ${orderResp.status}): ${msg} | wysłano: ${JSON.stringify(body)}`);
+    // Include the request body and the delivery options the platform offered — its own message is
+    // often a generic "check the logs", and the usual cause is an invalid delivery/payment value.
+    console.error('[basket] finalize FAILED. Request body was:', JSON.stringify(body), '| delivery options:', deliveryOptionsDump);
+    throw new Error(`Błąd finalizacji koszyka (HTTP ${orderResp.status}): ${msg} | wysłano: ${JSON.stringify(body)} | dostępne dostawy: ${deliveryOptionsDump}`);
   }
   const result = orderResp.body;
   console.log(`[basket] created order ID: ${result?.OrderId || result?.Id || '(unknown)'}`);
