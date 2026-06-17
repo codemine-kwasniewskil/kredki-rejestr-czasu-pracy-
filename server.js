@@ -793,6 +793,34 @@ const migrationsReady = (async () => {
     INDEX idx_deliveries_location_date (location_id, delivered_at)
   )`);
 
+  // ── design_sales table (Kredki only) ──────────────────────────────────────
+  await db.run(`CREATE TABLE IF NOT EXISTS design_sales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    location_id INT NOT NULL,
+    sold_at DATE NOT NULL,
+    brand VARCHAR(200) DEFAULT NULL,
+    color VARCHAR(100) DEFAULT NULL,
+    quantity INT DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    created_by INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_design_sales_location_date (location_id, sold_at)
+  )`);
+
+  // Restrict 'designsales' to Kredki (location 1): disable for everyone elsewhere (first run only)
+  const designSalesFeatureCount = await db.get(`SELECT COUNT(*) as cnt FROM location_features WHERE feature='designsales'`);
+  if (designSalesFeatureCount && designSalesFeatureCount.cnt === 0) {
+    await db.run(
+      `INSERT IGNORE INTO location_features (location_id, role, feature, enabled)
+       SELECT l.id, r.role, 'designsales', 0
+       FROM locations l
+       JOIN (SELECT 'admin' AS role UNION SELECT 'location_manager' UNION SELECT 'worker') r
+       WHERE l.id != 1`
+    );
+  }
+
   // ── cafe address fields on order_settings ─────────────────────────────────
   const osCols = [
     { col: 'cafe_address',      ddl: 'VARCHAR(500) DEFAULT NULL' },
@@ -843,6 +871,7 @@ app.use('/finance', require('./routes/finance'));
 app.use('/stock', require('./routes/stock'));
 app.use('/orders', require('./routes/orders'));
 app.use('/deliveries', require('./routes/deliveries'));
+app.use('/design-sales', require('./routes/designsales'));
 app.use('/locations', require('./routes/locations'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Strona nie istnieje.' }));

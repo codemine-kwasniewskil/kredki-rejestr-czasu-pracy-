@@ -1,0 +1,119 @@
+<% locals.currentPath = '/design-sales'; %>
+<%- include('../partials/head', { title: 'Sprzedaż Designu' }) %>
+<%- include('../partials/nav') %>
+
+<%
+function fmtDate(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  return `${dd}.${mm}.${d.getUTCFullYear()}`;
+}
+const isManager = user && (user.role === 'admin' || user.role === 'location_manager' || user.role === 'super_admin');
+%>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-4xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="mb-5">
+      <h1 class="text-xl font-bold text-slate-800">Sprzedaż Designu</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Rejestr sprzedaży produktów designerskich</p>
+    </div>
+
+    <!-- Flash messages -->
+    <% if (success && success.length) { %>
+    <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"><%= success[0] %></div>
+    <% } %>
+    <% if (error && error.length) { %>
+    <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <!-- Add form -->
+    <form method="POST" action="/design-sales" class="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 mb-5">
+      <div class="text-sm font-semibold text-slate-800 mb-3">Dodaj sprzedaż</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Data <span class="text-red-500">*</span></label>
+          <input type="date" name="sold_at" value="<%= today %>" required
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Marka</label>
+          <input type="text" name="brand" placeholder="np. Nike"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Kolor</label>
+          <input type="text" name="color" placeholder="np. czarny"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Ilość</label>
+          <input type="number" name="quantity" min="1" step="1" placeholder="np. 1"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi</label>
+          <input type="text" name="notes" placeholder="Opcjonalnie"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Zapisz
+        </button>
+      </div>
+    </form>
+
+    <!-- List -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <% if (sales.length === 0) { %>
+      <div class="text-center py-16 text-slate-400">
+        <p class="font-medium">Brak wpisów</p>
+        <p class="text-sm mt-1">Dodaj pierwszą sprzedaż używając formularza powyżej.</p>
+      </div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50 text-left">
+              <th class="px-4 py-3 font-semibold text-slate-600 whitespace-nowrap">Data</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Marka</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Kolor</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Ilość</th>
+              <th class="px-4 py-3 font-semibold text-slate-600">Uwagi</th>
+              <th class="px-4 py-3 font-semibold text-slate-600 whitespace-nowrap">Dodał(a)</th>
+              <% if (isManager) { %><th class="px-4 py-3"></th><% } %>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <% sales.forEach(s => { %>
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3 font-medium text-slate-800 whitespace-nowrap"><%= fmtDate(s.sold_at) %></td>
+              <td class="px-4 py-3 text-slate-700"><%= s.brand || '—' %></td>
+              <td class="px-4 py-3 text-slate-700"><%= s.color || '—' %></td>
+              <td class="px-4 py-3 text-slate-600 whitespace-nowrap"><%= (s.quantity !== null && s.quantity !== undefined) ? s.quantity : '—' %></td>
+              <td class="px-4 py-3 text-slate-600 max-w-xs"><%= s.notes || '—' %></td>
+              <td class="px-4 py-3 text-slate-500 whitespace-nowrap text-xs"><%= s.created_by_name || '—' %></td>
+              <% if (isManager) { %>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <form method="POST" action="/design-sales/<%= s.id %>?_method=DELETE" class="inline" onsubmit="return confirm('Usunąć ten wpis?')">
+                  <button type="submit" class="text-slate-400 hover:text-red-600 transition-colors" title="Usuń">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </form>
+              </td>
+              <% } %>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+
+  </div>
+</div>
