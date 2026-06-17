@@ -798,6 +798,24 @@ const migrationsReady = (async () => {
     INDEX idx_deliveries_location_date (location_id, delivered_at)
   )`);
 
+  // ── recipes table (przepisy — cafe product recipes) ───────────────────────
+  await db.run(`CREATE TABLE IF NOT EXISTS recipes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    location_id INT NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    category VARCHAR(40) NOT NULL DEFAULT 'inne',
+    glass VARCHAR(150) DEFAULT NULL,
+    prep_time_min INT DEFAULT NULL,
+    ingredients TEXT DEFAULT NULL,
+    steps TEXT DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by INT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_recipes_location (location_id, category, name)
+  )`);
+
   // ── design_sales table (Kredki only) ──────────────────────────────────────
   await db.run(`CREATE TABLE IF NOT EXISTS design_sales (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -879,6 +897,7 @@ app.use('/finance', require('./routes/finance'));
 app.use('/stock', require('./routes/stock'));
 app.use('/orders', require('./routes/orders'));
 app.use('/deliveries', require('./routes/deliveries'));
+app.use('/recipes', require('./routes/recipes'));
 app.use('/design-sales', require('./routes/designsales'));
 app.use('/locations', require('./routes/locations'));
 

@@ -1,0 +1,91 @@
+<% locals.currentPath = '/recipes'; %>
+<%- include('../partials/head', { title: isNew ? 'Nowy przepis' : 'Edytuj przepis' }) %>
+<%- include('../partials/nav') %>
+
+<%
+  const action = isNew ? '/recipes' : `/recipes/${recipe.id}?_method=PUT`;
+  const cancel = isNew ? '/recipes' : `/recipes/${recipe.id}`;
+%>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-2xl mx-auto px-4 py-6">
+
+    <a href="<%= cancel %>" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      <%= isNew ? 'Przepisy' : 'Wróć do przepisu' %>
+    </a>
+
+    <h1 class="text-xl font-bold text-slate-800 mb-5"><%= isNew ? 'Nowy przepis' : 'Edytuj przepis' %></h1>
+
+    <% if (error && error.length) { %>
+    <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"><%= error[0] %></div>
+    <% } %>
+
+    <form method="POST" action="<%= action %>" class="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Nazwa <span class="text-red-500">*</span></label>
+        <input type="text" name="name" value="<%= recipe.name || '' %>" required maxlength="200"
+          placeholder="np. Cappuccino, Lemoniada cytrynowa"
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Kategoria</label>
+          <select name="category" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+            <% categories.forEach(c => { %>
+              <option value="<%= c.value %>" <%= recipe.category === c.value ? 'selected' : '' %>><%= c.icon %> <%= c.label %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Naczynie</label>
+          <input type="text" name="glass" value="<%= recipe.glass || '' %>" maxlength="150"
+            placeholder="np. Filiżanka 200 ml"
+            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Czas (min)</label>
+          <input type="number" name="prep_time_min" value="<%= recipe.prep_time_min || '' %>" min="0" max="600"
+            placeholder="np. 5"
+            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Składniki <span class="text-slate-400 font-normal">(jeden w linii)</span></label>
+        <textarea name="ingredients" rows="5"
+          placeholder="Espresso – 30 ml&#10;Mleko spienione – 120 ml&#10;Cukier – do smaku"
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"><%= recipe.ingredients || '' %></textarea>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Przygotowanie <span class="text-slate-400 font-normal">(jeden krok w linii)</span></label>
+        <textarea name="steps" rows="6"
+          placeholder="Zaparz espresso&#10;Spień mleko&#10;Połącz i podaj"
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"><%= recipe.steps || '' %></textarea>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Uwagi</label>
+        <textarea name="notes" rows="2"
+          placeholder="Opcjonalne wskazówki, warianty, alergeny…"
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"><%= recipe.notes || '' %></textarea>
+      </div>
+
+      <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="active" value="1" <%= recipe.active ? 'checked' : '' %> class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+        Aktywny (widoczny na liście)
+      </label>
+
+      <div class="flex gap-2 pt-2">
+        <button type="submit" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+          <%= isNew ? 'Dodaj przepis' : 'Zapisz zmiany' %>
+        </button>
+        <a href="<%= cancel %>" class="px-4 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">Anuluj</a>
+      </div>
+    </form>
+
+  </div>
+</div>
+<%- include('../partials/footer') %>
