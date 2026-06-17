@@ -1098,19 +1098,26 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
       basketId: order.vendor_basket_id, deliveryName, address, addressId, ...creds,
     });
 
-    const vendorOrderId = vendorResult?.OrderId || vendorResult?.Id || JSON.stringify(vendorResult);
+    // The order create response's OrderId is the supplier's order number (integer; can be
+    // negative for test orders). Use != null so 0/negatives aren't lost, and never fall back to
+    // storing a raw JSON blob.
+    const vendorOrderId = vendorResult?.OrderId != null ? String(vendorResult.OrderId)
+      : (vendorResult?.Id != null ? String(vendorResult.Id) : null);
+    if (vendorOrderId == null) {
+      console.error('[basket] finalize succeeded but no OrderId in response:', JSON.stringify(vendorResult));
+    }
     await db.run(
       `UPDATE purchase_orders SET status='placed', vendor_order_id=?, updated_at=NOW() WHERE id=?`,
-      [String(vendorOrderId), order.id]
+      [vendorOrderId, order.id]
     );
-    await log(sessionUser(req), 'Zamówienia – złożono u dostawcy', `ID: ${order.id} | Vendor: ${vendorOrderId}`);
+    await log(sessionUser(req), 'Zamówienia – złożono u dostawcy', `ID: ${order.id} | Vendor: ${vendorOrderId ?? '(brak OrderId)'}`);
 
     const statements = [
       ...(vendorResult?.BasketStatements || []),
       ...(vendorResult?.BasketProductsStatements || []),
     ].map(s => s.Message).filter(Boolean);
 
-    req.flash('success', `Zamówienie złożone! Numer u dostawcy: ${vendorOrderId}${statements.length ? ' — ' + statements.join('; ') : ''}`);
+    req.flash('success', `Zamówienie złożone u dostawcy${vendorOrderId ? ` (nr ${vendorOrderId})` : ''}.${statements.length ? ' ' + statements.join('; ') : ''}`);
     res.redirect(`/orders/${order.id}`);
   } catch (e) {
     console.error('Finalize basket error:', e);

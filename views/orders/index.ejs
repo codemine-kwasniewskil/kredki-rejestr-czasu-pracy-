@@ -141,7 +141,12 @@
             %>
             <tr class="hover:bg-slate-50">
               <td class="px-4 py-3 font-mono font-medium text-slate-700">#<%= o.id %></td>
-              <td class="px-4 py-3"><span class="<%= statusClass %>"><%= statusLabel %></span></td>
+              <td class="px-4 py-3">
+                <span class="<%= statusClass %>"><%= statusLabel %></span>
+                <% if (o.status === 'placed' && o.vendor_order_id) { %>
+                  <span class="block text-[11px] text-slate-400 font-mono mt-0.5">nr <%= o.vendor_order_id %></span>
+                <% } %>
+              </td>
               <td class="px-4 py-3 hidden sm:table-cell text-slate-600 text-sm">
                 <% if (o.vendor_name) { %><%= o.vendor_name %><% } else { %><span class="text-slate-300">—</span><% } %>
               </td>
