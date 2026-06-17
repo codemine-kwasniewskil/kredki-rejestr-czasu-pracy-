@@ -406,6 +406,31 @@ function stubWithPatchCapture(responses) {
     );
   });
 
+  // 12. getOrderStatus reads the order document and maps Status/Paid/B2BId
+  await test('getOrderStatus fetches /api3/document and maps the fields', async () => {
+    const DOC_RESP = { status: 200, body: { Id: 'd1', Status: '2. Gotowa do druku', Paid: false, B2BId: 12345, Type: 'Order', Name: 'ZAM/1' } };
+    stubHttps([TOKEN_RESP, DOC_RESP]);
+    const api = loadVendorApi();
+    const info = await api.getOrderStatus(12345, { clientId: '1', apiKey: 'key' });
+
+    const docCall = capturedCalls.find(c => c.method === 'GET' && c.path.startsWith('/api3/document'));
+    assert.ok(docCall, 'should GET /api3/document');
+    assert.ok(docCall.path.includes('key=12345'), `expected key=12345 in path, got ${docCall.path}`);
+    assert.strictEqual(info.status, '2. Gotowa do druku');
+    assert.strictEqual(info.paid, false);
+    assert.strictEqual(info.b2bId, 12345);
+  });
+
+  // 13. getOrderStatus throws without an order key
+  await test('getOrderStatus throws when orderKey is missing', async () => {
+    stubHttps([TOKEN_RESP]);
+    const api = loadVendorApi();
+    await assert.rejects(
+      () => api.getOrderStatus('', { clientId: '1', apiKey: 'key' }),
+      e => { assert.ok(/Brak numeru zamówienia/.test(e.message), `unexpected: ${e.message}`); return true; }
+    );
+  });
+
   // ── Results ──────────────────────────────────────────────────────────────────
   console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

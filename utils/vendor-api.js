@@ -522,6 +522,31 @@ async function getPaymentOptions(creds = {}) {
   return resp.body?.Items || [];
 }
 
+// Fetches an order's current status from the Documents API. There is no dedicated order-status
+// endpoint — GET /api3/document?key=<orderId> returns the order document with its Status string,
+// Paid flag and B2BId. orderKey is the supplier OrderId stored as vendor_order_id.
+// Returns { status, paid, b2bId, type, name, raw } or throws on a non-200.
+async function getOrderStatus(orderKey, creds = {}) {
+  const { clientId, apiKey } = creds;
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
+  if (orderKey == null || orderKey === '') throw new Error('Brak numeru zamówienia u dostawcy.');
+  const token = await getToken(clientId, apiKey);
+  const resp = await apiRequest(`/api3/document?key=${encodeURIComponent(orderKey)}`, 'GET', null, token);
+  if (resp.status !== 200) {
+    const raw = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+    throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${raw}`);
+  }
+  const b = resp.body || {};
+  return {
+    status: b.Status ?? null,
+    paid: typeof b.Paid === 'boolean' ? b.Paid : null,
+    b2bId: b.B2BId ?? null,
+    type: b.Type ?? null,
+    name: b.Name ?? null,
+    raw: b,
+  };
+}
+
 async function getClientAddresses(creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
@@ -533,4 +558,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, updateBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, updateBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getOrderStatus, getClientAddresses };

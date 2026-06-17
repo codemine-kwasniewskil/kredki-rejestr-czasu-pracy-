@@ -1126,6 +1126,43 @@ router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
   }
 });
 
+// ── Sync supplier order status (placed) ──────────────────────────────────
+// Fetches the order's current status from the Documents API and stores it locally.
+
+router.post('/:id/sync-status', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
+    );
+    if (!order) return res.status(404).render('error', { message: 'Zamówienie nie istnieje.' });
+    if (order.status !== 'placed' || !order.vendor_order_id) {
+      req.flash('error', 'Tylko złożone zamówienia z numerem u dostawcy mają status do synchronizacji.');
+      return res.redirect(`/orders/${order.id}`);
+    }
+
+    let creds = await getVendorCreds(locationId);
+    if (order.vendor_id) {
+      const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
+      if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+    }
+
+    const info = await vendorApi.getOrderStatus(order.vendor_order_id, creds);
+    await db.run(
+      `UPDATE purchase_orders SET vendor_order_status=?, vendor_order_paid=?, vendor_status_synced_at=NOW() WHERE id=?`,
+      [info.status || null, info.paid === null ? null : (info.paid ? 1 : 0), order.id]
+    );
+    await log(sessionUser(req), 'Zamówienia – synchronizacja statusu', `ID: ${order.id} | Status: ${info.status || '—'} | Opłacone: ${info.paid}`);
+
+    req.flash('success', `Status u dostawcy: ${info.status || '—'}${info.paid != null ? (info.paid ? ' • opłacone' : ' • nieopłacone') : ''}`);
+    res.redirect(`/orders/${order.id}`);
+  } catch (e) {
+    console.error('Sync order status error:', e);
+    req.flash('error', e.message);
+    res.redirect(`/orders/${req.params.id}`);
+  }
+});
+
 // ── Delete draft ───────────────────────────────────────────────────────────
 
 router.delete('/:id', requireAdmin, async (req, res) => {

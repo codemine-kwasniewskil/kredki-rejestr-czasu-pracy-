@@ -96,12 +96,32 @@
 
     <!-- Vendor order confirmation -->
     <% if (order.status === 'placed' && order.vendor_order_id) { %>
-    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-5 flex items-center gap-3">
-      <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <div>
+    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-5 flex items-start gap-3">
+      <svg class="w-5 h-5 text-green-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <div class="flex-1">
         <p class="text-sm font-medium text-green-800">Zamówienie złożone u dostawcy</p>
         <p class="text-xs text-green-600">Numer zamówienia u dostawcy: <strong class="font-mono"><%= order.vendor_order_id %></strong></p>
+        <% if (order.vendor_order_status) { %>
+          <p class="text-xs text-green-700 mt-1">
+            Status u dostawcy: <strong><%= order.vendor_order_status %></strong>
+            <% if (order.vendor_order_paid !== null && order.vendor_order_paid !== undefined) { %>
+              <span class="ml-1 inline-block px-1.5 py-0.5 rounded text-[11px] <%= order.vendor_order_paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700' %>">
+                <%= order.vendor_order_paid ? 'opłacone' : 'nieopłacone' %>
+              </span>
+            <% } %>
+            <% if (order.vendor_status_synced_at) { %>
+              <span class="text-green-500">— zsynchronizowano <%= String(order.vendor_status_synced_at).substring(0,16).replace('T',' ') %></span>
+            <% } %>
+          </p>
+        <% } else { %>
+          <p class="text-xs text-green-500 mt-1 italic">Status u dostawcy nie został jeszcze pobrany.</p>
+        <% } %>
       </div>
+      <% if (isAdmin) { %>
+        <form method="POST" action="/orders/<%= order.id %>/sync-status">
+          <button type="submit" class="btn btn-secondary text-xs whitespace-nowrap">🔄 Synchronizuj status</button>
+        </form>
+      <% } %>
     </div>
     <% } %>
 

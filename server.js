@@ -741,6 +741,9 @@ const migrationsReady = (async () => {
     { col: 'delivery_address', ddl: 'VARCHAR(500) DEFAULT NULL' },
     { col: 'payment_method',   ddl: "VARCHAR(100) DEFAULT NULL" },
     { col: 'own_order_number', ddl: 'VARCHAR(100) DEFAULT NULL' },
+    { col: 'vendor_order_status',     ddl: 'VARCHAR(200) DEFAULT NULL' },
+    { col: 'vendor_order_paid',       ddl: 'TINYINT(1) DEFAULT NULL' },
+    { col: 'vendor_status_synced_at', ddl: 'DATETIME DEFAULT NULL' },
   ];
   for (const { col, ddl } of poExtraCols) {
     try {
