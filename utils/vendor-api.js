@@ -327,8 +327,12 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null,
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
   const token = await getToken(clientId, apiKey);
 
+  // Resolve a delivery method ONLY from the platform's own options list. Never forward an
+  // unvalidated configured name — an invalid DeliveryName makes the order endpoint 500. If no
+  // option matches (or none are returned), we send no delivery field and let the platform derive
+  // it from the delivery address (which already encodes the delivery window).
   let deliveryId = null;
-  let chosenDeliveryName = deliveryName;
+  let chosenDeliveryName = null;
   try {
     const delPath = '/api3/order/delivery' + (addressId != null ? `?AddressId=${encodeURIComponent(addressId)}` : '');
     const delResp = await apiRequest(delPath, 'GET', null, token);
@@ -337,10 +341,13 @@ async function finalizeBasket({ basketId, clientId, apiKey, deliveryName = null,
     if (opts.length > 0) {
       const chosen = (deliveryName && opts.find(d => d.Name === deliveryName)) || opts[0];
       deliveryId = chosen.Id ?? null;
-      chosenDeliveryName = chosen.Name || deliveryName;
+      chosenDeliveryName = chosen.Name ?? null;
       console.log(`[basket] chosen delivery: id=${deliveryId} name=${chosenDeliveryName}`);
+      if (deliveryName && !opts.find(d => d.Name === deliveryName)) {
+        console.warn(`[basket] configured delivery "${deliveryName}" not among options (${opts.map(d => d.Name).join(', ')}) — using ${chosenDeliveryName}`);
+      }
     } else {
-      console.warn('[basket] no delivery options returned — will try without delivery');
+      console.warn('[basket] no delivery options returned — finalizing without an explicit delivery method');
     }
   } catch (e) {
     console.error('[basket] delivery options fetch error:', e.message);
