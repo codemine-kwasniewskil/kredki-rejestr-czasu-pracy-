@@ -535,16 +535,19 @@ async function getOrderStatus(orderKey, creds = {}) {
     ToAddedAt: '2099-12-31T23:59:59.000Z',
   };
   const resp = await apiRequest('/api3/order/erp/filter', 'POST', filterBody, token);
+  const rawBody = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+  // TEMP DIAGNOSTIC: log the full filter response so we can confirm the order/status field names.
+  console.log(`[order-status] filter id=${orderKey} HTTP ${resp.status} body=${rawBody}`);
   if (resp.status !== 200) {
-    const raw = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
-    throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${raw}`);
+    throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${rawBody}`);
   }
 
-  const items = Array.isArray(resp.body) ? resp.body : (resp.body?.Items || []);
+  const items = Array.isArray(resp.body) ? resp.body : (resp.body?.Items || resp.body?.Orders || resp.body?.Data || []);
   // Match the requested order by its B2B id; fall back to the only/first row when ids aren't echoed.
   const order = items.find(o => Number(o?.B2BId ?? o?.B2BOrderId ?? o?.Id) === b2bId) || items[0] || null;
   if (!order) {
-    throw new Error(`Nie znaleziono zamówienia u dostawcy (id ${orderKey}).`);
+    // TEMP DIAGNOSTIC: include count + a snippet of the raw body so the shape is visible in the UI.
+    throw new Error(`Nie znaleziono zamówienia u dostawcy (id ${orderKey}). Zwrócono ${items.length} poz. Odpowiedź: ${rawBody.slice(0, 600)}`);
   }
 
   const paidRaw = order.Paid ?? order.IsPaid;
