@@ -508,28 +508,53 @@ async function getPaymentOptions(creds = {}) {
   return resp.body?.Items || [];
 }
 
-// Fetches an order's current status from the Documents API. There is no dedicated order-status
-// endpoint — GET /api3/document?key=<orderId> returns the order document with its Status string,
-// Paid flag and B2BId. orderKey is the supplier OrderId stored as vendor_order_id.
+// Fetches an order's current status. The OrderId returned by basket finalize is a B2B order id
+// (a negative integer), NOT a document key — GET /api3/document?key=<id> 404s on it
+// (ObjectNotFound). The correct lookup is POST /api3/order/erp/filter with the id in
+// B2BOrdersIds; it returns the matching order(s) with their status. orderKey is the supplier
+// OrderId stored as vendor_order_id.
 // Returns { status, paid, b2bId, type, name, raw } or throws on a non-200.
 async function getOrderStatus(orderKey, creds = {}) {
   const { clientId, apiKey } = creds;
   if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy.');
   if (orderKey == null || orderKey === '') throw new Error('Brak numeru zamówienia u dostawcy.');
   const token = await getToken(clientId, apiKey);
-  const resp = await apiRequest(`/api3/document?key=${encodeURIComponent(orderKey)}`, 'GET', null, token);
+
+  const b2bId = Number(orderKey);
+  // A negative integer is a B2B order id → filter on B2BOrdersIds; anything else is treated as an
+  // ERP order id. Wide date window so the filter's date range doesn't exclude the order.
+  const filterBody = {
+    B2BOrdersIds: Number.isInteger(b2bId) && b2bId < 0 ? [b2bId] : [],
+    ClientsIds: [],
+    Completed: false,
+    ERPOrdersIds: Number.isInteger(b2bId) && b2bId >= 0 ? [b2bId] : [],
+    FromAddedAt: '2020-01-01T00:00:00.000Z',
+    FromERPId: 0,
+    IncludeOption: { Addresses: false, Products: false },
+    StatusesIds: [],
+    ToAddedAt: '2099-12-31T23:59:59.000Z',
+  };
+  const resp = await apiRequest('/api3/order/erp/filter', 'POST', filterBody, token);
   if (resp.status !== 200) {
     const raw = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
     throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${raw}`);
   }
-  const b = resp.body || {};
+
+  const items = Array.isArray(resp.body) ? resp.body : (resp.body?.Items || []);
+  // Match the requested order by its B2B id; fall back to the only/first row when ids aren't echoed.
+  const order = items.find(o => Number(o?.B2BId ?? o?.B2BOrderId ?? o?.Id) === b2bId) || items[0] || null;
+  if (!order) {
+    throw new Error(`Nie znaleziono zamówienia u dostawcy (id ${orderKey}).`);
+  }
+
+  const paidRaw = order.Paid ?? order.IsPaid;
   return {
-    status: b.Status ?? null,
-    paid: typeof b.Paid === 'boolean' ? b.Paid : null,
-    b2bId: b.B2BId ?? null,
-    type: b.Type ?? null,
-    name: b.Name ?? null,
-    raw: b,
+    status: order.StatusName ?? order.Status ?? order.StatusText ?? null,
+    paid: typeof paidRaw === 'boolean' ? paidRaw : null,
+    b2bId: order.B2BId ?? order.B2BOrderId ?? order.Id ?? null,
+    type: order.Type ?? null,
+    name: order.Name ?? order.Number ?? order.OrderNumber ?? null,
+    raw: order,
   };
 }
 
