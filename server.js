@@ -273,6 +273,13 @@ const migrationsReady = (async () => {
     if (!deliveryDateCol || deliveryDateCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_report_entries ADD COLUMN delivery_date DATE DEFAULT NULL`);
     }
+    // delivery_dates on stock_report_entries: JSON array of delivery dates so the same cake/cookie
+    // can have several batches on the shelf at once, each with its own expiry. delivery_date above
+    // is kept as the earliest batch for backward compatibility.
+    const deliveryDatesCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_report_entries' AND COLUMN_NAME='delivery_dates'`);
+    if (!deliveryDatesCol || deliveryDatesCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_report_entries ADD COLUMN delivery_dates TEXT DEFAULT NULL`);
+    }
     // shelf_life_days on stock_items (cake/cookie validity period in days, default 3 in UI)
     const shelfLifeCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='shelf_life_days'`);
     if (!shelfLifeCol || shelfLifeCol.cnt === 0) {

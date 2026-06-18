@@ -32,6 +32,27 @@ async function loadMeta() {
   return { reportTypes: rows, REPORT_META };
 }
 
+// Normalizes an entry row's delivery dates into an array of 'YYYY-MM-DD' strings.
+// Prefers the JSON delivery_dates column; falls back to the single legacy delivery_date.
+function parseDeliveryDates(entry) {
+  if (!entry) return [];
+  const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (entry.delivery_dates) {
+    try {
+      const arr = JSON.parse(entry.delivery_dates);
+      if (Array.isArray(arr)) {
+        const out = arr.map(d => (typeof d === 'string' ? d.slice(0, 10) : '')).filter(isDate);
+        if (out.length) return out;
+      }
+    } catch (_) { /* fall through to legacy */ }
+  }
+  if (entry.delivery_date) {
+    const d = String(entry.delivery_date).slice(0, 10);
+    if (isDate(d)) return [d];
+  }
+  return [];
+}
+
 function groupByCategory(items) {
   const grouped = [];
   let lastCat = undefined;
@@ -108,6 +129,13 @@ router.get('/form/:type', async (req, res) => {
       for (const e of rows) entries[e.item_id] = e;
     }
 
+    // Delivery batches per item: parse the JSON array (multiple deliveries on the shelf), falling
+    // back to the single legacy delivery_date. itemId → ['YYYY-MM-DD', …]
+    const deliveryMap = {};
+    for (const item of items) {
+      deliveryMap[item.id] = parseDeliveryDates(entries[item.id]);
+    }
+
     // Lock past reports for workers
     const isWorker = req.session.userRole === 'worker';
     if (isWorker && reportDate !== today()) {
@@ -151,7 +179,7 @@ router.get('/form/:type', async (req, res) => {
       title: meta.label, currentPath: '/stock',
       type, meta, reportDate, existing,
       grouped: groupByCategory(items), entries, REPORT_META, minQtyMap, lastValues,
-      hiddenSet: [...hiddenSet], canManageItems, todayStr: today(),
+      hiddenSet: [...hiddenSet], canManageItems, todayStr: today(), deliveryMap,
     });
   } catch (e) {
     console.error(e);
@@ -208,12 +236,22 @@ router.post('/save', async (req, res) => {
       // Store without trailing zeros: "0.50" → "0.5", "2.0" → "2"
       return String(parseFloat(n.toPrecision(10)));
     };
-    // Date inputs (delivery date) come from dual mobile/desktop layout → may be an array
-    const pickDate = (v) => {
-      const raw = (Array.isArray(v)
-        ? ([...v].reverse().find(x => x && x.trim()) || '')
-        : v || '').trim();
-      return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    // Delivery batches arrive as a JSON array string in delivery_dates_<id> (managed by one
+    // hidden input per item, so no dual-layout duplication). Returns { json, earliest }.
+    const pickDeliveryDates = (v) => {
+      const raw = (Array.isArray(v) ? ([...v].reverse().find(x => x && x.trim()) || '') : v || '').trim();
+      let arr = [];
+      if (raw) { try { const p = JSON.parse(raw); if (Array.isArray(p)) arr = p; } catch (_) {} }
+      const valid = [...new Set(arr.map(d => (typeof d === 'string' ? d.slice(0, 10) : ''))
+        .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+      return { json: valid.length ? JSON.stringify(valid) : null, earliest: valid[0] || null };
+    };
+    // Shelf-life (days) is a per-item property edited inline in the cake/cookie rows.
+    const pickShelfLife = (v) => {
+      const raw = (Array.isArray(v) ? ([...v].reverse().find(x => x && String(x).trim()) || '') : v || '').toString().trim();
+      if (raw === '') return undefined; // field absent → don't touch the item
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
     };
 
     for (const item of items) {
@@ -223,7 +261,13 @@ router.post('/save', async (req, res) => {
       const hqStr = Array.isArray(hqRaw) ? (hqRaw.find(v => v && v.trim()) || '') : (hqRaw || '');
       const hq = hqStr.trim() ? parseFloat(hqStr) || null : null;
 
-      const deliveryDate = pickDate(req.body[`delivery_date_${id}`]);
+      const { json: deliveryDates, earliest: deliveryDate } = pickDeliveryDates(req.body[`delivery_dates_${id}`]);
+
+      // Persist an inline shelf-life edit back onto the product itself (affects all reports).
+      const shelfLife = pickShelfLife(req.body[`shelf_life_${id}`]);
+      if (shelfLife !== undefined) {
+        await db.run(`UPDATE stock_items SET shelf_life_days=? WHERE id=? AND location_id=?`, [shelfLife, id, locationId]);
+      }
 
       if (meta.isShift) {
         const s_o = pick(req.body[`stan_otwarcie_${id}`]);
@@ -232,20 +276,20 @@ router.post('/save', async (req, res) => {
         const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
         const usz = pick(req.body[`uszkodzone_${id}`]);
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty,delivery_date)
-           VALUES (?,?,?,?,?,?,?,?,?)
+          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty,delivery_date,delivery_dates)
+           VALUES (?,?,?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE stan_otwarcie=VALUES(stan_otwarcie),dostawa=VALUES(dostawa),
-             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date)`,
-          [report.id, id, s_o, d, s16, s_z, usz, hq, deliveryDate]
+             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
+          [report.id, id, s_o, d, s16, s_z, usz, hq, deliveryDate, deliveryDates]
         );
       } else {
         const qty = pick(req.body[`qty_${id}`]);
         const n   = (req.body[`notes_${id}`] || '').trim() || null;
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty,delivery_date)
-           VALUES (?,?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date)`,
-          [report.id, id, qty, n, hq, deliveryDate]
+          `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty,delivery_date,delivery_dates)
+           VALUES (?,?,?,?,?,?,?)
+           ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
+          [report.id, id, qty, n, hq, deliveryDate, deliveryDates]
         );
       }
     }
@@ -276,16 +320,19 @@ router.get('/view/:id', async (req, res) => {
     const meta = REPORT_META[report.report_type] || { label: report.report_type, icon: '📋', isShift: false };
 
     const items = await db.all(
-      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date
+      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
        FROM stock_items si
        LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
        WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
       [report.id, report.report_type, report.location_id]
     );
 
+    const deliveryMap = {};
+    for (const item of items) deliveryMap[item.id] = parseDeliveryDates(item);
+
     res.render('stock/view', {
       title: meta.label, currentPath: '/stock',
-      report, grouped: groupByCategory(items), meta, REPORT_META, todayStr: today(),
+      report, grouped: groupByCategory(items), meta, REPORT_META, todayStr: today(), deliveryMap,
     });
   } catch (e) {
     console.error(e);

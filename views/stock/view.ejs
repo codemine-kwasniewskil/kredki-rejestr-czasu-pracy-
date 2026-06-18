@@ -54,6 +54,11 @@
       if (!deliveryDate) return false;
       return today >= addDaysStr(deliveryDate, days);
     }
+    function batchesOf(item) {
+      const arr = (typeof deliveryMap !== 'undefined' && deliveryMap[item.id]) ? deliveryMap[item.id] : [];
+      if (arr.length) return arr;
+      return item.delivery_date ? [String(item.delivery_date).slice(0, 10)] : [];
+    }
     %>
     <% if (report.report_type === 'products_shift') { %>
       <% for (const group of grouped) { %>
@@ -95,18 +100,18 @@
                   <div class="text-sm font-medium <%= item.uszkodzone && item.uszkodzone !== '0' ? 'text-red-600' : 'text-slate-700' %>"><%= item.uszkodzone || '—' %></div>
                 </div>
               </div>
-              <% if (isCakeCategory(item.category) && item.delivery_date) { %>
-                <% const shelfDays = shelfDaysOf(item); const expired = isExpiredOn(item.delivery_date, shelfDays, todayStr); %>
-                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap text-xs">
-                  <span class="text-slate-400">Dostawa:</span>
-                  <span class="font-medium text-slate-700"><%= item.delivery_date %></span>
-                  <span class="text-slate-400">· przydatność do <%= addDaysStr(item.delivery_date, shelfDays) %></span>
-                  <% if (expired) { %>
-                    <span class="inline-flex items-center gap-1 font-semibold text-red-600">
-                      <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
-                      przeterminowane
-                    </span>
-                  <% } %>
+              <% const cakeBatches = isCakeCategory(item.category) ? batchesOf(item) : []; %>
+              <% if (cakeBatches.length) { const shelfDays = shelfDaysOf(item); %>
+                <div class="mt-2 pt-2 border-t border-slate-100 text-xs">
+                  <span class="text-slate-400">Dostawy (przydatność <%= shelfDays %> dni):</span>
+                  <div class="mt-1 space-y-0.5">
+                    <% for (const dd of cakeBatches) { const expired = isExpiredOn(dd, shelfDays, todayStr); %>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-medium text-slate-700"><%= dd %></span>
+                        <span class="<%= expired ? 'text-red-600 font-semibold' : 'text-slate-400' %>">· do <%= addDaysStr(dd, shelfDays) %><%= expired ? ' ⚠ przeterminowane' : '' %></span>
+                      </div>
+                    <% } %>
+                  </div>
                 </div>
               <% } %>
             </div>
@@ -132,14 +137,14 @@
                 <tr class="border-b border-slate-50 last:border-0 <%= !hasData ? 'opacity-40' : '' %>">
                   <td class="px-3 py-2 text-xs font-medium text-slate-800 leading-tight">
                     <%= item.name %>
-                    <% if (isCakeCategory(item.category) && item.delivery_date) { %>
-                      <% const shelfDaysD = shelfDaysOf(item); const expiredD = isExpiredOn(item.delivery_date, shelfDaysD, todayStr); %>
-                      <div class="mt-0.5 flex items-center gap-1 flex-wrap font-normal text-slate-400">
-                        <span>dostawa <%= item.delivery_date %> · do <%= addDaysStr(item.delivery_date, shelfDaysD) %></span>
-                        <% if (expiredD) { %>
-                          <span class="inline-flex items-center gap-0.5 font-semibold text-red-600">
-                            <span class="bg-red-500 text-white w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold text-[10px]">!</span>
-                          </span>
+                    <% const cakeBatchesD = isCakeCategory(item.category) ? batchesOf(item) : []; %>
+                    <% if (cakeBatchesD.length) { const shelfDaysD = shelfDaysOf(item); %>
+                      <div class="mt-0.5 font-normal text-slate-400">
+                        <% for (const dd of cakeBatchesD) { const expiredD = isExpiredOn(dd, shelfDaysD, todayStr); %>
+                          <div class="flex items-center gap-1 flex-wrap">
+                            <span>dostawa <%= dd %> · do <%= addDaysStr(dd, shelfDaysD) %></span>
+                            <% if (expiredD) { %><span class="font-semibold text-red-600">⚠</span><% } %>
+                          </div>
                         <% } %>
                       </div>
                     <% } %>
@@ -176,15 +181,14 @@
                 <% if (item.min_qty !== null) { %>
                   <div class="text-xs text-amber-600">Min: <%= item.min_qty %></div>
                 <% } %>
-                <% if (isCakeCategory(item.category) && item.delivery_date) { %>
-                  <% const shelfDaysS = shelfDaysOf(item); const expiredS = isExpiredOn(item.delivery_date, shelfDaysS, todayStr); %>
-                  <div class="text-xs mt-0.5 flex items-center gap-1 flex-wrap <%= expiredS ? 'text-red-600 font-semibold' : 'text-slate-400' %>">
-                    <span>Dostawa <%= item.delivery_date %> · do <%= addDaysStr(item.delivery_date, shelfDaysS) %></span>
-                    <% if (expiredS) { %>
-                      <span class="inline-flex items-center gap-0.5">
-                        <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
-                        przeterminowane
-                      </span>
+                <% const cakeBatchesS = isCakeCategory(item.category) ? batchesOf(item) : []; %>
+                <% if (cakeBatchesS.length) { const shelfDaysS = shelfDaysOf(item); %>
+                  <div class="text-xs mt-0.5">
+                    <% for (const dd of cakeBatchesS) { const expiredS = isExpiredOn(dd, shelfDaysS, todayStr); %>
+                      <div class="flex items-center gap-1 flex-wrap <%= expiredS ? 'text-red-600 font-semibold' : 'text-slate-400' %>">
+                        <span>Dostawa <%= dd %> · do <%= addDaysStr(dd, shelfDaysS) %></span>
+                        <% if (expiredS) { %><span>⚠ przeterminowane</span><% } %>
+                      </div>
                     <% } %>
                   </div>
                 <% } %>

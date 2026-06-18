@@ -60,6 +60,9 @@
       <input type="hidden" name="report_type" value="<%= type %>">
       <input type="hidden" name="report_date" value="<%= reportDate %>">
       <input type="hidden" name="hidden_items" id="hiddenItemsInput" value="<%= hiddenSet.join(',') %>">
+      <%/* Canonical store for cake/cookie delivery batches + shelf-life — one hidden input per item
+            (filled by JS), so the dual mobile/desktop layout never double-posts. */%>
+      <div id="cakeMetaInputs" class="hidden"></div>
 
       <% if (meta.isShift) { %>
 
@@ -144,19 +147,7 @@
                   </div>
                 </div>
                 <% if (isCake) { %>
-                  <% const ddVal = e.delivery_date || ''; const shelfDays = shelfDaysOf(item); const expired = isExpiredOn(ddVal, shelfDays, todayStr); %>
-                  <div class="mt-3 pt-2 border-t border-slate-100">
-                    <div class="text-xs text-slate-500 mb-1">Data dostawy <span class="text-slate-400">(przydatność <%= shelfDays %> dni)</span></div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <input type="date" name="delivery_date_<%= item.id %>" value="<%= ddVal %>"
-                        data-delivery-item="<%= item.id %>"
-                        class="stock-input h-10 px-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-                      <span class="expiry-warn-<%= item.id %> inline-flex items-center gap-1 text-xs font-semibold text-red-600 <%= expired ? '' : 'hidden' %>">
-                        <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
-                        przeterminowane
-                      </span>
-                    </div>
-                  </div>
+                  <div class="mt-3 pt-2 border-t border-slate-100 cake-editor" data-cake-item="<%= item.id %>" data-variant="card"></div>
                 <% } %>
                 <% if (isCoffee) { %>
                   <div class="mt-3 pt-2 border-t border-slate-100">
@@ -232,17 +223,7 @@
                         </div>
                       <% } %>
                       <% if (isCake) { %>
-                        <% const ddValD = e.delivery_date || ''; const shelfDaysD = shelfDaysOf(item); const expiredD = isExpiredOn(ddValD, shelfDaysD, todayStr); %>
-                        <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                          <span class="text-xs text-slate-400">Dostawa:</span>
-                          <input type="date" name="delivery_date_<%= item.id %>" value="<%= ddValD %>"
-                            data-delivery-item="<%= item.id %>"
-                            class="stock-input h-7 px-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
-                          <span class="text-xs text-slate-400">(<%= shelfDaysD %>d)</span>
-                          <span class="expiry-warn-<%= item.id %> inline-flex items-center gap-0.5 text-xs font-semibold text-red-600 <%= expiredD ? '' : 'hidden' %>" title="Przeterminowane">
-                            <span class="bg-red-500 text-white w-3.5 h-3.5 rounded-full flex items-center justify-center font-bold text-[10px]">!</span>
-                          </span>
-                        </div>
+                        <div class="mt-1 cake-editor" data-cake-item="<%= item.id %>" data-variant="compact"></div>
                       <% } %>
                     </td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_otwarcie_<%= item.id %>" value="<%= prefillOpenD %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
@@ -330,18 +311,7 @@
                   </div>
                 <% } %>
                 <% if (isCake) { %>
-                  <% const ddValS = e.delivery_date || ''; const shelfDaysS = shelfDaysOf(item); const expiredS = isExpiredOn(ddValS, shelfDaysS, todayStr); %>
-                  <div class="w-full mt-0.5 flex items-center gap-2 flex-wrap">
-                    <span class="text-xs text-slate-500">Data dostawy</span>
-                    <input type="date" name="delivery_date_<%= item.id %>" value="<%= ddValS %>"
-                      data-delivery-item="<%= item.id %>"
-                      class="stock-input h-9 px-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    <span class="text-xs text-slate-400">(przydatność <%= shelfDaysS %> dni)</span>
-                    <span class="expiry-warn-<%= item.id %> inline-flex items-center gap-1 text-xs font-semibold text-red-600 <%= expiredS ? '' : 'hidden' %>">
-                      <span class="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold">!</span>
-                      przeterminowane
-                    </span>
-                  </div>
+                  <div class="w-full mt-0.5 cake-editor" data-cake-item="<%= item.id %>" data-variant="card"></div>
                 <% } %>
               </div>
             <% } %>
@@ -395,9 +365,18 @@ const minQtyMap = <%- JSON.stringify(minQtyMap) %>;
 const hiddenItems = new Set(<%- JSON.stringify(hiddenSet) %>);
 const hopperWeightMap = {<% for (const g of grouped) { for (const item of g.items) { if (isCoffeeCategory(item.category, item.hopper_enabled)) { %><%= item.id %>:<%= parseFloat(item.hopper_weight) || 1.2 %>,<% } } } %>};
 
-// Cake/cookie shelf-life tracking
-const shelfLifeMap = {<% for (const g of grouped) { for (const item of g.items) { if (isCakeCategory(item.category)) { %><%= item.id %>:<%= shelfDaysOf(item) %>,<% } } } %>};
+// ── Cake/cookie delivery batches + per-product shelf-life ──────────────────
+// One product can have several deliveries on the shelf at once, each with its own expiry
+// (delivery date + the product's shelf-life). State lives here; a single hidden input per item
+// (in #cakeMetaInputs) is the canonical post value, so the dual mobile/desktop layout never doubles.
 const TODAY_STR = '<%= todayStr %>';
+const cakeInit = {
+<% for (const g of grouped) { for (const item of g.items) { if (isCakeCategory(item.category)) { %>  <%= item.id %>: { days: <%= shelfDaysOf(item) %>, dates: <%- JSON.stringify((deliveryMap && deliveryMap[item.id]) || []) %> },
+<% } } } %>};
+const cakeState = {};
+Object.keys(cakeInit).forEach(id => {
+  cakeState[id] = { days: cakeInit[id].days || 3, dates: (cakeInit[id].dates || []).slice() };
+});
 
 function addDaysISO(dateStr, days) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -405,21 +384,80 @@ function addDaysISO(dateStr, days) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-function updateExpiry(itemId) {
-  const days = shelfLifeMap[itemId];
-  if (days === undefined) return;
-  let val = '';
-  document.querySelectorAll(`input[name="delivery_date_${itemId}"]`).forEach(i => { if (i.value) val = i.value; });
-  const expired = val ? (TODAY_STR >= addDaysISO(val, days)) : false;
-  document.querySelectorAll(`.expiry-warn-${itemId}`).forEach(w => w.classList.toggle('hidden', !expired));
+function ensureCakeInputs(id) {
+  const wrap = document.getElementById('cakeMetaInputs');
+  let dd = wrap.querySelector(`input[name="delivery_dates_${id}"]`);
+  if (!dd) { dd = document.createElement('input'); dd.type = 'hidden'; dd.name = `delivery_dates_${id}`; wrap.appendChild(dd); }
+  let sl = wrap.querySelector(`input[name="shelf_life_${id}"]`);
+  if (!sl) { sl = document.createElement('input'); sl.type = 'hidden'; sl.name = `shelf_life_${id}`; wrap.appendChild(sl); }
+  return { dd, sl };
+}
+
+function syncCakeHidden(id) {
+  const s = cakeState[id];
+  const { dd, sl } = ensureCakeInputs(id);
+  const clean = s.dates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  dd.value = clean.length ? JSON.stringify(clean) : '';
+  sl.value = s.days != null ? String(s.days) : '';
+}
+
+function renderCakeEditor(id) {
+  const s = cakeState[id];
+  if (!s) return;
+  syncCakeHidden(id);
+  document.querySelectorAll(`.cake-editor[data-cake-item="${id}"]`).forEach(box => {
+    const dateCls = 'cake-date-input h-8 px-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400';
+    const rows = s.dates.map((d, i) => {
+      const exp = /^\d{4}-\d{2}-\d{2}$/.test(d) ? addDaysISO(d, s.days) : '';
+      const expired = exp && TODAY_STR >= exp;
+      return `<div class="flex items-center gap-1.5 mb-1">
+        <input type="date" value="${d}" data-cake-date="${id}" data-batch-idx="${i}" class="${dateCls}">
+        ${exp ? `<span class="text-xs whitespace-nowrap ${expired ? 'text-red-600 font-semibold' : 'text-slate-400'}">do ${exp}${expired ? ' ⚠' : ''}</span>` : ''}
+        <button type="button" data-cake-remove="${id}" data-batch-idx="${i}" title="Usuń dostawę" class="text-slate-300 hover:text-red-500 text-sm leading-none px-1">✕</button>
+      </div>`;
+    }).join('');
+    box.innerHTML =
+      `<div class="flex items-center gap-1.5 mb-1.5 text-xs text-slate-500">
+         <span>Przydatność</span>
+         <input type="number" min="1" max="60" value="${s.days}" data-cake-shelf="${id}"
+           class="w-12 h-7 text-center border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
+         <span>dni</span>
+       </div>
+       <div class="text-xs text-slate-400 mb-1">Dostawy</div>
+       ${rows || '<div class="text-xs text-slate-300 mb-1">Brak dostaw</div>'}
+       <button type="button" data-cake-add="${id}" class="text-xs text-blue-600 hover:text-blue-700 font-medium">+ dodaj dostawę</button>`;
+  });
 }
 
 document.addEventListener('change', e => {
-  const id = e.target && e.target.dataset ? e.target.dataset.deliveryItem : null;
-  if (id) updateExpiry(id);
+  const t = e.target;
+  if (!t || !t.dataset) return;
+  if (t.dataset.cakeDate !== undefined) {
+    const id = t.dataset.cakeDate, idx = parseInt(t.dataset.batchIdx, 10);
+    cakeState[id].dates[idx] = t.value || '';
+    renderCakeEditor(id);
+  } else if (t.dataset.cakeShelf !== undefined) {
+    const id = t.dataset.cakeShelf;
+    const n = parseInt(t.value, 10);
+    cakeState[id].days = Number.isFinite(n) && n > 0 ? n : 3;
+    renderCakeEditor(id);
+  }
 });
+
+document.addEventListener('click', e => {
+  const add = e.target.closest('[data-cake-add]');
+  if (add) { const id = add.dataset.cakeAdd; cakeState[id].dates.push(''); renderCakeEditor(id);
+    const box = document.querySelector(`.cake-editor[data-cake-item="${id}"]`);
+    const inputs = box ? box.querySelectorAll('input[type="date"]') : [];
+    if (inputs.length) inputs[inputs.length - 1].focus();
+    return; }
+  const rem = e.target.closest('[data-cake-remove]');
+  if (rem) { const id = rem.dataset.cakeRemove, idx = parseInt(rem.dataset.batchIdx, 10);
+    cakeState[id].dates.splice(idx, 1); renderCakeEditor(id); }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
-  Object.keys(shelfLifeMap).forEach(id => updateExpiry(id));
+  Object.keys(cakeState).forEach(id => renderCakeEditor(id));
 });
 
 function updateHiddenInput() {
