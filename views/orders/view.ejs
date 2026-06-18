@@ -258,6 +258,10 @@
             <button type="submit" class="btn btn-success">✓ Zatwierdź</button>
           </form>
           <button type="button" onclick="document.getElementById('rejectModal').classList.remove('hidden')" class="btn btn-danger">✗ Odrzuć</button>
+          <form method="POST" action="/orders/<%= order.id %>?_method=DELETE"
+            onsubmit="return confirm('Na pewno usunąć to zamówienie?')">
+            <button type="submit" class="btn btn-danger">Usuń</button>
+          </form>
         <% } %>
 
         <!-- APPROVED actions (admin only) -->
@@ -274,6 +278,10 @@
             <button type="submit" class="btn btn-primary">
               🛒 Utwórz koszyk u dostawcy
             </button>
+          </form>
+          <form method="POST" action="/orders/<%= order.id %>?_method=DELETE"
+            onsubmit="return confirm('Na pewno usunąć to zamówienie?')">
+            <button type="submit" class="btn btn-danger">Usuń</button>
           </form>
         <% } %>
 
@@ -311,6 +319,14 @@
           <% if (belowMin) { %>
             <span class="text-sm text-red-600 italic self-center">⚠ Poniżej minimum dostawcy (<%= minOrderValue.toFixed(2) %> PLN) — zwiększ wartość zamówienia, aby finalizować</span>
           <% } %>
+          <form method="POST" action="/orders/<%= order.id %>/delete-basket"
+            onsubmit="return confirm('Usunąć koszyk u dostawcy? Koszyk zostanie skasowany na platformie B2B, a zamówienie wróci do statusu „Zatwierdzone”.')">
+            <button type="submit" class="btn btn-warning text-sm">🗑 Usuń koszyk</button>
+          </form>
+          <form method="POST" action="/orders/<%= order.id %>?_method=DELETE"
+            onsubmit="return confirm('Na pewno usunąć całe zamówienie? Otwarty koszyk u dostawcy również zostanie usunięty.')">
+            <button type="submit" class="btn btn-danger text-sm">Usuń zamówienie</button>
+          </form>
         <% } %>
 
         <!-- REJECTED actions -->

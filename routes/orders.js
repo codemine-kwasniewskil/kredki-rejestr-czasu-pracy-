@@ -1096,6 +1096,45 @@ router.post('/:id/update-basket', requireAdmin, async (req, res) => {
   }
 });
 
+// ── Step 1c: Delete an open basket (basket_created → approved) ────────────
+// Removes the basket on the platform and reverts the order to "approved" so it can be
+// re-created or deleted. The order itself is kept.
+
+router.post('/:id/delete-basket', requireAdmin, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const order = await db.get(
+      `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
+    );
+    if (!order || order.status !== 'basket_created') {
+      req.flash('error', 'Tylko zamówienia z otwartym koszykiem mają koszyk do usunięcia.');
+      return res.redirect(`/orders/${req.params.id}`);
+    }
+
+    if (order.vendor_basket_id) {
+      let creds = await getVendorCreds(locationId);
+      if (order.vendor_id) {
+        const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
+        if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+      }
+      await vendorApi.deleteBasket({ basketId: order.vendor_basket_id, ...creds });
+    }
+
+    await db.run(
+      `UPDATE purchase_orders SET status='approved', vendor_basket_id=NULL, basket_dirty=0, updated_at=NOW() WHERE id=?`,
+      [order.id]
+    );
+    await log(sessionUser(req), 'Zamówienia – koszyk usunięty', `ID: ${order.id} | BasketId: ${order.vendor_basket_id || '—'}`);
+
+    req.flash('success', 'Koszyk u dostawcy usunięty. Zamówienie wróciło do statusu „Zatwierdzone”.');
+    res.redirect(`/orders/${order.id}`);
+  } catch (e) {
+    console.error('Delete basket error:', e);
+    req.flash('error', e.message);
+    res.redirect(`/orders/${req.params.id}`);
+  }
+});
+
 // ── Step 2: Finalize basket (basket_created → placed) ─────────────────────
 
 router.post('/:id/finalize-basket', requireAdmin, async (req, res) => {
@@ -1189,7 +1228,7 @@ router.post('/:id/sync-status', requireAdmin, async (req, res) => {
   }
 });
 
-// ── Delete draft ───────────────────────────────────────────────────────────
+// ── Delete order (any status except finalized/placed) ──────────────────────
 
 router.delete('/:id', requireAdmin, async (req, res) => {
   try {
@@ -1197,12 +1236,32 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     const order = await db.get(
       `SELECT * FROM purchase_orders WHERE id=? AND location_id=?`, [req.params.id, locationId]
     );
-    if (!order || !['draft', 'rejected'].includes(order.status)) {
-      req.flash('error', 'Można usunąć tylko szkice i odrzucone zamówienia.');
+    if (!order) {
+      req.flash('error', 'Zamówienie nie istnieje.');
+      return res.redirect('/orders');
+    }
+    if (order.status === 'placed') {
+      req.flash('error', 'Nie można usunąć zamówienia złożonego u dostawcy.');
       return res.redirect(`/orders/${req.params.id}`);
     }
+
+    // If a basket is still open at the vendor, remove it first so we don't leave an orphan
+    // basket on the platform. Best-effort — a vendor failure shouldn't block the local delete.
+    if (order.status === 'basket_created' && order.vendor_basket_id) {
+      try {
+        let creds = await getVendorCreds(locationId);
+        if (order.vendor_id) {
+          const v = await db.get(`SELECT * FROM vendors WHERE id=? AND location_id=?`, [order.vendor_id, locationId]);
+          if (v?.client_id && v?.api_key) creds = { clientId: v.client_id, apiKey: v.api_key };
+        }
+        await vendorApi.deleteBasket({ basketId: order.vendor_basket_id, ...creds });
+      } catch (e) {
+        console.error('[orders] basket cleanup on delete failed:', e.message);
+      }
+    }
+
     await db.run(`DELETE FROM purchase_orders WHERE id=?`, [order.id]);
-    await log(sessionUser(req), 'Zamówienia – usunięto zamówienie', `ID: ${order.id}`);
+    await log(sessionUser(req), 'Zamówienia – usunięto zamówienie', `ID: ${order.id} | Status: ${order.status}`);
     req.flash('success', 'Zamówienie usunięte.');
     res.redirect('/orders');
   } catch (e) {

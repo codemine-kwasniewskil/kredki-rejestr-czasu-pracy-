@@ -355,6 +355,24 @@ async function finalizeBasket({ basketId, clientId, apiKey }) {
   return result;
 }
 
+// Deletes an open basket on the platform via DELETE /api3/basket/{id}. There is no documented
+// delete endpoint in the collection, but the API follows the same REST convention as the working
+// DELETE /api3/basket/{id}/item. A 404 is treated as success (the basket is already gone).
+async function deleteBasket({ basketId, clientId, apiKey }) {
+  if (!clientId || !apiKey) throw new Error('Brak danych uwierzytelniających dostawcy dla tej lokalizacji.');
+  if (!basketId) throw new Error('Brak ID koszyka do usunięcia.');
+  const token = await getToken(clientId, apiKey);
+
+  console.log(`[basket] DELETE /api3/basket/${basketId}`);
+  const resp = await apiRequest(`/api3/basket/${basketId}`, 'DELETE', null, token);
+  const raw = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+  console.error('[basket] delete response:', resp.status, raw);
+  if (![200, 201, 204, 404].includes(resp.status)) {
+    throw new Error(`Błąd usuwania koszyka (HTTP ${resp.status}): ${raw}`);
+  }
+  return true;
+}
+
 // Convenience wrapper: prepare then immediately finalize (single-step flow).
 async function placeOrderViaBasket(opts) {
   const basketId = await prepareBasket(opts);
@@ -526,4 +544,4 @@ async function getClientAddresses(creds = {}) {
   return resp.body?.Items || [];
 }
 
-module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, updateBasket, finalizeBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getOrderStatus, getClientAddresses };
+module.exports = { getToken, searchProducts, getProductsBySku, prepareBasket, updateBasket, finalizeBasket, deleteBasket, placeOrderViaBasket, getDeliveryOptions, getPaymentOptions, getOrderStatus, getClientAddresses };
