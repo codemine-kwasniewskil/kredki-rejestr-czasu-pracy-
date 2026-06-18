@@ -578,7 +578,7 @@ function onAddressTypeChange(type) {
   }
 }
 
-// Delivery date: Sundays disabled; default = next day if ordering before 12:00,
+// Delivery date: Sundays disabled; default = next day if ordering before 20:00,
 // otherwise the day after tomorrow (cutoff). Sundays are skipped for the default.
 (function() {
   const el = document.getElementById('deliveryDate');
@@ -586,7 +586,7 @@ function onAddressTypeChange(type) {
 
   const now = new Date();
   const base = new Date(); base.setHours(0, 0, 0, 0);
-  base.setDate(base.getDate() + (now.getHours() < 12 ? 1 : 2));
+  base.setDate(base.getDate() + (now.getHours() < 20 ? 1 : 2));
   if (base.getDay() === 0) base.setDate(base.getDate() + 1); // never default to Sunday
 
   flatpickr(el, {
