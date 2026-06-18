@@ -521,33 +521,39 @@ async function getOrderStatus(orderKey, creds = {}) {
   const token = await getToken(clientId, apiKey);
 
   const b2bId = Number(orderKey);
-  // A negative integer is a B2B order id → filter on B2BOrdersIds; anything else is treated as an
-  // ERP order id. Wide date window so the filter's date range doesn't exclude the order.
-  const filterBody = {
-    B2BOrdersIds: Number.isInteger(b2bId) && b2bId < 0 ? [b2bId] : [],
+  // TEMP DIAGNOSTIC: broad query (no id filter) so we can see how the order is identified and what
+  // the status field is called. Try Completed:true as well in case the placed order is "completed".
+  const baseBody = {
+    B2BOrdersIds: [],
     ClientsIds: [],
-    Completed: false,
-    ERPOrdersIds: Number.isInteger(b2bId) && b2bId >= 0 ? [b2bId] : [],
+    ERPOrdersIds: [],
     FromAddedAt: '2020-01-01T00:00:00.000Z',
     FromERPId: 0,
     IncludeOption: { Addresses: false, Products: false },
     StatusesIds: [],
     ToAddedAt: '2099-12-31T23:59:59.000Z',
   };
-  const resp = await apiRequest('/api3/order/erp/filter', 'POST', filterBody, token);
-  const rawBody = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
-  // TEMP DIAGNOSTIC: log the full filter response so we can confirm the order/status field names.
-  console.log(`[order-status] filter id=${orderKey} HTTP ${resp.status} body=${rawBody}`);
-  if (resp.status !== 200) {
-    throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${rawBody}`);
+
+  let items = [];
+  let rawBody = '';
+  for (const completed of [false, true]) {
+    const resp = await apiRequest('/api3/order/erp/filter', 'POST', { ...baseBody, Completed: completed }, token);
+    rawBody = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+    console.log(`[order-status] broad filter Completed=${completed} HTTP ${resp.status} body=${rawBody.slice(0, 4000)}`);
+    if (resp.status !== 200) {
+      throw new Error(`Błąd pobierania statusu zamówienia: HTTP ${resp.status} ${rawBody}`);
+    }
+    const got = Array.isArray(resp.body) ? resp.body : (resp.body?.Items || resp.body?.Orders || resp.body?.Data || []);
+    if (got.length) { items = got; break; }
   }
 
-  const items = Array.isArray(resp.body) ? resp.body : (resp.body?.Items || resp.body?.Orders || resp.body?.Data || []);
   // Match the requested order by its B2B id; fall back to the only/first row when ids aren't echoed.
-  const order = items.find(o => Number(o?.B2BId ?? o?.B2BOrderId ?? o?.Id) === b2bId) || items[0] || null;
+  const order = items.find(o => Number(o?.B2BId ?? o?.B2BOrderId ?? o?.Id ?? o?.OrderId) === b2bId) || null;
   if (!order) {
-    // TEMP DIAGNOSTIC: include count + a snippet of the raw body so the shape is visible in the UI.
-    throw new Error(`Nie znaleziono zamówienia u dostawcy (id ${orderKey}). Zwrócono ${items.length} poz. Odpowiedź: ${rawBody.slice(0, 600)}`);
+    // TEMP DIAGNOSTIC: surface the id-ish keys of the first few rows so we can see where -208885 lives.
+    const keysOf = o => Object.keys(o || {}).filter(k => /id|number|status/i.test(k)).map(k => `${k}=${o[k]}`).join(', ');
+    const sample = items.slice(0, 5).map(keysOf).join(' || ');
+    throw new Error(`Nie znaleziono zamówienia u dostawcy (id ${orderKey}). Zwrócono ${items.length} poz. Pola: ${sample.slice(0, 700)}`);
   }
 
   const paidRaw = order.Paid ?? order.IsPaid;
