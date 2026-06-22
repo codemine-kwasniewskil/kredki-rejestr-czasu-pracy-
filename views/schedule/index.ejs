@@ -182,7 +182,7 @@
                 <% } %>
                 <span class="font-semibold leading-tight <%= entry.modified_by_admin ? 'pl-3' : '' %>"><%= entry.shift_name %></span>
                 <span class="opacity-90"><%= entry.start_time %> – <%= entry.end_time %></span>
-                <% if (user.role === 'admin') { const _c = entryCostMap[worker.id + '_' + dateStr]; if (_c > 0) { %><span class="opacity-80 text-xs font-semibold"><%= _c.toFixed(0) %> zł</span><% } } %>
+                <% if (user.role === 'admin' || user.role === 'super_admin') { const _c = entryCostMap[worker.id + '_' + dateStr]; if (_c > 0) { %><span class="opacity-80 text-xs font-semibold"><%= _c.toFixed(0) %> zł</span><% } } %>
                 <% if (entry.notes) { %>
                   <span class="opacity-75 text-xs italic truncate" title="<%= entry.notes %>"><%= entry.notes %></span>
                 <% } %>
@@ -226,7 +226,7 @@
           <% } %>
         </tr>
         <% }) %>
-        <% if (user.role === 'admin') { %>
+        <% if (user.role === 'admin' || user.role === 'super_admin') { %>
         <% const _totalWeekCost = Object.values(dailyCostMap).reduce((s, v) => s + v, 0); %>
         <tr class="border-t-2 border-slate-200 bg-amber-50/60">
           <td class="p-3 sticky left-0 bg-amber-50/60 z-10 border-r border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
