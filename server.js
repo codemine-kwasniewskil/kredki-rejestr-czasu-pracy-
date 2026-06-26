@@ -251,6 +251,28 @@ const migrationsReady = (async () => {
       active TINYINT DEFAULT 1
     )`);
 
+    // stock_messages: per-day notes any user can post on the stock dashboard (location-scoped)
+    await db.run(`CREATE TABLE IF NOT EXISTS stock_messages (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      location_id INT DEFAULT NULL,
+      message_date DATE NOT NULL,
+      user_id INT NOT NULL,
+      body TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_stock_messages_day (location_id, message_date),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+
+    // stock_message_reads: per-user read receipts so the unread badge clears once seen
+    await db.run(`CREATE TABLE IF NOT EXISTS stock_message_reads (
+      message_id INT NOT NULL,
+      user_id INT NOT NULL,
+      read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (message_id, user_id),
+      FOREIGN KEY (message_id) REFERENCES stock_messages(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+
     // min_qty column on stock_items
     const minQtyCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='min_qty'`);
     if (!minQtyCol || minQtyCol.cnt === 0) {

@@ -91,13 +91,90 @@ router.get('/', async (req, res) => {
       [locationId]
     );
 
+    // Day messages + per-user read state (powers the bell badge next to the date)
+    const messages = await db.all(
+      `SELECT sm.id, sm.body, sm.user_id, sm.created_at, u.name AS author_name,
+              EXISTS(SELECT 1 FROM stock_message_reads r WHERE r.message_id = sm.id AND r.user_id = ?) AS is_read
+       FROM stock_messages sm JOIN users u ON sm.user_id = u.id
+       WHERE sm.message_date = ? AND sm.location_id <=> ?
+       ORDER BY sm.created_at ASC`,
+      [req.session.userId, reportDate, locationId]
+    );
+    const unreadCount = messages.filter(m => !m.is_read).length;
+
     res.render('stock/index', {
       title: 'Raport Stanów', currentPath: '/stock',
       reportDate, reportsByType, history, REPORT_META,
+      messages, unreadCount,
     });
   } catch (e) {
     console.error(e);
     res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+// ── Day messages ─────────────────────────────────────────────────────────────
+
+// Add a message for a given day (any authenticated stock user)
+router.post('/messages', async (req, res) => {
+  const messageDate = req.body.message_date || today();
+  try {
+    const body = (req.body.body || '').trim();
+    if (!body) {
+      req.flash('error', 'Wiadomość jest pusta.');
+      return res.redirect(`/stock?date=${messageDate}`);
+    }
+    const locationId = getLocationId(req);
+    const result = await db.run(
+      `INSERT INTO stock_messages (location_id, message_date, user_id, body) VALUES (?,?,?,?)`,
+      [locationId, messageDate, req.session.userId, body]
+    );
+    // Author has implicitly read their own message
+    await db.run(`INSERT IGNORE INTO stock_message_reads (message_id, user_id) VALUES (?,?)`, [result.insertId, req.session.userId]);
+    await log(sessionUser(req), 'Raport Stanów – dodano wiadomość', `Data: ${messageDate}`);
+    res.redirect(`/stock?date=${messageDate}`);
+  } catch (e) {
+    console.error(e);
+    req.flash('error', 'Błąd przy dodawaniu wiadomości.');
+    res.redirect(`/stock?date=${messageDate}`);
+  }
+});
+
+// Mark all of a day's messages as read for the current user (fired when the panel opens)
+router.post('/messages/read', async (req, res) => {
+  try {
+    const messageDate = req.body.message_date || today();
+    const locationId = getLocationId(req);
+    const rows = await db.all(
+      `SELECT id FROM stock_messages WHERE message_date = ? AND location_id <=> ?`,
+      [messageDate, locationId]
+    );
+    for (const r of rows) {
+      await db.run(`INSERT IGNORE INTO stock_message_reads (message_id, user_id) VALUES (?,?)`, [r.id, req.session.userId]);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Delete a message (author or manager)
+router.delete('/messages/:id', async (req, res) => {
+  const msg = await db.get(`SELECT * FROM stock_messages WHERE id=?`, [req.params.id]).catch(() => null);
+  const messageDate = msg?.message_date || req.body.message_date || '';
+  try {
+    const isManager = ['admin', 'location_manager', 'super_admin'].includes(req.session.userRole);
+    if (msg && (msg.user_id === req.session.userId || isManager)) {
+      await db.run(`DELETE FROM stock_messages WHERE id=?`, [req.params.id]);
+      await log(sessionUser(req), 'Raport Stanów – usunięto wiadomość', `Data: ${messageDate}`);
+    } else if (msg) {
+      req.flash('error', 'Brak uprawnień do usunięcia tej wiadomości.');
+    }
+    res.redirect(`/stock?date=${messageDate}`);
+  } catch (e) {
+    console.error(e);
+    res.redirect(`/stock?date=${messageDate}`);
   }
 });
 
