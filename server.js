@@ -273,6 +273,13 @@ const migrationsReady = (async () => {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`);
 
+    // done_by / done_at on stock_messages: "zrobione" checkbox stamps who completed it
+    const msgDoneCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_messages' AND COLUMN_NAME='done_by'`);
+    if (!msgDoneCol || msgDoneCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_messages ADD COLUMN done_by INT DEFAULT NULL`);
+      await db.run(`ALTER TABLE stock_messages ADD COLUMN done_at DATETIME DEFAULT NULL`);
+    }
+
     // min_qty column on stock_items
     const minQtyCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='min_qty'`);
     if (!minQtyCol || minQtyCol.cnt === 0) {

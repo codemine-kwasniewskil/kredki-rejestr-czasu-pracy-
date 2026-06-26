@@ -93,9 +93,12 @@ router.get('/', async (req, res) => {
 
     // Day messages + per-user read state (powers the bell badge next to the date)
     const messages = await db.all(
-      `SELECT sm.id, sm.body, sm.user_id, sm.created_at, u.name AS author_name,
+      `SELECT sm.id, sm.body, sm.user_id, sm.created_at, sm.done_by, sm.done_at,
+              u.name AS author_name, du.name AS done_by_name,
               EXISTS(SELECT 1 FROM stock_message_reads r WHERE r.message_id = sm.id AND r.user_id = ?) AS is_read
-       FROM stock_messages sm JOIN users u ON sm.user_id = u.id
+       FROM stock_messages sm
+       JOIN users u ON sm.user_id = u.id
+       LEFT JOIN users du ON sm.done_by = du.id
        WHERE sm.message_date = ? AND sm.location_id <=> ?
        ORDER BY sm.created_at ASC`,
       [req.session.userId, reportDate, locationId]
@@ -156,6 +159,25 @@ router.post('/messages/read', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false });
+  }
+});
+
+// Toggle the "zrobione" checkbox — stamps/clears who completed the message
+router.post('/messages/:id/done', async (req, res) => {
+  const messageDate = req.body.message_date || today();
+  try {
+    const msg = await db.get(`SELECT id, done_by FROM stock_messages WHERE id=?`, [req.params.id]);
+    if (msg) {
+      if (msg.done_by) {
+        await db.run(`UPDATE stock_messages SET done_by=NULL, done_at=NULL WHERE id=?`, [req.params.id]);
+      } else {
+        await db.run(`UPDATE stock_messages SET done_by=?, done_at=NOW() WHERE id=?`, [req.session.userId, req.params.id]);
+      }
+    }
+    res.redirect(`/stock?date=${messageDate}`);
+  } catch (e) {
+    console.error(e);
+    res.redirect(`/stock?date=${messageDate}`);
   }
 });
 

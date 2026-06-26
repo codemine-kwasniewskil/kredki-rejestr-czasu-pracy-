@@ -141,7 +141,7 @@
         <p class="text-sm text-slate-400 text-center py-6">Brak wiadomości na ten dzień.</p>
       <% } else { %>
         <% for (const m of messages) { %>
-          <div class="rounded-xl border <%= m.is_read ? 'border-slate-200 bg-white' : 'border-blue-200 bg-blue-50' %> px-3 py-2">
+          <div class="rounded-xl border <%= m.done_by ? 'border-green-200 bg-green-50' : (m.is_read ? 'border-slate-200 bg-white' : 'border-blue-200 bg-blue-50') %> px-3 py-2">
             <div class="flex items-center justify-between gap-2">
               <div class="text-xs font-semibold text-slate-700"><%= m.author_name %></div>
               <div class="flex items-center gap-2">
@@ -156,7 +156,17 @@
                 <% } %>
               </div>
             </div>
-            <div class="text-sm text-slate-700 mt-1 whitespace-pre-wrap break-words"><%= m.body %></div>
+            <div class="text-sm <%= m.done_by ? 'text-slate-400 line-through' : 'text-slate-700' %> mt-1 whitespace-pre-wrap break-words"><%= m.body %></div>
+            <form method="POST" action="/stock/messages/<%= m.id %>/done" class="mt-2 flex items-center gap-2">
+              <input type="hidden" name="message_date" value="<%= reportDate %>">
+              <input type="checkbox" onchange="this.form.submit()" <%= m.done_by ? 'checked' : '' %>
+                class="w-4 h-4 rounded border-slate-300 text-green-600 focus:ring-green-500 cursor-pointer">
+              <% if (m.done_by) { %>
+                <span class="text-xs font-medium text-green-700">Zrobione · <%= m.done_by_name %></span>
+              <% } else { %>
+                <span class="text-xs text-slate-400">Zrobione?</span>
+              <% } %>
+            </form>
           </div>
         <% } %>
       <% } %>
