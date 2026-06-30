@@ -71,7 +71,10 @@
           <% for (const item of group.items) { %>
             <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone; %>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 <%= !hasData ? 'opacity-40' : '' %>">
-              <div class="text-sm font-semibold text-slate-800 mb-2"><%= item.name %></div>
+              <div class="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-1.5 flex-wrap">
+                <%= item.name %>
+                <% if (item.vendor_name) { %><span class="text-xs font-medium bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded"><%= item.vendor_name %></span><% } %>
+              </div>
               <div class="grid grid-cols-3 gap-2 mb-2 text-center">
                 <div>
                   <div class="text-xs text-slate-400 mb-0.5">Otwarcie</div>
@@ -137,6 +140,7 @@
                 <tr class="border-b border-slate-50 last:border-0 <%= !hasData ? 'opacity-40' : '' %>">
                   <td class="px-3 py-2 text-xs font-medium text-slate-800 leading-tight">
                     <%= item.name %>
+                    <% if (item.vendor_name) { %><span class="ml-1 text-xs font-medium bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded"><%= item.vendor_name %></span><% } %>
                     <% const cakeBatchesD = isCakeCategory(item.category) ? batchesOf(item) : []; %>
                     <% if (cakeBatchesD.length) { const shelfDaysD = shelfDaysOf(item); %>
                       <div class="mt-0.5 font-normal text-slate-400">
@@ -174,8 +178,9 @@
             <% const isCoffee = isCoffeeCategory(item.category, item.hopper_enabled); %>
             <div class="flex items-center justify-between px-4 py-2.5 flex-wrap gap-y-1 <%= qBelow ? 'bg-amber-50' : '' %>">
               <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                <div class="text-sm font-medium text-slate-800 flex items-center gap-1.5 flex-wrap">
                   <%= item.name %>
+                  <% if (item.vendor_name) { %><span class="text-xs font-medium bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded"><%= item.vendor_name %></span><% } %>
                   <% if (qBelow) { %><span class="text-amber-600 text-xs font-semibold">⚠️ mało</span><% } %>
                 </div>
                 <% if (item.min_qty !== null) { %>

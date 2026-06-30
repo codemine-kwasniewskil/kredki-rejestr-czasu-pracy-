@@ -418,13 +418,29 @@ router.get('/view/:id', async (req, res) => {
 
     const meta = REPORT_META[report.report_type] || { label: report.report_type, icon: '📋', isShift: false };
 
-    const items = await db.all(
-      `SELECT si.*, sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
-       FROM stock_items si
-       LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
-       WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
-      [report.id, report.report_type, report.location_id]
-    );
+    let items;
+    try {
+      items = await db.all(
+        `SELECT si.*, v.name AS vendor_name,
+                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
+         FROM stock_items si
+         LEFT JOIN vendors v ON v.id = si.vendor_id
+         LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
+         WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
+        [report.id, report.report_type, report.location_id]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_NO_SUCH_TABLE' && e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      // vendors table / vendor_id column not present — fall back without the supplier name
+      items = await db.all(
+        `SELECT si.*, NULL AS vendor_name,
+                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
+         FROM stock_items si
+         LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
+         WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
+        [report.id, report.report_type, report.location_id]
+      );
+    }
 
     const deliveryMap = {};
     for (const item of items) deliveryMap[item.id] = parseDeliveryDates(item);
@@ -432,6 +448,102 @@ router.get('/view/:id', async (req, res) => {
     res.render('stock/view', {
       title: meta.label, currentPath: '/stock',
       report, grouped: groupByCategory(items), meta, REPORT_META, todayStr: today(), deliveryMap,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+// ── Monthly summary (products + quantities, grouped by supplier) ────────────
+
+const SUMMARY_MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+
+function toNum(v) {
+  if (v == null || v === '' || v === '—' || v === '-') return null;
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+router.get('/summary', requireManager, async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const { REPORT_META } = await loadMeta();
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const month = (req.query.month || defaultMonth).substring(0, 7);
+
+    let rows;
+    try {
+      rows = await db.all(
+        `SELECT si.id, si.name, si.unit, si.report_type, v.name AS vendor_name,
+                sre.quantity, sre.dostawa
+         FROM stock_report_entries sre
+         JOIN stock_reports sr ON sr.id = sre.report_id
+         JOIN stock_items si ON si.id = sre.item_id
+         LEFT JOIN vendors v ON v.id = si.vendor_id
+         WHERE sr.location_id = ? AND DATE_FORMAT(sr.report_date, '%Y-%m') = ?`,
+        [locationId, month]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_NO_SUCH_TABLE' && e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      rows = await db.all(
+        `SELECT si.id, si.name, si.unit, si.report_type, NULL AS vendor_name,
+                sre.quantity, sre.dostawa
+         FROM stock_report_entries sre
+         JOIN stock_reports sr ON sr.id = sre.report_id
+         JOIN stock_items si ON si.id = sre.item_id
+         WHERE sr.location_id = ? AND DATE_FORMAT(sr.report_date, '%Y-%m') = ?`,
+        [locationId, month]
+      );
+    }
+
+    // Aggregate by supplier → product. For shift reports "ilość" = sum of deliveries (dostawa);
+    // for snapshot reports = sum of reported quantity.
+    const suppliersMap = new Map();
+    for (const r of rows) {
+      const isShift = !!(REPORT_META[r.report_type] && REPORT_META[r.report_type].isShift);
+      const val = toNum(isShift ? r.dostawa : r.quantity);
+      if (val == null) continue;
+      const supplierKey = r.vendor_name || 'Bez dostawcy';
+      if (!suppliersMap.has(supplierKey)) suppliersMap.set(supplierKey, new Map());
+      const productsMap = suppliersMap.get(supplierKey);
+      if (!productsMap.has(r.id)) {
+        productsMap.set(r.id, { name: r.name, unit: r.unit || '', total: 0, entries: 0 });
+      }
+      const p = productsMap.get(r.id);
+      p.total += val;
+      p.entries += 1;
+    }
+
+    const fmtN = (n) => (Number.isInteger(n) ? n.toString() : n.toFixed(2)).replace('.', ',');
+    const suppliers = [...suppliersMap.entries()]
+      .map(([name, productsMap]) => ({
+        name,
+        products: [...productsMap.values()]
+          .map(p => ({ ...p, totalStr: fmtN(p.total) }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'pl')),
+        total: [...productsMap.values()].reduce((s, p) => s + p.total, 0),
+      }))
+      .sort((a, b) => {
+        if (a.name === 'Bez dostawcy') return 1;
+        if (b.name === 'Bez dostawcy') return -1;
+        return a.name.localeCompare(b.name, 'pl');
+      });
+
+    const monthOptions = [];
+    const base = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    for (let i = 0; i < 18; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthOptions.push({ val, label: SUMMARY_MONTHS_PL[d.getMonth()] + ' ' + d.getFullYear() });
+    }
+    const [mYear, mMonth] = month.split('-').map(Number);
+    const monthLabel = SUMMARY_MONTHS_PL[mMonth - 1] + ' ' + mYear;
+
+    res.render('stock/summary', {
+      title: 'Podsumowanie miesięczne', currentPath: '/stock',
+      suppliers, month, monthLabel, monthOptions,
     });
   } catch (e) {
     console.error(e);
