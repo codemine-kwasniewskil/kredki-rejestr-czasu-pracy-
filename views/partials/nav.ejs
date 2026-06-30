@@ -82,10 +82,16 @@
     </a>
     <% } %>
 
-    <a href="/deliveries" class="nav-link <%= p.startsWith('/deliveries') ? 'active' : '' %>">
+    <a href="/deliveries" class="nav-link <%= p.startsWith('/deliveries') && p !== '/deliveries/summary' ? 'active' : '' %>">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Dostawy
     </a>
+    <% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+    <a href="/deliveries/summary" class="nav-link pl-9 text-xs <%= p === '/deliveries/summary' ? 'active' : '' %>">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+      Podsumowanie miesięczne
+    </a>
+    <% } %>
 
     <% if (f.recipes !== false) { %>
     <a href="/recipes" class="nav-link <%= p.startsWith('/recipes') ? 'active' : '' %>">

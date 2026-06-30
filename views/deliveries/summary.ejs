@@ -1,0 +1,73 @@
+<% locals.currentPath = '/deliveries'; %>
+<%- include('../partials/head', { title: 'Podsumowanie dostaw' }) %>
+<%- include('../partials/nav') %>
+
+<div class="md:ml-60 pt-14 md:pt-0 min-h-screen bg-slate-50">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+      <div class="flex items-center gap-3">
+        <a href="/deliveries" class="p-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </a>
+        <div>
+          <h1 class="text-xl font-bold text-slate-800">Podsumowanie dostaw</h1>
+          <p class="text-sm text-slate-500">Produkty i ilości w podziale na dostawców — <%= monthLabel %></p>
+        </div>
+      </div>
+      <form method="GET" action="/deliveries/summary" class="flex items-center gap-2">
+        <select name="month" onchange="this.form.submit()"
+                class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white">
+          <% monthOptions.forEach(o => { %>
+          <option value="<%= o.val %>" <%= o.val === month ? 'selected' : '' %>><%= o.label %></option>
+          <% }) %>
+        </select>
+      </form>
+    </div>
+
+    <% if (suppliers.length === 0) { %>
+    <div class="bg-white border border-slate-200 rounded-xl text-center py-12 text-slate-400">
+      <p class="font-medium">Brak dostaw w tym miesiącu</p>
+    </div>
+    <% } else { %>
+
+    <% suppliers.forEach(s => { %>
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+      <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <span class="text-sm font-semibold text-slate-700"><%= s.name %></span>
+        <span class="text-xs text-slate-400"><%= s.products.length %> produkt<% if (s.products.length === 1) { %><% } else if (s.products.length < 5) { %>y<% } else { %>ów<% } %> · <%= s.deliveriesCount %> dostaw</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100 text-left">
+              <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide">Produkt</th>
+              <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide text-right">Ilość</th>
+              <th class="px-4 py-3 font-semibold text-slate-600 text-xs uppercase tracking-wide text-right">Liczba dostaw</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50">
+            <% s.products.forEach(p => { %>
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3 font-medium text-slate-800"><%= p.name || '—' %></td>
+              <td class="px-4 py-3 text-slate-700 text-right whitespace-nowrap">
+                <% if (p.hasNumeric) { %>
+                  <%= fmtNum(p.total) %><% if (p.unit) { %> <span class="text-slate-400"><%= p.unit %></span><% } %>
+                <% } else { %>
+                  <span class="text-slate-300">—</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-3 text-slate-500 text-right whitespace-nowrap"><%= p.deliveries %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% }) %>
+
+    <% } %>
+
+  </div>
+</div>

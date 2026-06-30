@@ -39,6 +39,12 @@ const isManager = user && (user.role === 'admin' || user.role === 'location_mana
           Raport
         </a>
         <% } %>
+        <% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+        <a href="/deliveries/summary" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+          Podsumowanie
+        </a>
+        <% } %>
         <a href="/deliveries/new" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           Dodaj dostawę

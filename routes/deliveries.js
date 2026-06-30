@@ -168,6 +168,90 @@ router.get('/report', requireManager, async (req, res) => {
   }
 });
 
+// GET /summary — monthly aggregated summary: products + quantities, grouped by supplier
+const MONTHS_PL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+
+// Parse a free-text quantity ("10", "10 szt", "5,5 kg") into a numeric value + unit hint.
+function parseQuantity(raw) {
+  if (!raw) return { num: null, unit: '' };
+  const str = String(raw).trim();
+  const m = str.match(/-?\d+(?:[.,]\d+)?/);
+  if (!m) return { num: null, unit: str };
+  const num = parseFloat(m[0].replace(',', '.'));
+  const unit = str.replace(m[0], '').trim();
+  return { num: isNaN(num) ? null : num, unit };
+}
+
+function fmtNum(n) {
+  if (n == null) return '—';
+  return (Number.isInteger(n) ? n.toString() : n.toFixed(2)).replace('.', ',');
+}
+
+router.get('/summary', requireRole('admin', 'super_admin'), async (req, res) => {
+  try {
+    const locationId = getLocationId(req);
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const month = (req.query.month || defaultMonth).substring(0, 7);
+
+    const rows = await db.all(`
+      SELECT supplier, description, quantity
+      FROM deliveries
+      WHERE location_id = ? AND DATE_FORMAT(delivered_at, '%Y-%m') = ?
+      ORDER BY supplier, description
+    `, [locationId, month]);
+
+    // Group by supplier → product, summing numeric quantities.
+    const suppliersMap = new Map();
+    for (const r of rows) {
+      const supplierKey = (r.supplier && r.supplier.trim()) || 'Bez dostawcy';
+      if (!suppliersMap.has(supplierKey)) suppliersMap.set(supplierKey, new Map());
+      const productsMap = suppliersMap.get(supplierKey);
+
+      const name = (r.description || '').trim();
+      const key = name.toLowerCase();
+      const { num, unit } = parseQuantity(r.quantity);
+      if (!productsMap.has(key)) {
+        productsMap.set(key, { name, total: 0, hasNumeric: false, unit: '', deliveries: 0 });
+      }
+      const p = productsMap.get(key);
+      p.deliveries += 1;
+      if (num != null) { p.total += num; p.hasNumeric = true; if (!p.unit && unit) p.unit = unit; }
+    }
+
+    const suppliers = [...suppliersMap.entries()]
+      .map(([name, productsMap]) => ({
+        name,
+        products: [...productsMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl')),
+        deliveriesCount: [...productsMap.values()].reduce((s, p) => s + p.deliveries, 0),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+
+    const monthOptions = [];
+    const base = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    for (let i = 0; i < 18; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthOptions.push({ val, label: MONTHS_PL[d.getMonth()] + ' ' + d.getFullYear() });
+    }
+    const [mYear, mMonth] = month.split('-').map(Number);
+    const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
+
+    res.render('deliveries/summary', {
+      currentPath: '/deliveries',
+      suppliers,
+      month,
+      monthLabel,
+      monthOptions,
+      totalDeliveries: rows.length,
+      fmtNum,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd ładowania podsumowania dostaw.' });
+  }
+});
+
 // GET /:id/edit
 router.get('/:id/edit', requireManager, async (req, res) => {
   try {
