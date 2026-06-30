@@ -32,6 +32,10 @@
         class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'items' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
         Produkty
       </a>
+      <a href="/stock/admin?tab=groups"
+        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'groups' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
+        Grupy / duplikaty
+      </a>
       <a href="/stock/admin?tab=types"
         class="px-4 py-2 rounded-lg text-sm font-medium transition-colors <%= tab === 'types' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700' %>">
         Typy raportów
@@ -203,6 +207,15 @@
                 </div>
               </div>
 
+              <div class="sm:col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">
+                  Grupa (łączenie duplikatów)
+                  <span class="text-slate-400 font-normal ml-1">– ta sama nazwa = sumowane razem w podsumowaniu</span>
+                </label>
+                <input type="text" name="group_name" value="<%= editItem.group_name || '' %>" placeholder="np. Cynamonka"
+                  class="stock-input w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              </div>
+
             </div>
             <div class="flex gap-2 mt-3">
               <button type="submit" class="btn btn-primary py-2">Zapisz zmiany</button>
@@ -312,6 +325,7 @@
         <input type="hidden" name="ids" id="bulkIds">
         <input type="hidden" name="action" id="bulkAction">
         <input type="hidden" name="vendor_id" id="bulkVendorId">
+        <input type="hidden" name="group_name" id="bulkGroupName">
         <input type="hidden" name="report_type" value="<%= activeType %>">
       </form>
 
@@ -325,6 +339,8 @@
             <option value="">-- wybierz operację --</option>
             <option value="assign_vendor">Przypisz dostawcę</option>
             <option value="clear_vendor">Usuń dostawcę i SKU</option>
+            <option value="assign_group">Połącz w grupę</option>
+            <option value="clear_group">Rozłącz grupę</option>
             <option value="activate">Aktywuj</option>
             <option value="deactivate">Dezaktywuj</option>
           </select>
@@ -335,6 +351,8 @@
               <option value="<%= vendor.id %>"><%= vendor.name %></option>
             <% } %>
           </select>
+          <input type="text" id="bulkGroupInput" placeholder="Nazwa grupy…"
+            class="hidden border border-slate-500 bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400 placeholder-slate-400">
           <button type="button" onclick="applyBulk()"
             class="btn btn-primary py-1.5 text-sm">Zastosuj</button>
         </div>
@@ -679,6 +697,96 @@
       </div>
 
     <%# ════════════════════════════════════════════════════════════════════ %>
+    <%# TAB: GRUPY / DUPLIKATY %>
+    <%# ════════════════════════════════════════════════════════════════════ %>
+    <% } else if (tab === 'groups') { %>
+
+      <%
+      function memberLine(m) {
+        const rt = REPORT_META[m.report_type];
+        const typeLabel = rt ? (rt.label || m.report_type) : m.report_type;
+        return { typeLabel, statusLabel: m.active ? '' : ' (ukryty)', vendor: m.vendor_name || '' };
+      }
+      %>
+
+      <p class="text-sm text-slate-500 mb-5">
+        Łączenie duplikatów scala ten sam produkt z różnych linii/typów raportów w jedną pozycję w
+        <a href="/stock/summary" class="text-blue-600 hover:underline">podsumowaniu miesięcznym</a>.
+        Możesz zaakceptować propozycje poniżej lub łączyć ręcznie (zaznacz produkty w zakładce „Produkty" → „Połącz w grupę").
+      </p>
+
+      <!-- Existing groups -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-800">Istniejące grupy</span>
+          <span class="text-xs text-slate-400"><%= existingGroups.length %></span>
+        </div>
+        <% if (existingGroups.length === 0) { %>
+          <div class="px-4 py-6 text-center text-slate-400 text-sm">Brak grup. Połącz duplikaty poniżej.</div>
+        <% } else { %>
+          <div class="divide-y divide-slate-50">
+            <% for (const g of existingGroups) { %>
+            <div class="px-4 py-3 flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-800 mb-1"><%= g.name %>
+                  <span class="text-xs font-normal text-slate-400">· <%= g.members.length %> produktów</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <% for (const m of g.members) { const ml = memberLine(m); %>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                      <%= m.name %><span class="text-slate-400"> · <%= ml.typeLabel %><%= ml.statusLabel %></span>
+                    </span>
+                  <% } %>
+                </div>
+              </div>
+              <form method="POST" action="/stock/admin/items/bulk-update" class="flex-shrink-0"
+                onsubmit="return confirm('Rozłączyć grupę „<%= g.name %>"?')">
+                <input type="hidden" name="action" value="clear_group">
+                <input type="hidden" name="ids" value="<%= g.members.map(m => m.id).join(',') %>">
+                <input type="hidden" name="report_type" value="<%= activeType %>">
+                <button type="submit" class="text-xs font-medium text-red-400 hover:text-red-600 transition-colors">Rozłącz</button>
+              </form>
+            </div>
+            <% } %>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Proposed (strong) duplicates -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-800">Wykryte duplikaty <span class="text-xs font-normal text-green-600">(ta sama nazwa)</span></span>
+          <span class="text-xs text-slate-400"><%= groupProposals.strong.length %></span>
+        </div>
+        <% if (groupProposals.strong.length === 0) { %>
+          <div class="px-4 py-6 text-center text-slate-400 text-sm">Brak pewnych duplikatów.</div>
+        <% } else { %>
+          <div class="divide-y divide-slate-50">
+            <% for (const prop of groupProposals.strong) { %>
+              <%- include('_group_proposal', { prop, activeType, REPORT_META, badge: 'green' }) %>
+            <% } %>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Possible (weak) duplicates -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-800">Możliwe duplikaty <span class="text-xs font-normal text-amber-600">(podobne nazwy)</span></span>
+          <span class="text-xs text-slate-400"><%= groupProposals.weak.length %></span>
+        </div>
+        <% if (groupProposals.weak.length === 0) { %>
+          <div class="px-4 py-6 text-center text-slate-400 text-sm">Brak sugestii.</div>
+        <% } else { %>
+          <div class="divide-y divide-slate-50">
+            <% for (const prop of groupProposals.weak) { %>
+              <%- include('_group_proposal', { prop, activeType, REPORT_META, badge: 'amber' }) %>
+            <% } %>
+          </div>
+        <% } %>
+      </div>
+
+    <%# ════════════════════════════════════════════════════════════════════ %>
     <%# TAB: HISTORIA %>
     <%# ════════════════════════════════════════════════════════════════════ %>
     <% } else { %>
@@ -801,6 +909,7 @@ function clearSelection() {
 function onBulkActionChange() {
   const action = document.getElementById('bulkActionSel').value;
   document.getElementById('bulkVendorSel').classList.toggle('hidden', action !== 'assign_vendor');
+  document.getElementById('bulkGroupInput').classList.toggle('hidden', action !== 'assign_group');
 }
 
 function applyBulk() {
@@ -809,9 +918,16 @@ function applyBulk() {
   const ids = getChecked();
   if (!ids.length) { alert('Nie zaznaczono żadnych produktów.'); return; }
   if (action === 'deactivate' && !confirm(`Dezaktywować ${ids.length} produktów?`)) return;
+  let groupName = '';
+  if (action === 'assign_group') {
+    groupName = document.getElementById('bulkGroupInput').value.trim();
+    if (!groupName) { alert('Podaj nazwę grupy.'); return; }
+  }
+  if (action === 'clear_group' && !confirm(`Rozłączyć grupę dla ${ids.length} produktów?`)) return;
   document.getElementById('bulkIds').value = ids.join(',');
   document.getElementById('bulkAction').value = action;
   document.getElementById('bulkVendorId').value = document.getElementById('bulkVendorSel').value;
+  document.getElementById('bulkGroupName').value = groupName;
   document.getElementById('bulkForm').submit();
 }
 

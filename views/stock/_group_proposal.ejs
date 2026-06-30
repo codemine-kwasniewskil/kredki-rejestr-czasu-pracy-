@@ -1,0 +1,23 @@
+<div class="px-4 py-3">
+  <form method="POST" action="/stock/admin/items/bulk-update" class="flex flex-col sm:flex-row sm:items-start gap-3">
+    <input type="hidden" name="action" value="assign_group">
+    <input type="hidden" name="ids" value="<%= prop.members.map(m => m.id).join(',') %>">
+    <input type="hidden" name="report_type" value="<%= activeType %>">
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap gap-1.5 mb-2">
+        <% for (const m of prop.members) { %>
+          <% const rt = REPORT_META[m.report_type]; const typeLabel = rt ? (rt.label || m.report_type) : m.report_type; %>
+          <span class="text-xs bg-<%= badge %>-50 text-<%= badge %>-700 px-1.5 py-0.5 rounded">
+            <%= m.name %><span class="opacity-60"> · <%= typeLabel %><%= m.active ? '' : ' (ukryty)' %></span>
+          </span>
+        <% } %>
+      </div>
+      <label class="block text-xs font-medium text-slate-500 mb-1">Nazwa grupy</label>
+      <input type="text" name="group_name" value="<%= prop.suggested %>" required
+        class="w-full sm:max-w-xs border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" style="font-size:14px">
+    </div>
+    <div class="sm:pt-6">
+      <button type="submit" class="btn btn-primary py-2 text-sm whitespace-nowrap">Połącz (<%= prop.members.length %>)</button>
+    </div>
+  </form>
+</div>

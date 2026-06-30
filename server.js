@@ -746,6 +746,17 @@ const migrationsReady = (async () => {
     console.error('vendor_id column migration error:', e.message);
   }
 
+  // ── group_name on stock_items (merge duplicate products in summaries) ──────
+  try {
+    const groupNameCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='group_name'`);
+    if (!groupNameCol || groupNameCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN group_name VARCHAR(150) DEFAULT NULL`);
+      console.log('✓ Added group_name to stock_items');
+    }
+  } catch (e) {
+    console.error('group_name column migration error:', e.message);
+  }
+
   // ── min_order_value on vendors ────────────────────────────────────────────
   try {
     const minCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='vendors' AND COLUMN_NAME='min_order_value'`);

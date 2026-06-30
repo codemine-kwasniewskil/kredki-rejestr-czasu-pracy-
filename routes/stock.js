@@ -7,6 +7,112 @@ const { log } = require('../utils/logger');
 
 const requireManager = requireRole('admin', 'location_manager');
 
+// ── Duplicate-detection helpers (product grouping) ──────────────────────────
+const GROUP_STOPWORDS = new Set(['z', 'i', 'w', 'na', 'do', 'ze', 'o', 'a', 'au', 'the']);
+
+function normName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ł/g, 'l')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function normTokens(s) {
+  return normName(s).split(' ').filter(t => t && !GROUP_STOPWORDS.has(t));
+}
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    let cur = [i];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+// Size/colour qualifiers that distinguish product variants (not duplicates).
+const GROUP_DISTINGUISH = new Set(['duze', 'duzy', 'duza', 'male', 'maly', 'mala', 'maxi', 'mini', 'small', 'large', 'xl', 'niebieski', 'przezroczysty', 'czerwony', 'zielony', 'bialy', 'czarny']);
+function isDistinguishingTok(t) { return GROUP_DISTINGUISH.has(t) || /\d/.test(t); }
+
+function similarItems(a, b) {
+  if (a.norm && a.norm === b.norm) return true;
+  // Block merges where the only token differences are size/colour/number qualifiers.
+  const symDiff = [...new Set([...a.tokens, ...b.tokens])].filter(t => !(a.tokens.has(t) && b.tokens.has(t)));
+  if (symDiff.length > 0 && symDiff.every(isDistinguishingTok)) return false;
+  const lev = levenshtein(a.normNoStop, b.normNoStop);
+  const maxLen = Math.max(a.normNoStop.length, b.normNoStop.length);
+  if (maxLen > 0 && lev <= 2 && lev / maxLen <= 0.34) return true;
+  const inter = [...a.tokens].filter(t => b.tokens.has(t)).length;
+  const uni = new Set([...a.tokens, ...b.tokens]).size;
+  if (uni > 0 && inter / uni >= 0.5) return true;
+  return false;
+}
+// Pick a canonical group label from member names: most frequent, tie-break shortest.
+function canonicalName(names) {
+  const freq = new Map();
+  for (const n of names) freq.set(n, (freq.get(n) || 0) + 1);
+  return [...freq.entries()].sort((x, y) => y[1] - x[1] || x[0].length - y[0].length)[0][0];
+}
+// Build {strong, weak} duplicate proposals from a flat item list (excludes already-grouped pairs).
+function buildGroupProposals(items) {
+  const enriched = items.map(it => {
+    const norm = normName(it.name);
+    const toks = normTokens(it.name);
+    return { ...it, norm, normNoStop: toks.join(' '), tokens: new Set(toks) };
+  });
+
+  // Strong: identical normalized name across ≥2 distinct items.
+  const byNorm = new Map();
+  for (const it of enriched) {
+    if (!it.norm) continue;
+    if (!byNorm.has(it.norm)) byNorm.set(it.norm, []);
+    byNorm.get(it.norm).push(it);
+  }
+  const strong = [];
+  const inStrong = new Set();
+  for (const [, group] of byNorm) {
+    if (group.length < 2) continue;
+    group.forEach(g => inStrong.add(g.id));
+    const grouped = group.map(g => (g.group_name || '').trim()).filter(Boolean);
+    const allSameGroup = grouped.length === group.length && new Set(grouped.map(s => s.toLowerCase())).size === 1;
+    if (allSameGroup) continue; // already merged
+    strong.push({ suggested: canonicalName(group.map(g => g.name)), members: group });
+  }
+
+  // Weak: fuzzy clusters among the rest (union-find).
+  const rest = enriched.filter(it => !inStrong.has(it.id));
+  const parent = new Map(rest.map(it => [it.id, it.id]));
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const union = (a, b) => { parent.set(find(a), find(b)); };
+  for (let i = 0; i < rest.length; i++) {
+    for (let j = i + 1; j < rest.length; j++) {
+      if (similarItems(rest[i], rest[j])) union(rest[i].id, rest[j].id);
+    }
+  }
+  const clusters = new Map();
+  for (const it of rest) {
+    const root = find(it.id);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(it);
+  }
+  const weak = [];
+  for (const [, group] of clusters) {
+    if (group.length < 2) continue;
+    const grouped = group.map(g => (g.group_name || '').trim()).filter(Boolean);
+    const allSameGroup = grouped.length === group.length && new Set(grouped.map(s => s.toLowerCase())).size === 1;
+    if (allSameGroup) continue;
+    weak.push({ suggested: canonicalName(group.map(g => g.name)), members: group });
+  }
+  return { strong, weak };
+}
+
 router.use(requireAuth);
 router.use(requireFeature('stock'));
 
@@ -476,7 +582,7 @@ router.get('/summary', requireManager, async (req, res) => {
     let rows;
     try {
       rows = await db.all(
-        `SELECT si.id, si.name, si.unit, si.report_type, v.name AS vendor_name,
+        `SELECT si.id, si.name, si.unit, si.report_type, si.group_name, v.name AS vendor_name,
                 sre.quantity, sre.dostawa
          FROM stock_report_entries sre
          JOIN stock_reports sr ON sr.id = sre.report_id
@@ -488,7 +594,7 @@ router.get('/summary', requireManager, async (req, res) => {
     } catch (e) {
       if (e.code !== 'ER_NO_SUCH_TABLE' && e.code !== 'ER_BAD_FIELD_ERROR') throw e;
       rows = await db.all(
-        `SELECT si.id, si.name, si.unit, si.report_type, NULL AS vendor_name,
+        `SELECT si.id, si.name, si.unit, si.report_type, NULL AS group_name, NULL AS vendor_name,
                 sre.quantity, sre.dostawa
          FROM stock_report_entries sre
          JOIN stock_reports sr ON sr.id = sre.report_id
@@ -498,8 +604,8 @@ router.get('/summary', requireManager, async (req, res) => {
       );
     }
 
-    // Aggregate by supplier → product. For shift reports "ilość" = sum of deliveries (dostawa);
-    // for snapshot reports = sum of reported quantity.
+    // Aggregate by supplier → product. Products sharing a group_name are merged into one line.
+    // For shift reports "ilość" = sum of deliveries (dostawa); for snapshot reports = sum of reported quantity.
     const suppliersMap = new Map();
     for (const r of rows) {
       const isShift = !!(REPORT_META[r.report_type] && REPORT_META[r.report_type].isShift);
@@ -508,12 +614,16 @@ router.get('/summary', requireManager, async (req, res) => {
       const supplierKey = r.vendor_name || 'Bez dostawcy';
       if (!suppliersMap.has(supplierKey)) suppliersMap.set(supplierKey, new Map());
       const productsMap = suppliersMap.get(supplierKey);
-      if (!productsMap.has(r.id)) {
-        productsMap.set(r.id, { name: r.name, unit: r.unit || '', total: 0, entries: 0 });
+      const grp = (r.group_name && r.group_name.trim()) || '';
+      const key = grp ? `g:${grp.toLowerCase()}` : `i:${r.id}`;
+      const displayName = grp || r.name;
+      if (!productsMap.has(key)) {
+        productsMap.set(key, { name: displayName, unit: r.unit || '', total: 0, entries: 0, grouped: !!grp, members: new Set() });
       }
-      const p = productsMap.get(r.id);
+      const p = productsMap.get(key);
       p.total += val;
       p.entries += 1;
+      p.members.add(r.id);
     }
 
     const fmtN = (n) => (Number.isInteger(n) ? n.toString() : n.toFixed(2)).replace('.', ',');
@@ -521,7 +631,7 @@ router.get('/summary', requireManager, async (req, res) => {
       .map(([name, productsMap]) => ({
         name,
         products: [...productsMap.values()]
-          .map(p => ({ ...p, totalStr: fmtN(p.total) }))
+          .map(p => ({ ...p, totalStr: fmtN(p.total), memberCount: p.members.size }))
           .sort((a, b) => a.name.localeCompare(b.name, 'pl')),
         total: [...productsMap.values()].reduce((s, p) => s + p.total, 0),
       }))
@@ -675,11 +785,40 @@ router.get('/admin', requireManager, async (req, res) => {
       if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
     }
 
+    // Grouping tab: duplicate proposals + existing groups (computed only when needed)
+    let groupProposals = { strong: [], weak: [] };
+    let existingGroups = [];
+    if (tab === 'groups') {
+      let allItems = [];
+      try {
+        allItems = await db.all(
+          `SELECT si.id, si.name, si.category, si.report_type, si.active, si.group_name, si.vendor_id, v.name AS vendor_name
+           FROM stock_items si LEFT JOIN vendors v ON v.id = si.vendor_id
+           WHERE si.location_id = ? ORDER BY si.name`, [locationId]);
+      } catch (e) {
+        if (e.code !== 'ER_BAD_FIELD_ERROR' && e.code !== 'ER_NO_SUCH_TABLE') throw e;
+        allItems = await db.all(
+          `SELECT id, name, category, report_type, active, NULL AS group_name, NULL AS vendor_id, NULL AS vendor_name
+           FROM stock_items WHERE location_id = ? ORDER BY name`, [locationId]);
+      }
+      groupProposals = buildGroupProposals(allItems);
+      const gm = new Map();
+      for (const it of allItems) {
+        const g = (it.group_name || '').trim();
+        if (!g) continue;
+        const k = g.toLowerCase();
+        if (!gm.has(k)) gm.set(k, { name: g, members: [] });
+        gm.get(k).members.push(it);
+      }
+      existingGroups = [...gm.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+    }
+
     res.render('stock/admin', {
       title: 'Zarządzaj – Raport Stanów', currentPath: '/stock',
       tab, activeType, items, editItem, categories, units,
       categoryStats, unitStats,
       history, reportTypes, REPORT_META, vendors,
+      groupProposals, existingGroups,
     });
   } catch (e) {
     console.error(e);
@@ -724,6 +863,20 @@ router.post('/admin/items/bulk-update', requireManager, async (req, res) => {
     } else if (action === 'deactivate') {
       await db.run(`UPDATE stock_items SET active=0 WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
       req.flash('success', `${ids.length} produktów dezaktywowanych.`);
+    } else if (action === 'assign_group') {
+      const g = (req.body.group_name || '').trim();
+      if (!g) { req.flash('error', 'Podaj nazwę grupy.'); return res.redirect(back); }
+      try {
+        await db.run(`UPDATE stock_items SET group_name=? WHERE id IN (${ph}) AND location_id=?`, [g, ...ids, locationId]);
+      } catch (e) { if (e.code !== 'ER_BAD_FIELD_ERROR') throw e; }
+      await log(sessionUser(req), 'Raport Stanów – połączono w grupę', `${ids.length} produktów → ${g}`);
+      req.flash('success', `Połączono ${ids.length} produktów w grupę „${g}".`);
+    } else if (action === 'clear_group') {
+      try {
+        await db.run(`UPDATE stock_items SET group_name=NULL WHERE id IN (${ph}) AND location_id=?`, [...ids, locationId]);
+      } catch (e) { if (e.code !== 'ER_BAD_FIELD_ERROR') throw e; }
+      await log(sessionUser(req), 'Raport Stanów – rozłączono grupę', `${ids.length} produktów`);
+      req.flash('success', `Rozłączono ${ids.length} produktów.`);
     } else {
       req.flash('error', 'Nieznana operacja.');
     }
@@ -795,6 +948,12 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
         [report_type, category?.trim() || null, name?.trim(), unit?.trim() || null,
          target_qty?.trim() || null, parseInt(sort_order) || 0, active === '1' ? 1 : 0, minQtyVal, hopperWeightVal, hopper_enabled === '1' ? 1 : 0, shelfLifeVal, vendorKey, req.params.id]
       );
+    }
+    if (req.body.group_name !== undefined) {
+      const grp = (req.body.group_name || '').trim() || null;
+      try {
+        await db.run(`UPDATE stock_items SET group_name=? WHERE id=? AND location_id=?`, [grp, req.params.id, getLocationId(req)]);
+      } catch (e) { if (e.code !== 'ER_BAD_FIELD_ERROR') throw e; }
     }
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');
