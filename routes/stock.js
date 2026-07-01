@@ -159,6 +159,17 @@ function parseDeliveryDates(entry) {
   return [];
 }
 
+function addDaysStr(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// A delivery batch is expired on `today` once today >= deliveryDate + shelfLifeDays.
+function isDeliveryExpired(dateStr, days, today) {
+  if (!dateStr) return false;
+  return today >= addDaysStr(dateStr, days);
+}
+
 function groupByCategory(items) {
   const grouped = [];
   let lastCat = undefined;
@@ -334,12 +345,9 @@ router.get('/form/:type', async (req, res) => {
       for (const e of rows) entries[e.item_id] = e;
     }
 
-    // Delivery batches per item: parse the JSON array (multiple deliveries on the shelf), falling
-    // back to the single legacy delivery_date. itemId → ['YYYY-MM-DD', …]
+    // Delivery batches per item — populated below, after the last-report lookup so that
+    // batches can be carried forward from the previous day when today has none yet.
     const deliveryMap = {};
-    for (const item of items) {
-      deliveryMap[item.id] = parseDeliveryDates(entries[item.id]);
-    }
 
     // Lock past reports for workers
     const isWorker = req.session.userRole === 'worker';
@@ -379,6 +387,40 @@ router.get('/form/:type', async (req, res) => {
     );
     const lastValues = {};
     for (const row of lastRows) lastValues[row.item_id] = row;
+
+    // Most recent prior entry that actually carries delivery dates (skip later reports that
+    // left them blank), so batches persist day-to-day even if a day was left empty.
+    const lastDeliveryRows = await db.all(
+      `SELECT sre.item_id, sre.delivery_date, sre.delivery_dates, sr.report_date AS last_date
+       FROM stock_report_entries sre
+       INNER JOIN (
+         SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
+         FROM stock_report_entries sre2
+         JOIN stock_reports sr2 ON sr2.id = sre2.report_id
+         WHERE sr2.report_type = ? AND sr2.location_id = ? AND sr2.report_date < ?
+           AND ((sre2.delivery_dates IS NOT NULL AND sre2.delivery_dates <> '') OR sre2.delivery_date IS NOT NULL)
+         GROUP BY sre2.item_id
+       ) latest ON latest.item_id = sre.item_id
+       JOIN stock_reports sr ON sr.id = sre.report_id AND sr.report_date = latest.max_date
+       WHERE sr.report_type = ? AND sr.location_id = ?`,
+      [type, locationId, reportDate, type, locationId]
+    );
+    const lastDelivery = {};
+    for (const row of lastDeliveryRows) lastDelivery[row.item_id] = row;
+
+    // Delivery batches: use today's saved batches; otherwise carry forward the still-valid
+    // (non-expired) batches from the most recent prior report so dates persist day-to-day.
+    for (const item of items) {
+      let dates = parseDeliveryDates(entries[item.id]);
+      if ((!dates || !dates.length) && !entries[item.id]) {
+        const lv = lastDelivery[item.id];
+        if (lv) {
+          const shelf = item.shelf_life_days != null ? Number(item.shelf_life_days) : 3;
+          dates = parseDeliveryDates(lv).filter(d => !isDeliveryExpired(d, shelf, reportDate));
+        }
+      }
+      deliveryMap[item.id] = dates || [];
+    }
 
     res.render('stock/form', {
       title: meta.label, currentPath: '/stock',
