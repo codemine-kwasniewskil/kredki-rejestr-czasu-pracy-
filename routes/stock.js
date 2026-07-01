@@ -159,17 +159,6 @@ function parseDeliveryDates(entry) {
   return [];
 }
 
-function addDaysStr(dateStr, days) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-// A delivery batch is expired on `today` once today >= deliveryDate + shelfLifeDays.
-function isDeliveryExpired(dateStr, days, today) {
-  if (!dateStr) return false;
-  return today >= addDaysStr(dateStr, days);
-}
-
 function groupByCategory(items) {
   const grouped = [];
   let lastCat = undefined;
@@ -408,16 +397,14 @@ router.get('/form/:type', async (req, res) => {
     const lastDelivery = {};
     for (const row of lastDeliveryRows) lastDelivery[row.item_id] = row;
 
-    // Delivery batches: use today's saved batches; otherwise carry forward the still-valid
-    // (non-expired) batches from the most recent prior report so dates persist day-to-day.
+    // Delivery batches: use today's saved batches; otherwise carry forward the batches from the
+    // most recent prior report so dates persist day-to-day. Expired batches are kept too — the
+    // form/view flag them in red with a ⚠ so staff can remove them, instead of silently dropping.
     for (const item of items) {
       let dates = parseDeliveryDates(entries[item.id]);
       if ((!dates || !dates.length) && !entries[item.id]) {
         const lv = lastDelivery[item.id];
-        if (lv) {
-          const shelf = item.shelf_life_days != null ? Number(item.shelf_life_days) : 3;
-          dates = parseDeliveryDates(lv).filter(d => !isDeliveryExpired(d, shelf, reportDate));
-        }
+        if (lv) dates = parseDeliveryDates(lv);
       }
       deliveryMap[item.id] = dates || [];
     }
