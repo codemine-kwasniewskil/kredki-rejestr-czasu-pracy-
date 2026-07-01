@@ -225,6 +225,9 @@
     </a>
     <p class="text-slate-400 text-xs mt-3 px-1">
       <a href="mailto:hello@graficzek.pl" class="hover:text-white transition-colors">hello@graficzek.pl</a>
+      <% if (typeof user !== 'undefined' && user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+        <span class="block text-slate-500 mt-0.5" title="Wersja aplikacji (ostatni deploy)">v <%= typeof appVersion !== 'undefined' ? appVersion : '' %></span>
+      <% } %>
     </p>
   </div>
 </aside>
