@@ -54,6 +54,15 @@
       if (!deliveryDate) return false;
       return today >= addDaysStr(deliveryDate, days);
     }
+    function num(v) { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; }
+    // Next day's opening stock carried from the last report:
+    //   otwarcie = stan 18:00 − uszkodzone − po terminie  (never below 0).
+    // Empty when there is no prior closing value to carry.
+    function carryOpen(lvs) {
+      if (!lvs || lvs.stan_zamkniecie == null || lvs.stan_zamkniecie === '') return '';
+      const v = Math.max(0, num(lvs.stan_zamkniecie) - num(lvs.uszkodzone) - num(lvs.po_terminie));
+      return String(parseFloat(v.toFixed(3)));
+    }
     %>
 
     <form method="POST" action="/stock/save">
@@ -93,11 +102,11 @@
                   </div>
                   <div class="text-xs text-slate-400 mt-0.5">
                     <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (lvs && lvs.stan_zamkniecie) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lvs.last_date %>): <%= lvs.stan_zamkniecie %></span><% } %>
+                    <% if (lvs && lvs.stan_zamkniecie) { const _ded = num(lvs.uszkodzone) + num(lvs.po_terminie); %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lvs.last_date %>): 18:00=<%= lvs.stan_zamkniecie %><% if (_ded > 0) { %> −<%= parseFloat(_ded.toFixed(3)) %> → otwarcie <%= carryOpen(lvs) %><% } %></span><% } %>
                   </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
-                  <% const prefillOpen = !existing ? (e.stan_otwarcie || (lvs && lvs.stan_zamkniecie ? lvs.stan_zamkniecie : '')) : (e.stan_otwarcie || ''); %>
+                  <% const prefillOpen = !existing ? (e.stan_otwarcie || carryOpen(lvs)) : (e.stan_otwarcie || ''); %>
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Otwarcie<br><span class="text-slate-400">(bez dostaw)</span></div>
                     <input type="text" name="stan_otwarcie_<%= item.id %>"
@@ -123,7 +132,7 @@
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   </div>
                 </div>
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-3 gap-2">
                   <div>
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Stan 18:00<br><span class="text-slate-400">(zamknięcie)</span></div>
                     <div class="relative">
@@ -141,6 +150,14 @@
                     <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Uszkodzone<br><span class="text-slate-400">(g. 18:00)</span></div>
                     <input type="text" name="uszkodzone_<%= item.id %>"
                       value="<%= e.uszkodzone || '' %>" placeholder="—"
+                      inputmode="decimal" enterkeyhint="next" autocomplete="off"
+                      onfocus="this.select()"
+                      class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  </div>
+                  <div>
+                    <div class="text-xs text-slate-500 mb-1 text-center leading-tight">Po terminie<br><span class="text-slate-400">(g. 18:00)</span></div>
+                    <input type="text" name="po_terminie_<%= item.id %>"
+                      value="<%= e.po_terminie || '' %>" placeholder="—"
                       inputmode="decimal" enterkeyhint="next" autocomplete="off"
                       onfocus="this.select()"
                       class="stock-input w-full h-11 text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -184,6 +201,7 @@
                   <th class="px-2 py-2.5 font-semibold text-center"><div>Stan 16:00</div><div class="font-normal text-slate-400">(jednodniowe)</div></th>
                   <th class="px-2 py-2.5 font-semibold text-center"><div>Stan 18:00</div><div class="font-normal text-slate-400">(zamknięcie)</div></th>
                   <th class="px-2 py-2.5 font-semibold text-center"><div>Uszkodzone</div><div class="font-normal text-slate-400">(g. 18:00)</div></th>
+                  <th class="px-2 py-2.5 font-semibold text-center"><div>Po terminie</div><div class="font-normal text-slate-400">(g. 18:00)</div></th>
                 </tr>
               </thead>
               <tbody>
@@ -205,7 +223,7 @@
                           <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
                       <% } %>
-                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { %><br><span class="text-xs text-slate-400">poprzednio (<%= lvd.last_date %>): <%= lvd.stan_zamkniecie %></span><% } %>
+                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { const _dedD = num(lvd.uszkodzone) + num(lvd.po_terminie); %><br><span class="text-xs text-slate-400">poprzednio (<%= lvd.last_date %>): 18:00=<%= lvd.stan_zamkniecie %><% if (_dedD > 0) { %> −<%= parseFloat(_dedD.toFixed(3)) %> → otwarcie <%= carryOpen(lvd) %><% } %></span><% } %>
                       <% if (isCoffee) { %>
                         <div class="flex gap-1 mt-1 flex-wrap">
                           <% for (const [val, lbl] of [[0.25,'1/4'],[0.5,'2/4'],[0.75,'3/4'],[1.0,'4/4']]) { %>
@@ -231,6 +249,7 @@
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_16_<%= item.id %>" value="<%= e.stan_16 || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="stan_zamkniecie_<%= item.id %>" value="<%= e.stan_zamkniecie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" data-item-id="<%= item.id %>" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                     <td class="px-1.5 py-1.5"><input type="text" name="uszkodzone_<%= item.id %>" value="<%= e.uszkodzone || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
+                    <td class="px-1.5 py-1.5"><input type="text" name="po_terminie_<%= item.id %>" value="<%= e.po_terminie || '' %>" placeholder="—" inputmode="decimal" enterkeyhint="next" autocomplete="off" onfocus="this.select()" class="stock-input w-full text-center border border-slate-200 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"></td>
                   </tr>
                 <% } %>
               </tbody>

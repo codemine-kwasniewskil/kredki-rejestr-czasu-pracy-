@@ -229,6 +229,7 @@ const migrationsReady = (async () => {
       stan_16 VARCHAR(50),
       stan_zamkniecie VARCHAR(50),
       uszkodzone VARCHAR(50),
+      po_terminie VARCHAR(50),
       notes VARCHAR(500),
       FOREIGN KEY (report_id) REFERENCES stock_reports(id) ON DELETE CASCADE,
       FOREIGN KEY (item_id) REFERENCES stock_items(id),
@@ -308,6 +309,12 @@ const migrationsReady = (async () => {
     const deliveryDatesCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_report_entries' AND COLUMN_NAME='delivery_dates'`);
     if (!deliveryDatesCol || deliveryDatesCol.cnt === 0) {
       await db.run(`ALTER TABLE stock_report_entries ADD COLUMN delivery_dates TEXT DEFAULT NULL`);
+    }
+    // po_terminie on stock_report_entries: items past their expiry date, counted at 18:00.
+    // Next day's opening stock = stan_zamkniecie (18:00) − uszkodzone − po_terminie.
+    const poTerminieCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_report_entries' AND COLUMN_NAME='po_terminie'`);
+    if (!poTerminieCol || poTerminieCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_report_entries ADD COLUMN po_terminie VARCHAR(50) DEFAULT NULL`);
     }
     // shelf_life_days on stock_items (cake/cookie validity period in days, default 3 in UI)
     const shelfLifeCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='shelf_life_days'`);

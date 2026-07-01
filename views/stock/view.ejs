@@ -69,7 +69,7 @@
         <%/* Mobile: cards */%>
         <div class="shift-mobile space-y-2 mb-3">
           <% for (const item of group.items) { %>
-            <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone; %>
+            <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone || item.po_terminie; %>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 <%= !hasData ? 'opacity-40' : '' %>">
               <div class="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-1.5 flex-wrap">
                 <%= item.name %>
@@ -90,7 +90,7 @@
                 </div>
               </div>
               <% const szv = parseFloat(item.stan_zamkniecie); const szBelow = item.min_qty !== null && !isNaN(szv) && szv < item.min_qty; %>
-              <div class="grid grid-cols-2 gap-2 text-center">
+              <div class="grid grid-cols-3 gap-2 text-center">
                 <div>
                   <div class="text-xs text-slate-400 mb-0.5">18:00</div>
                   <div class="text-sm font-medium flex items-center justify-center gap-1 <%= szBelow ? 'text-amber-700' : 'text-slate-700' %>">
@@ -101,6 +101,10 @@
                 <div>
                   <div class="text-xs text-slate-400 mb-0.5">Uszkodzone</div>
                   <div class="text-sm font-medium <%= item.uszkodzone && item.uszkodzone !== '0' ? 'text-red-600' : 'text-slate-700' %>"><%= item.uszkodzone || '—' %></div>
+                </div>
+                <div>
+                  <div class="text-xs text-slate-400 mb-0.5">Po terminie</div>
+                  <div class="text-sm font-medium <%= item.po_terminie && item.po_terminie !== '0' ? 'text-red-600' : 'text-slate-700' %>"><%= item.po_terminie || '—' %></div>
                 </div>
               </div>
               <% const cakeBatches = isCakeCategory(item.category) ? batchesOf(item) : []; %>
@@ -132,11 +136,12 @@
                 <th class="px-3 py-2.5 font-semibold text-center">16:00</th>
                 <th class="px-3 py-2.5 font-semibold text-center">18:00</th>
                 <th class="px-3 py-2.5 font-semibold text-center">Uszkodzone</th>
+                <th class="px-3 py-2.5 font-semibold text-center">Po terminie</th>
               </tr>
             </thead>
             <tbody>
               <% for (const item of group.items) { %>
-                <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone; %>
+                <% const hasData = item.stan_otwarcie || item.dostawa || item.stan_16 || item.stan_zamkniecie || item.uszkodzone || item.po_terminie; %>
                 <tr class="border-b border-slate-50 last:border-0 <%= !hasData ? 'opacity-40' : '' %>">
                   <td class="px-3 py-2 text-xs font-medium text-slate-800 leading-tight">
                     <%= item.name %>
@@ -158,6 +163,7 @@
                   <td class="px-3 py-2 text-center text-slate-700"><%= item.stan_16 || '—' %></td>
                   <td class="px-3 py-2 text-center text-slate-700"><%= item.stan_zamkniecie || '—' %></td>
                   <td class="px-3 py-2 text-center <%= item.uszkodzone && item.uszkodzone !== '0' ? 'text-red-600 font-semibold' : 'text-slate-700' %>"><%= item.uszkodzone || '—' %></td>
+                  <td class="px-3 py-2 text-center <%= item.po_terminie && item.po_terminie !== '0' ? 'text-red-600 font-semibold' : 'text-slate-700' %>"><%= item.po_terminie || '—' %></td>
                 </tr>
               <% } %>
             </tbody>

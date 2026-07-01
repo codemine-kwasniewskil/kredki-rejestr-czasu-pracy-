@@ -361,7 +361,7 @@ router.get('/form/:type', async (req, res) => {
 
     // Last reported value per item (most recent report before this date)
     const lastRows = await db.all(
-      `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie, sre.hopper_qty, sr.report_date AS last_date
+      `SELECT sre.item_id, sre.quantity, sre.stan_zamkniecie, sre.uszkodzone, sre.po_terminie, sre.hopper_qty, sr.report_date AS last_date
        FROM stock_report_entries sre
        INNER JOIN (
          SELECT sre2.item_id, MAX(sr2.report_date) AS max_date
@@ -509,12 +509,13 @@ router.post('/save', async (req, res) => {
         const s16 = pick(req.body[`stan_16_${id}`]);
         const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
         const usz = pick(req.body[`uszkodzone_${id}`]);
+        const pot = pick(req.body[`po_terminie_${id}`]);
         await db.run(
-          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,hopper_qty,delivery_date,delivery_dates)
-           VALUES (?,?,?,?,?,?,?,?,?,?)
+          `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,po_terminie,hopper_qty,delivery_date,delivery_dates)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE stan_otwarcie=VALUES(stan_otwarcie),dostawa=VALUES(dostawa),
-             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
-          [report.id, id, s_o, d, s16, s_z, usz, hq, deliveryDate, deliveryDates]
+             stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),po_terminie=VALUES(po_terminie),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
+          [report.id, id, s_o, d, s16, s_z, usz, pot, hq, deliveryDate, deliveryDates]
         );
       } else {
         const qty = pick(req.body[`qty_${id}`]);
@@ -557,7 +558,7 @@ router.get('/view/:id', async (req, res) => {
     try {
       items = await db.all(
         `SELECT si.*, v.name AS vendor_name,
-                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
+                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.po_terminie, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
          FROM stock_items si
          LEFT JOIN vendors v ON v.id = si.vendor_id
          LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
@@ -569,7 +570,7 @@ router.get('/view/:id', async (req, res) => {
       // vendors table / vendor_id column not present — fall back without the supplier name
       items = await db.all(
         `SELECT si.*, NULL AS vendor_name,
-                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
+                sre.quantity, sre.stan_otwarcie, sre.dostawa, sre.stan_16, sre.stan_zamkniecie, sre.uszkodzone, sre.po_terminie, sre.hopper_qty, sre.delivery_date, sre.delivery_dates
          FROM stock_items si
          LEFT JOIN stock_report_entries sre ON sre.item_id=si.id AND sre.report_id=?
          WHERE si.report_type=? AND si.active=1 AND si.location_id=? ORDER BY si.sort_order, si.id`,
