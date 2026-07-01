@@ -453,6 +453,31 @@
         </div>
       </details>
 
+      <% const _prefillAdd = (typeof prefillAdd !== 'undefined' && prefillAdd && prefillAdd.report_type === activeType) ? prefillAdd : null; %>
+      <% if (_prefillAdd) { %>
+      <!-- Duplicate warning: confirm re-add with force -->
+      <div class="bg-amber-50 border border-amber-300 rounded-xl shadow-sm p-4 mb-4">
+        <div class="text-sm font-semibold text-amber-800 mb-1">Produkt „<%= _prefillAdd.name %>" już istnieje w tym raporcie</div>
+        <p class="text-xs text-amber-700 mb-3">Sprawdź listę powyżej. Jeśli na pewno chcesz dodać kolejny osobny produkt o tej nazwie, potwierdź poniżej.</p>
+        <form method="POST" action="/stock/admin/items">
+          <% const _pf = _prefillAdd; %>
+          <input type="hidden" name="force" value="1">
+          <input type="hidden" name="report_type" value="<%= _pf.report_type %>">
+          <input type="hidden" name="category" value="<%= _pf.category %>">
+          <input type="hidden" name="name" value="<%= _pf.name %>">
+          <input type="hidden" name="unit" value="<%= _pf.unit %>">
+          <input type="hidden" name="target_qty" value="<%= _pf.target_qty %>">
+          <input type="hidden" name="sort_order" value="<%= _pf.sort_order %>">
+          <input type="hidden" name="min_qty" value="<%= _pf.min_qty %>">
+          <input type="hidden" name="hopper_weight" value="<%= _pf.hopper_weight %>">
+          <input type="hidden" name="shelf_life_days" value="<%= _pf.shelf_life_days %>">
+          <input type="hidden" name="vendor_product_key" value="<%= _pf.vendor_product_key %>">
+          <input type="hidden" name="vendor_id" value="<%= _pf.vendor_id %>">
+          <button type="submit" class="btn btn-warning py-2 text-sm">Dodaj mimo to</button>
+        </form>
+      </div>
+      <% } %>
+
       <!-- Add new item form -->
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <div class="text-sm font-semibold text-slate-800 mb-3">

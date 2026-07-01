@@ -113,6 +113,30 @@ function buildGroupProposals(items) {
   return { strong, weak };
 }
 
+// Find existing items whose name duplicates `name` within a location (reuses similarItems).
+// Returns { sameType, otherType } — matches split by whether they share report_type.
+async function findDuplicateItems({ name, reportType, locationId, excludeId = null }) {
+  const cand = { norm: normName(name), tokens: new Set(normTokens(name)) };
+  cand.normNoStop = [...cand.tokens].join(' ');
+  const sameType = [], otherType = [];
+  if (!cand.norm) return { sameType, otherType };
+  let rows;
+  try {
+    rows = await db.all(
+      `SELECT id, name, report_type, active FROM stock_items WHERE location_id = ?`,
+      [locationId]
+    );
+  } catch (_) { return { sameType, otherType }; }
+  for (const it of rows) {
+    if (excludeId && String(it.id) === String(excludeId)) continue;
+    const toks = normTokens(it.name);
+    const cmp = { norm: normName(it.name), normNoStop: toks.join(' '), tokens: new Set(toks) };
+    if (!similarItems(cand, cmp)) continue;
+    (it.report_type === reportType ? sameType : otherType).push(it);
+  }
+  return { sameType, otherType };
+}
+
 router.use(requireAuth);
 router.use(requireFeature('stock'));
 
@@ -604,7 +628,6 @@ function toNum(v) {
 router.get('/summary', requireManager, async (req, res) => {
   try {
     const locationId = getLocationId(req);
-    const { REPORT_META } = await loadMeta();
     const now = new Date();
     const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const month = (req.query.month || defaultMonth).substring(0, 7);
@@ -634,12 +657,12 @@ router.get('/summary', requireManager, async (req, res) => {
       );
     }
 
-    // Aggregate by supplier → product. Products sharing a group_name are merged into one line.
-    // For shift reports "ilość" = sum of deliveries (dostawa); for snapshot reports = sum of reported quantity.
+    // Aggregate deliveries by supplier → product. Products sharing a group_name are merged into one line.
+    // Only deliveries (dostawa) count — snapshot reports (no dostawa) are excluded, so a cake grouped
+    // across "Stan ciast 12:00" + "Stan produktów – zmiana" contributes only its shift delivery (no mixing).
     const suppliersMap = new Map();
     for (const r of rows) {
-      const isShift = !!(REPORT_META[r.report_type] && REPORT_META[r.report_type].isShift);
-      const val = toNum(isShift ? r.dostawa : r.quantity);
+      const val = toNum(r.dostawa);
       if (val == null) continue;
       const supplierKey = r.vendor_name || 'Bez dostawcy';
       if (!suppliersMap.has(supplierKey)) suppliersMap.set(supplierKey, new Map());
@@ -701,6 +724,19 @@ router.post('/quick-add-item', async (req, res) => {
       return res.redirect(`/stock/form/${report_type || ''}?date=${report_date || ''}`);
     }
     const locationId = getLocationId(req);
+    // Dedup within the same report type: reactivate a hidden twin instead of creating a copy.
+    const { sameType } = await findDuplicateItems({ name, reportType: report_type, locationId });
+    if (sameType.length) {
+      const hidden = sameType.find(d => !d.active);
+      if (hidden) {
+        await db.run(`UPDATE stock_items SET active=1 WHERE id=? AND location_id=?`, [hidden.id, locationId]);
+        await log(sessionUser(req), 'Raport Stanów – reaktywowano produkt (quick add)', `${hidden.name} | Typ: ${report_type}`);
+        req.flash('success', `Produkt „${hidden.name}" był ukryty – przywrócono na listę.`);
+      } else {
+        req.flash('info', `Produkt „${sameType[0].name}" już jest na liście.`);
+      }
+      return res.redirect(`/stock/form/${report_type}?date=${report_date}`);
+    }
     await db.run(
       `INSERT INTO stock_items (report_type, name, unit, sort_order, active, location_id) VALUES (?,?,?,?,?,?)`,
       [report_type, name.trim(), 'szt', 999, 1, locationId]
@@ -843,12 +879,15 @@ router.get('/admin', requireManager, async (req, res) => {
       existingGroups = [...gm.values()].sort((a, b) => a.name.localeCompare(b.name, 'pl'));
     }
 
+    const prefillAdd = req.session.pendingAddItem || null;
+    if (req.session.pendingAddItem) delete req.session.pendingAddItem;
+
     res.render('stock/admin', {
       title: 'Zarządzaj – Raport Stanów', currentPath: '/stock',
       tab, activeType, items, editItem, categories, units,
       categoryStats, unitStats,
       history, reportTypes, REPORT_META, vendors,
-      groupProposals, existingGroups,
+      groupProposals, existingGroups, prefillAdd,
     });
   } catch (e) {
     console.error(e);
@@ -927,6 +966,20 @@ router.post('/admin/items', requireManager, async (req, res) => {
       return res.redirect(`/stock/admin?type=${report_type || ''}`);
     }
     const locationId = getLocationId(req);
+    // Duplicate detection (reuses similarItems). Same report type blocks unless confirmed with force.
+    const force = req.body.force === '1';
+    const dup = await findDuplicateItems({ name, reportType: report_type, locationId });
+    if (!force && dup.sameType.length) {
+      const d = dup.sameType[0];
+      req.session.pendingAddItem = {
+        report_type, category: category || '', name: name.trim(), unit: unit || '',
+        target_qty: target_qty || '', sort_order: sort_order || '', min_qty: min_qty || '',
+        hopper_weight: hopper_weight || '', shelf_life_days: shelf_life_days || '',
+        vendor_product_key: req.body.vendor_product_key || '', vendor_id: req.body.vendor_id || '',
+      };
+      req.flash('error', `Produkt „${d.name}" już istnieje w tym raporcie${d.active ? '' : ' (ukryty)'}. Sprawdź listę lub potwierdź „Dodaj mimo to".`);
+      return res.redirect(`/stock/admin?type=${report_type}`);
+    }
     const minQtyVal = min_qty && min_qty.trim() !== '' ? parseFloat(min_qty) : null;
     const hopperWeightVal = hopper_weight && String(hopper_weight).trim() !== '' ? parseFloat(hopper_weight) : null;
     const shelfLifeVal = shelf_life_days && String(shelf_life_days).trim() !== '' ? parseInt(shelf_life_days, 10) : null;
@@ -948,6 +1001,11 @@ router.post('/admin/items', requireManager, async (req, res) => {
     }
     await log(sessionUser(req), 'Raport Stanów – dodano produkt', `${name.trim()} | Typ: ${report_type}${category ? ' | Kat: ' + category.trim() : ''}`);
     req.flash('success', 'Produkt dodany.');
+    if (dup.otherType.length) {
+      const { REPORT_META } = await loadMeta();
+      const where = [...new Set(dup.otherType.map(d => REPORT_META[d.report_type]?.label || d.report_type))].join(', ');
+      req.flash('info', `Podobny produkt istnieje też w: ${where}. Możesz je połączyć w zakładce „Grupy".`);
+    }
     res.redirect(`/stock/admin?type=${report_type}`);
   } catch (e) {
     console.error(e);
@@ -987,6 +1045,12 @@ router.post('/admin/items/:id', requireManager, async (req, res) => {
     }
     await log(sessionUser(req), 'Raport Stanów – zaktualizowano produkt', `ID: ${req.params.id} | ${name?.trim()} | Typ: ${report_type}`);
     req.flash('success', 'Produkt zaktualizowany.');
+    if (name) {
+      const dup = await findDuplicateItems({ name, reportType: report_type, locationId: getLocationId(req), excludeId: req.params.id });
+      if (dup.sameType.length) {
+        req.flash('info', `Uwaga: nazwa pokrywa się z „${dup.sameType[0].name}" w tym raporcie – rozważ połączenie w zakładce „Grupy".`);
+      }
+    }
     res.redirect(`/stock/admin?type=${report_type}`);
   } catch (e) {
     console.error(e);

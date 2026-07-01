@@ -12,7 +12,7 @@
         </a>
         <div>
           <h1 class="text-lg font-bold text-slate-800">Podsumowanie miesięczne</h1>
-          <p class="text-sm text-slate-500">Produkty i ilości w podziale na dostawców — <%= monthLabel %></p>
+          <p class="text-sm text-slate-500">Dostawy w podziale na dostawców — <%= monthLabel %></p>
         </div>
       </div>
       <form method="GET" action="/stock/summary" class="flex items-center gap-2">
@@ -25,7 +25,7 @@
       </form>
     </div>
 
-    <p class="text-xs text-slate-400 mb-4">Ilość = suma dostaw (raporty zmianowe) lub suma zgłoszonych ilości (pozostałe) w danym miesiącu.</p>
+    <p class="text-xs text-slate-400 mb-4">Ilość = suma dostaw (kolumna „dostawa" z raportów zmianowych) w danym miesiącu. Raporty stanu (bez dostaw) nie są tu ujęte.</p>
 
     <% if (suppliers.length === 0) { %>
     <div class="bg-white border border-slate-200 rounded-xl text-center py-12 text-slate-400">
@@ -44,7 +44,7 @@
           <thead>
             <tr class="border-b border-slate-100 text-left text-xs text-slate-500">
               <th class="px-4 py-2.5 font-semibold uppercase tracking-wide">Produkt</th>
-              <th class="px-4 py-2.5 font-semibold uppercase tracking-wide text-right">Ilość</th>
+              <th class="px-4 py-2.5 font-semibold uppercase tracking-wide text-right">Dostawa</th>
               <th class="px-4 py-2.5 font-semibold uppercase tracking-wide text-right hidden sm:table-cell">Wpisów</th>
             </tr>
           </thead>
