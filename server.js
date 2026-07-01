@@ -8,6 +8,18 @@ const db = require('./database/db');
 
 const app = express();
 
+// Timestamp of the currently running version (process boot ≈ last deploy), shown to admins
+// in the footer. Format: yy-mm-dd-HH:mm in Poland local time. Captured once at startup.
+function formatVersionTs(d) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Warsaw', year: '2-digit', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = t => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('year')}-${get('month')}-${get('day')}-${get('hour')}:${get('minute')}`;
+}
+const APP_VERSION = formatVersionTs(new Date());
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -39,6 +51,7 @@ app.use(async (req, res, next) => {
   res.locals.success = req.flash('success');
   res.locals.error = req.flash('error');
   res.locals.features = {};
+  res.locals.appVersion = APP_VERSION;
 
   if (req.session.userId) {
     const locationId = req.session.userRole === 'super_admin'

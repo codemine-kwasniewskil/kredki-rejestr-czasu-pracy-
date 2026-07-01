@@ -42,7 +42,7 @@
 })();
 </script>
 <p class="no-print text-center text-slate-400 text-xs py-6">
-  graficzek.pl 2026 &nbsp;·&nbsp; <a href="mailto:hello@graficzek.pl" class="hover:text-slate-300 transition-colors">hello@graficzek.pl</a>
+  graficzek.pl 2026 &nbsp;·&nbsp; <a href="mailto:hello@graficzek.pl" class="hover:text-slate-300 transition-colors">hello@graficzek.pl</a><% if (typeof user !== 'undefined' && user && (user.role === 'admin' || user.role === 'super_admin')) { %> &nbsp;·&nbsp; <span class="text-slate-500" title="Wersja aplikacji (ostatni deploy)">v <%= appVersion %></span><% } %>
 </p>
 </body>
 </html>
