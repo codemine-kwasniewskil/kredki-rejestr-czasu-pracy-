@@ -643,6 +643,14 @@ router.get('/view/:id', async (req, res) => {
       );
     }
 
+    // Hidden products (form_hidden) stay out of the view too — unless they carry
+    // data in this report, so historical reports keep their recorded numbers.
+    items = items.filter(it => !it.form_hidden || !(
+      isZeroAmount(it.quantity) && isZeroAmount(it.stan_otwarcie) && isZeroAmount(it.dostawa) &&
+      isZeroAmount(it.stan_16) && isZeroAmount(it.stan_zamkniecie) && isZeroAmount(it.uszkodzone) &&
+      isZeroAmount(it.po_terminie) && it.hopper_qty == null
+    ));
+
     const deliveryMap = {};
     for (const item of items) deliveryMap[item.id] = parseDeliveryDates(item);
 
