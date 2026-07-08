@@ -374,9 +374,21 @@ router.get('/form/:type', async (req, res) => {
       if (item.min_qty !== null && item.min_qty !== undefined) minQtyMap[item.id] = Number(item.min_qty);
     }
 
-    // Hidden items for this report (per-report hide, stored in stock_reports.hidden_items)
+    // Hidden items for this report (per-report hide, stored in stock_reports.hidden_items).
+    // For a new day (no report yet) the hidden set is carried forward from the latest prior
+    // report, so products marked as unused stay hidden day-to-day until someone unhides them.
+    let hiddenSource = existing?.hidden_items;
+    if (!existing) {
+      const prev = await db.get(
+        `SELECT hidden_items FROM stock_reports
+         WHERE report_type = ? AND location_id = ? AND report_date < ?
+         ORDER BY report_date DESC LIMIT 1`,
+        [type, locationId, reportDate]
+      );
+      hiddenSource = prev?.hidden_items;
+    }
     const hiddenSet = new Set(
-      (existing?.hidden_items || '').split(',').filter(Boolean).map(Number)
+      (hiddenSource || '').split(',').filter(Boolean).map(Number)
     );
 
     // Types that allow worker quick-add/hide

@@ -19,10 +19,18 @@
           <% if (existing) { %><span class="ml-2 text-green-600 text-xs font-medium">• edytowanie</span><% } %>
         </p>
       </div>
+      <button type="button" id="toggleHiddenBtn" onclick="toggleHiddenRows()"
+        class="ml-auto shrink-0 inline-flex items-center gap-1.5 text-xs font-medium border rounded-lg px-3 py-2 bg-white border-slate-200 text-slate-600 hover:border-slate-300 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+        <span>Pokaż ukryte</span>
+      </button>
     </div>
 
     <% if (locals.error && error.length) { %>
       <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"><%= error[0] %></div>
+    <% } %>
+    <% if (locals.success && success.length) { %>
+      <div class="mb-4 bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm"><%= success[0] %></div>
     <% } %>
 
     <%
@@ -100,10 +108,7 @@
                       </button>
                     <% } %>
                   </div>
-                  <div class="text-xs text-slate-400 mt-0.5">
-                    <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (lvs && lvs.stan_zamkniecie) { const _ded = num(lvs.uszkodzone) + num(lvs.po_terminie); %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lvs.last_date %>): 18:00=<%= lvs.stan_zamkniecie %><% if (_ded > 0) { %> −<%= parseFloat(_ded.toFixed(3)) %> → otwarcie <%= carryOpen(lvs) %><% } %></span><% } %>
-                  </div>
+                  <% if (item.unit && item.unit !== '-') { %><div class="text-xs text-slate-400 mt-0.5"><%= item.unit %></div><% } %>
                 </div>
                 <div class="grid grid-cols-3 gap-2 mb-2">
                   <% const prefillOpen = !existing ? (e.stan_otwarcie || carryOpen(lvs)) : (e.stan_otwarcie || ''); %>
@@ -164,7 +169,7 @@
                   </div>
                 </div>
                 <% if (isCake) { %>
-                  <div class="mt-3 pt-2 border-t border-slate-100 cake-editor" data-cake-item="<%= item.id %>" data-variant="card"></div>
+                  <div class="mt-2 cake-editor" data-cake-item="<%= item.id %>" data-variant="card"></div>
                 <% } %>
                 <% if (isCoffee) { %>
                   <div class="mt-3 pt-2 border-t border-slate-100">
@@ -223,7 +228,6 @@
                           <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
                       <% } %>
-                      <% const lvd = lastValues[item.id]; if (lvd && lvd.stan_zamkniecie) { const _dedD = num(lvd.uszkodzone) + num(lvd.po_terminie); %><br><span class="text-xs text-slate-400">poprzednio (<%= lvd.last_date %>): 18:00=<%= lvd.stan_zamkniecie %><% if (_dedD > 0) { %> −<%= parseFloat(_dedD.toFixed(3)) %> → otwarcie <%= carryOpen(lvd) %><% } %></span><% } %>
                       <% if (isCoffee) { %>
                         <div class="flex gap-1 mt-1 flex-wrap">
                           <% for (const [val, lbl] of [[0.25,'1/4'],[0.5,'2/4'],[0.75,'3/4'],[1.0,'4/4']]) { %>
@@ -288,10 +292,7 @@
                       </button>
                     <% } %>
                   </div>
-                  <div class="text-xs text-slate-400 mt-0.5">
-                    <% if (item.unit && item.unit !== '-') { %><span><%= item.unit %></span><% } %>
-                    <% if (!existing && lastQty) { %><span class="<%= item.unit && item.unit !== '-' ? 'ml-1' : '' %>">poprzednio (<%= lv.last_date %>): <%= lastQty %></span><% } %>
-                  </div>
+                  <% if (item.unit && item.unit !== '-') { %><div class="text-xs text-slate-400 mt-0.5"><%= item.unit %></div><% } %>
                 </div>
                 <div class="shrink-0">
                   <div class="relative">
@@ -423,28 +424,33 @@ function syncCakeHidden(id) {
 function renderCakeEditor(id) {
   const s = cakeState[id];
   if (!s) return;
+  s.dates = s.dates.slice(0, 1); // single delivery per product
   syncCakeHidden(id);
   document.querySelectorAll(`.cake-editor[data-cake-item="${id}"]`).forEach(box => {
-    const dateCls = 'cake-date-input h-8 px-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400';
-    const rows = s.dates.map((d, i) => {
+    let deliveryHtml;
+    if (!s.dates.length) {
+      deliveryHtml =
+        `<button type="button" data-cake-add="${id}" title="Dodaj dostawę"
+           class="inline-flex items-center gap-0.5 h-7 px-1.5 border border-dashed border-slate-300 rounded text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-colors">🚚<span class="font-semibold">+</span></button>`;
+    } else {
+      const d = s.dates[0];
       const exp = /^\d{4}-\d{2}-\d{2}$/.test(d) ? addDaysISO(d, s.days) : '';
       const expired = exp && TODAY_STR >= exp;
-      return `<div class="flex items-center gap-1.5 mb-1">
-        <input type="date" value="${d}" data-cake-date="${id}" data-batch-idx="${i}" class="${dateCls}">
-        ${exp ? `<span class="text-xs whitespace-nowrap ${expired ? 'text-red-600 font-semibold' : 'text-slate-400'}">do ${exp}${expired ? ' ⚠' : ''}</span>` : ''}
-        <button type="button" data-cake-remove="${id}" data-batch-idx="${i}" title="Usuń dostawę" class="text-slate-300 hover:text-red-500 text-sm leading-none px-1">✕</button>
-      </div>`;
-    }).join('');
+      const expShort = exp ? exp.slice(8, 10) + '.' + exp.slice(5, 7) : '';
+      deliveryHtml =
+        `<span title="Dostawa">🚚</span>
+         <input type="date" value="${d}" data-cake-date="${id}" data-batch-idx="0"
+           class="cake-date-input h-7 px-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
+         ${exp ? `<span class="whitespace-nowrap ${expired ? 'text-red-600 font-semibold' : 'text-slate-400'}">do ${expShort}${expired ? ' ⚠' : ''}</span>` : ''}
+         <button type="button" data-cake-remove="${id}" data-batch-idx="0" title="Usuń dostawę" class="text-slate-300 hover:text-red-500 leading-none px-0.5">✕</button>`;
+    }
     box.innerHTML =
-      `<div class="flex items-center gap-1.5 mb-1.5 text-xs text-slate-500">
-         <span>Przydatność</span>
-         <input type="number" min="1" max="60" value="${s.days}" data-cake-shelf="${id}"
-           class="w-12 h-7 text-center border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
-         <span>dni</span>
-       </div>
-       <div class="text-xs text-slate-400 mb-1">Dostawy</div>
-       ${rows || '<div class="text-xs text-slate-300 mb-1">Brak dostaw</div>'}
-       <button type="button" data-cake-add="${id}" class="text-xs text-blue-600 hover:text-blue-700 font-medium">+ dodaj dostawę</button>`;
+      `<div class="flex items-center gap-1.5 text-xs text-slate-500 flex-wrap">
+         ${deliveryHtml}
+         <span class="text-slate-200">·</span>
+         <input type="number" min="1" max="60" value="${s.days}" data-cake-shelf="${id}" title="Przydatność (dni)"
+           class="w-10 h-7 text-center border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"><span class="text-slate-400">dni</span>
+       </div>`;
   });
 }
 
@@ -465,10 +471,12 @@ document.addEventListener('change', e => {
 
 document.addEventListener('click', e => {
   const add = e.target.closest('[data-cake-add]');
-  if (add) { const id = add.dataset.cakeAdd; cakeState[id].dates.push(''); renderCakeEditor(id);
+  if (add) { const id = add.dataset.cakeAdd;
+    if (!cakeState[id].dates.length) cakeState[id].dates.push(TODAY_STR); // one delivery max, prefill today
+    renderCakeEditor(id);
     const box = document.querySelector(`.cake-editor[data-cake-item="${id}"]`);
-    const inputs = box ? box.querySelectorAll('input[type="date"]') : [];
-    if (inputs.length) inputs[inputs.length - 1].focus();
+    const inp = box ? box.querySelector('input[type="date"]') : null;
+    if (inp) { inp.focus(); try { inp.showPicker && inp.showPicker(); } catch (_) {} }
     return; }
   const rem = e.target.closest('[data-cake-remove]');
   if (rem) { const id = rem.dataset.cakeRemove, idx = parseInt(rem.dataset.batchIdx, 10);
@@ -517,6 +525,7 @@ function toggleHideItem(itemId) {
     applyHideState(itemId, true);
   }
   updateHiddenInput();
+  applyCollapseHidden();
 }
 
 function updateHopperTotal(itemId, hopperKg) {
@@ -655,6 +664,44 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', handleEnter);
   document.addEventListener('keyup', handleEnter);
 });
+
+// ── Header toggle: collapse hidden (grey) products ──────────────────────────
+// Products marked with the eye icon live in `hiddenItems` (grey, sorted to the
+// bottom of their section). By default they are fully collapsed so the list
+// shows only products in use; the header button reveals them (still grey, at
+// the bottom) so they can be unhidden. Choice is remembered per report type.
+const COLLAPSE_HIDDEN_KEY = 'stockCollapseHidden_<%= type %>';
+let collapseHidden = true;
+try { collapseHidden = localStorage.getItem(COLLAPSE_HIDDEN_KEY) !== '0'; } catch (_) {}
+
+function applyCollapseHidden() {
+  document.querySelectorAll('[data-product-row]').forEach(row => {
+    const id = parseInt(row.dataset.productRow);
+    row.style.display = (collapseHidden && hiddenItems.has(id)) ? 'none' : '';
+  });
+  const btn = document.getElementById('toggleHiddenBtn');
+  if (btn) {
+    btn.querySelector('span').textContent = collapseHidden
+      ? `Pokaż ukryte (${hiddenItems.size})`
+      : `Schowaj ukryte (${hiddenItems.size})`;
+    btn.classList.toggle('bg-blue-50', !collapseHidden);
+    btn.classList.toggle('border-blue-300', !collapseHidden);
+    btn.classList.toggle('text-blue-700', !collapseHidden);
+    btn.classList.toggle('bg-white', collapseHidden);
+    btn.classList.toggle('border-slate-200', collapseHidden);
+    btn.classList.toggle('text-slate-600', collapseHidden);
+  }
+}
+
+function toggleHiddenRows() {
+  collapseHidden = !collapseHidden;
+  try { localStorage.setItem(COLLAPSE_HIDDEN_KEY, collapseHidden ? '1' : '0'); } catch (_) {}
+  applyCollapseHidden();
+}
+
+// Runs after the earlier DOMContentLoaded handlers (registration order), so the
+// per-report hides (grey + resort to bottom) are already applied.
+document.addEventListener('DOMContentLoaded', applyCollapseHidden);
 </script>
 
 <%- include('../partials/footer') %>
