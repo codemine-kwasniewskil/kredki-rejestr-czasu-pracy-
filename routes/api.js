@@ -649,6 +649,95 @@ router.post('/schedule/entry/:id/confirm', requireAuth, async (req, res) => {
   }
 });
 
+// ── Actual work time (Start pracy / Koniec pracy buttons + manual fix) ──────
+// Timestamps come from the client (browser local time), not NOW(), so the
+// recorded time matches the worker's clock regardless of DB/server timezone.
+
+const WORK_DT_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/;
+const WORK_HM_RE = /^\d{2}:\d{2}$/;
+
+// Loads the entry and authorizes: owner of the shift, or any manager/admin
+// (so a kierownik can fix a worker's forgotten times). Replies + returns null on failure.
+async function getWorkEntry(req, res) {
+  const entry = await db.get(
+    `SELECT se.*, s.status FROM schedule_entries se JOIN schedules s ON s.id=se.schedule_id WHERE se.id=?`,
+    [req.params.id]
+  );
+  if (!entry || entry.status !== 'approved') {
+    res.status(403).json({ ok: false, error: 'Zmiana niedostępna.' });
+    return null;
+  }
+  const isManager = ['admin', 'super_admin', 'location_manager'].includes(req.session.userRole);
+  if (!isManager && entry.user_id !== req.session.userId) {
+    res.status(403).json({ ok: false, error: 'Brak uprawnień.' });
+    return null;
+  }
+  return entry;
+}
+
+router.post('/schedule/entry/:id/work-start', requireAuth, async (req, res) => {
+  try {
+    const entry = await getWorkEntry(req, res);
+    if (!entry) return;
+    const at = (req.body.at || '').trim();
+    if (!WORK_DT_RE.test(at)) return res.status(400).json({ ok: false, error: 'Nieprawidłowy czas.' });
+    if (entry.work_started_at) return res.json({ ok: true, already: true });
+    await db.run('UPDATE schedule_entries SET work_started_at=? WHERE id=?', [at, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+router.post('/schedule/entry/:id/work-end', requireAuth, async (req, res) => {
+  try {
+    const entry = await getWorkEntry(req, res);
+    if (!entry) return;
+    const at = (req.body.at || '').trim();
+    if (!WORK_DT_RE.test(at)) return res.status(400).json({ ok: false, error: 'Nieprawidłowy czas.' });
+    if (!entry.work_started_at) return res.status(400).json({ ok: false, error: 'Najpierw rozpocznij pracę.' });
+    if (entry.work_ended_at) return res.json({ ok: true, already: true });
+    await db.run('UPDATE schedule_entries SET work_ended_at=? WHERE id=?', [at, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// Manual correction when someone forgot to punch — takes HH:MM for start/end,
+// anchored to the shift's date (end before start rolls over to the next day).
+router.post('/schedule/entry/:id/work-time', requireAuth, async (req, res) => {
+  try {
+    const entry = await getWorkEntry(req, res);
+    if (!entry) return;
+    const { start, end } = req.body;
+    const dateStr = String(entry.date).slice(0, 10);
+    const toDt = (hm) => {
+      if (hm == null || hm === '') return null;
+      if (!WORK_HM_RE.test(hm)) throw new Error('bad time');
+      return `${dateStr} ${hm}:00`;
+    };
+    let startDt, endDt;
+    try { startDt = toDt(start); endDt = toDt(end); }
+    catch { return res.status(400).json({ ok: false, error: 'Nieprawidłowy format godziny.' }); }
+    if (!startDt && endDt) return res.status(400).json({ ok: false, error: 'Podaj godzinę rozpoczęcia.' });
+    if (startDt && endDt && endDt <= startDt) {
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      const nd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      endDt = `${nd} ${end}:00`;
+    }
+    await db.run('UPDATE schedule_entries SET work_started_at=?, work_ended_at=? WHERE id=?', [startDt, endDt, req.params.id]);
+    log(res.locals.user, 'Korekta czasu pracy', `Zmiana #${req.params.id} (${dateStr}): ${start || '—'} – ${end || '—'}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
 router.delete('/schedule/week/:weekStart/entries', requireRole('admin', 'location_manager'), async (req, res) => {
   try {
     const locationId = getLocationId(req);

@@ -26,13 +26,26 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       [locationId]
     );
 
+    const { toDateString } = require('../utils/helpers');
+    const todayStr = toDateString(new Date());
+    // Include the last 3 days so a forgotten work start/end can still be corrected
+    const shiftsFromStr = toDateString(new Date(Date.now() - 3 * 86400000));
+
     let myShifts = [];
     let mySchedule = null;
-    if (role === 'worker') {
-      const { toDateString } = require('../utils/helpers');
-      const todayStr = toDateString(new Date());
+    if (role === 'worker' || role === 'location_manager') {
+      if (role === 'location_manager') {
+        const { getMonday } = require('../utils/helpers');
+        const weekStart = toDateString(getMonday(new Date()));
+        const schedule = await db.get(
+          `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
+          [weekStart, locationId]
+        );
+        mySchedule = schedule || null;
+      }
       myShifts = await db.all(`
         SELECT se.id, se.date, se.confirmed_by_employee,
+               se.work_started_at, se.work_ended_at,
                COALESCE(st.name,'Własna') as shift_name,
                COALESCE(se.custom_start, st.start_time) as start_time,
                COALESCE(se.custom_end, st.end_time) as end_time,
@@ -42,28 +55,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
         JOIN schedules s ON s.id = se.schedule_id
         WHERE s.status='approved' AND se.user_id=? AND se.date>=?
         ORDER BY se.date ASC
-      `, [id, todayStr]);
-    } else if (role === 'location_manager') {
-      const { getMonday, toDateString } = require('../utils/helpers');
-      const todayStr = toDateString(new Date());
-      const weekStart = toDateString(getMonday(new Date()));
-      const schedule = await db.get(
-        `SELECT * FROM schedules WHERE week_start=? AND location_id=?`,
-        [weekStart, locationId]
-      );
-      mySchedule = schedule || null;
-      myShifts = await db.all(`
-        SELECT se.id, se.date, se.confirmed_by_employee,
-               COALESCE(st.name,'Własna') as shift_name,
-               COALESCE(se.custom_start, st.start_time) as start_time,
-               COALESCE(se.custom_end, st.end_time) as end_time,
-               COALESCE(st.color,'#6B7280') as color
-        FROM schedule_entries se
-        LEFT JOIN shift_templates st ON st.id = se.shift_template_id
-        JOIN schedules s ON s.id = se.schedule_id
-        WHERE s.status='approved' AND se.user_id=? AND se.date>=?
-        ORDER BY se.date ASC
-      `, [id, todayStr]);
+      `, [id, shiftsFromStr]);
     }
 
     let workerHours = [];
@@ -198,7 +190,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       monthlyHoursHistory.push({ prefix: currentPrefix, label, hours });
     }
 
-    res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory, pendingOrders, workerAvailability, availCurLabel, availNextLabel });
+    res.render('dashboard', { workers: workers.cnt, pending: pending.cnt, myShifts, mySchedule, workerHours, pendingSchedules, approvedSchedules, monthlyHoursHistory, pendingOrders, workerAvailability, availCurLabel, availNextLabel, todayStr });
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });

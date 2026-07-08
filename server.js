@@ -435,6 +435,14 @@ const migrationsReady = (async () => {
       await db.run(`ALTER TABLE schedule_entries ADD COLUMN confirmed_by_employee TINYINT(1) DEFAULT 0`);
     }
 
+    // Actual work time tracking on schedule_entries (start/end punched on the dashboard)
+    for (const col of ['work_started_at', 'work_ended_at']) {
+      const wCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schedule_entries' AND COLUMN_NAME=?`, [col]);
+      if (!wCol || wCol.cnt === 0) {
+        await db.run(`ALTER TABLE schedule_entries ADD COLUMN ${col} DATETIME DEFAULT NULL`);
+      }
+    }
+
     // Add location_id to each table (non-destructive — DEFAULT 1 so existing rows auto-assign)
     const locColMigrations = [
       { table: 'shift_templates', def: 'INT NOT NULL DEFAULT 1' },

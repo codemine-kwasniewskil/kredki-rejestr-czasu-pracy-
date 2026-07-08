@@ -1,0 +1,58 @@
+<%
+// One shift row on the dashboard: planned shift info + confirm circle +
+// actual work time (Start / Koniec buttons today, recorded times + pencil fix
+// for today and recent past). Expects: s (shift entry), todayStr.
+const fmtT = dt => dt ? String(dt).slice(11, 16) : '';
+const isPast = s.date < todayStr;
+const isToday = s.date === todayStr;
+%>
+<div class="p-2 rounded-lg <%= isPast ? 'opacity-70' : '' %>" style="background-color:<%= s.color %>18">
+  <div class="flex items-center gap-3 flex-wrap">
+    <div class="w-2 h-2 rounded-full flex-shrink-0" style="background-color:<%= s.color %>"></div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium text-slate-700"><%= s.date %><% if (isToday) { %> <span class="text-xs font-semibold text-blue-600">• dziś</span><% } %></div>
+      <div class="text-xs text-slate-500"><%= s.shift_name %> (<%= s.start_time %> – <%= s.end_time %>)</div>
+    </div>
+
+    <% if (isToday || isPast) { %>
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <% if (!s.work_started_at && isToday) { %>
+          <button onclick="workStart(<%= s.id %>)"
+            class="h-9 px-3.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-colors">▶ Start pracy</button>
+        <% } else if (s.work_started_at && !s.work_ended_at) { %>
+          <span class="text-xs font-semibold text-emerald-600" title="Rozpoczęto pracę"><%= fmtT(s.work_started_at) %></span>
+          <button onclick="workEnd(<%= s.id %>)"
+            class="h-9 px-3.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition-colors">■ Koniec pracy</button>
+        <% } else if (s.work_started_at && s.work_ended_at) { %>
+          <span class="text-xs font-semibold text-emerald-700" title="Zarejestrowany czas pracy"><%= fmtT(s.work_started_at) %> – <%= fmtT(s.work_ended_at) %></span>
+        <% } else { %>
+          <span class="text-xs text-slate-400">brak zapisu</span>
+        <% } %>
+        <button onclick="toggleWorkEdit(<%= s.id %>)" title="Popraw godziny pracy (jeśli zapomniano kliknąć)"
+          class="w-7 h-7 rounded-full text-slate-400 hover:text-slate-600 hover:bg-white/70 flex items-center justify-center transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        </button>
+      </div>
+    <% } %>
+
+    <button
+      id="confirm-<%= s.id %>"
+      onclick="toggleConfirm(<%= s.id %>, this)"
+      class="flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs transition-colors <%= s.confirmed_by_employee ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-slate-300 hover:border-emerald-400 hover:text-emerald-400' %>"
+      title="<%= s.confirmed_by_employee ? 'Potwierdzona — kliknij by cofnąć' : 'Kliknij by potwierdzić zmianę' %>"
+    ><%= s.confirmed_by_employee ? '✓' : '○' %></button>
+  </div>
+
+  <% if (isToday || isPast) { %>
+  <div id="work-edit-<%= s.id %>" class="hidden mt-2 ml-5 flex items-center gap-2 flex-wrap text-xs">
+    <span class="text-slate-500">Praca:</span>
+    <input type="time" id="ws-<%= s.id %>" value="<%= fmtT(s.work_started_at) %>"
+      class="h-8 px-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <span class="text-slate-400">–</span>
+    <input type="time" id="we-<%= s.id %>" value="<%= fmtT(s.work_ended_at) %>"
+      class="h-8 px-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <button onclick="saveWorkTime(<%= s.id %>)" class="h-8 px-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-semibold transition-colors">Zapisz</button>
+    <button onclick="toggleWorkEdit(<%= s.id %>)" class="h-8 px-2 rounded-lg text-slate-500 hover:bg-white/70 transition-colors">Anuluj</button>
+  </div>
+  <% } %>
+</div>
