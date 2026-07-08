@@ -183,6 +183,21 @@ function parseDeliveryDates(entry) {
   return [];
 }
 
+function addDaysStr(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Empty/zero stock value: null, '', '—', '-' or numeric 0
+function isZeroAmount(v) {
+  if (v == null) return true;
+  const s = String(v).trim();
+  if (!s || s === '—' || s === '-') return true;
+  const n = parseFloat(s.replace(',', '.'));
+  return isNaN(n) || n === 0;
+}
+
 function groupByCategory(items) {
   const grouped = [];
   let lastCat = undefined;
@@ -434,13 +449,20 @@ router.get('/form/:type', async (req, res) => {
     for (const row of lastDeliveryRows) lastDelivery[row.item_id] = row;
 
     // Delivery batches: use today's saved batches; otherwise carry forward the batches from the
-    // most recent prior report so dates persist day-to-day. Expired batches are kept too — the
-    // form/view flag them in red with a ⚠ so staff can remove them, instead of silently dropping.
+    // most recent prior report so dates persist day-to-day. Expired batches with stock still on
+    // the line stay flagged (red ⚠); once the line is empty (0/no stock at 18:00) an expired
+    // date has served its purpose and is cleared automatically.
     for (const item of items) {
       let dates = parseDeliveryDates(entries[item.id]);
       if ((!dates || !dates.length) && !entries[item.id]) {
         const lv = lastDelivery[item.id];
         if (lv) dates = parseDeliveryDates(lv);
+      }
+      if (dates && dates.length) {
+        const days = item.shelf_life_days != null ? Number(item.shelf_life_days) : 3;
+        const src = entries[item.id] || lastValues[item.id];
+        const amount = meta.isShift ? (src ? src.stan_zamkniecie : null) : (src ? src.quantity : null);
+        if (isZeroAmount(amount)) dates = dates.filter(d => today() < addDaysStr(d, days));
       }
       deliveryMap[item.id] = dates || [];
     }
@@ -491,7 +513,7 @@ router.post('/save', async (req, res) => {
     }
 
     const items = await db.all(
-      `SELECT id FROM stock_items WHERE report_type = ? AND active = 1 AND location_id = ?`, [report_type, locationId]
+      `SELECT id, shelf_life_days FROM stock_items WHERE report_type = ? AND active = 1 AND location_id = ?`, [report_type, locationId]
     );
     // Pick last non-empty value from potential array (desktop inputs come after mobile in DOM);
     // normalize decimal separator
@@ -524,6 +546,16 @@ router.post('/save', async (req, res) => {
       return Number.isFinite(n) && n > 0 ? n : null;
     };
 
+    // Expired delivery date on an empty line (0/no stock) has served its purpose — clear it.
+    const todayS = today();
+    const dropExpiredIfEmpty = (dd, amount, days) => {
+      if (!dd.json || !isZeroAmount(amount)) return dd;
+      let arr = [];
+      try { arr = JSON.parse(dd.json) || []; } catch (_) {}
+      const kept = arr.filter(d => todayS < addDaysStr(d, days));
+      return { json: kept.length ? JSON.stringify(kept) : null, earliest: kept[0] || null };
+    };
+
     for (const item of items) {
       const id = item.id;
       if (hiddenSaveSet.has(id)) continue;
@@ -531,13 +563,15 @@ router.post('/save', async (req, res) => {
       const hqStr = Array.isArray(hqRaw) ? (hqRaw.find(v => v && v.trim()) || '') : (hqRaw || '');
       const hq = hqStr.trim() ? parseFloat(hqStr) || null : null;
 
-      const { json: deliveryDates, earliest: deliveryDate } = pickDeliveryDates(req.body[`delivery_dates_${id}`]);
+      let dd = pickDeliveryDates(req.body[`delivery_dates_${id}`]);
 
       // Persist an inline shelf-life edit back onto the product itself (affects all reports).
       const shelfLife = pickShelfLife(req.body[`shelf_life_${id}`]);
       if (shelfLife !== undefined) {
         await db.run(`UPDATE stock_items SET shelf_life_days=? WHERE id=? AND location_id=?`, [shelfLife, id, locationId]);
       }
+      const effDays = typeof shelfLife === 'number' ? shelfLife
+        : (item.shelf_life_days != null ? Number(item.shelf_life_days) : 3);
 
       if (meta.isShift) {
         const s_o = pick(req.body[`stan_otwarcie_${id}`]);
@@ -546,21 +580,23 @@ router.post('/save', async (req, res) => {
         const s_z = pick(req.body[`stan_zamkniecie_${id}`]);
         const usz = pick(req.body[`uszkodzone_${id}`]);
         const pot = pick(req.body[`po_terminie_${id}`]);
+        dd = dropExpiredIfEmpty(dd, s_z, effDays);
         await db.run(
           `INSERT INTO stock_report_entries (report_id,item_id,stan_otwarcie,dostawa,stan_16,stan_zamkniecie,uszkodzone,po_terminie,hopper_qty,delivery_date,delivery_dates)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE stan_otwarcie=VALUES(stan_otwarcie),dostawa=VALUES(dostawa),
              stan_16=VALUES(stan_16),stan_zamkniecie=VALUES(stan_zamkniecie),uszkodzone=VALUES(uszkodzone),po_terminie=VALUES(po_terminie),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
-          [report.id, id, s_o, d, s16, s_z, usz, pot, hq, deliveryDate, deliveryDates]
+          [report.id, id, s_o, d, s16, s_z, usz, pot, hq, dd.earliest, dd.json]
         );
       } else {
         const qty = pick(req.body[`qty_${id}`]);
         const n   = (req.body[`notes_${id}`] || '').trim() || null;
+        dd = dropExpiredIfEmpty(dd, qty, effDays);
         await db.run(
           `INSERT INTO stock_report_entries (report_id,item_id,quantity,notes,hopper_qty,delivery_date,delivery_dates)
            VALUES (?,?,?,?,?,?,?)
            ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),notes=VALUES(notes),hopper_qty=VALUES(hopper_qty),delivery_date=VALUES(delivery_date),delivery_dates=VALUES(delivery_dates)`,
-          [report.id, id, qty, n, hq, deliveryDate, deliveryDates]
+          [report.id, id, qty, n, hq, dd.earliest, dd.json]
         );
       }
     }

@@ -506,9 +506,10 @@ function resortParent(parent) {
 function applyHideState(itemId, hide) {
   document.querySelectorAll(`[data-product-row="${itemId}"]`).forEach(row => {
     row.style.opacity = hide ? '0.35' : '';
+    // Keep the entered amounts — hiding only greys/locks the row (values stay
+    // in the inputs and in the saved entry, so unhiding brings them back)
     row.querySelectorAll('input[inputmode="decimal"]').forEach(inp => {
       inp.disabled = hide;
-      if (hide) inp.value = '';
     });
     const btn = row.querySelector('.item-eye-btn');
     if (btn) btn.style.color = hide ? '#ef4444' : '';
