@@ -518,15 +518,26 @@ function applyHideState(itemId, hide) {
 }
 
 function toggleHideItem(itemId) {
-  if (hiddenItems.has(itemId)) {
-    hiddenItems.delete(itemId);
-    applyHideState(itemId, false);
-  } else {
-    hiddenItems.add(itemId);
-    applyHideState(itemId, true);
-  }
+  const hide = !hiddenItems.has(itemId);
+  if (hide) hiddenItems.add(itemId); else hiddenItems.delete(itemId);
+  applyHideState(itemId, hide);
   updateHiddenInput();
   applyCollapseHidden();
+  // Persist in the DB (global for all users/devices); roll back on failure
+  fetch('/stock/toggle-item-hidden', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ item_id: itemId, report_type: '<%= type %>' })
+  })
+    .then(r => r.json())
+    .then(d => { if (!d.ok) throw new Error('save failed'); })
+    .catch(() => {
+      if (hide) hiddenItems.delete(itemId); else hiddenItems.add(itemId);
+      applyHideState(itemId, !hide);
+      updateHiddenInput();
+      applyCollapseHidden();
+      alert('Nie udało się zapisać ukrycia produktu. Spróbuj ponownie.');
+    });
 }
 
 function updateHopperTotal(itemId, hopperKg) {

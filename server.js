@@ -443,6 +443,34 @@ const migrationsReady = (async () => {
       }
     }
 
+    // form_hidden on stock_items: global per-product hide on report forms, shared by
+    // all users/devices (replaces the per-report hidden_items snapshot as the source of truth).
+    const fhCol = await db.get(`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='stock_items' AND COLUMN_NAME='form_hidden'`);
+    if (!fhCol || fhCol.cnt === 0) {
+      await db.run(`ALTER TABLE stock_items ADD COLUMN form_hidden TINYINT(1) DEFAULT 0`);
+      // One-time seed from each type/location's most recent report snapshot,
+      // so products already hidden by users stay hidden after the switch.
+      const seeds = await db.all(
+        `SELECT sr.report_type, sr.location_id, sr.hidden_items
+         FROM stock_reports sr
+         JOIN (
+           SELECT report_type, location_id, MAX(report_date) AS md
+           FROM stock_reports
+           WHERE hidden_items IS NOT NULL AND hidden_items <> ''
+           GROUP BY report_type, location_id
+         ) m ON m.report_type = sr.report_type AND m.location_id = sr.location_id AND m.md = sr.report_date
+         WHERE sr.hidden_items IS NOT NULL AND sr.hidden_items <> ''`
+      );
+      for (const s of seeds) {
+        const ids = String(s.hidden_items).split(',').filter(Boolean).map(Number).filter(Number.isFinite);
+        if (!ids.length) continue;
+        await db.run(
+          `UPDATE stock_items SET form_hidden=1 WHERE id IN (${ids.map(() => '?').join(',')}) AND location_id=?`,
+          [...ids, s.location_id]
+        );
+      }
+    }
+
     // Add location_id to each table (non-destructive — DEFAULT 1 so existing rows auto-assign)
     const locColMigrations = [
       { table: 'shift_templates', def: 'INT NOT NULL DEFAULT 1' },

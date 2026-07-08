@@ -389,22 +389,9 @@ router.get('/form/:type', async (req, res) => {
       if (item.min_qty !== null && item.min_qty !== undefined) minQtyMap[item.id] = Number(item.min_qty);
     }
 
-    // Hidden items for this report (per-report hide, stored in stock_reports.hidden_items).
-    // For a new day (no report yet) the hidden set is carried forward from the latest prior
-    // report, so products marked as unused stay hidden day-to-day until someone unhides them.
-    let hiddenSource = existing?.hidden_items;
-    if (!existing) {
-      const prev = await db.get(
-        `SELECT hidden_items FROM stock_reports
-         WHERE report_type = ? AND location_id = ? AND report_date < ?
-         ORDER BY report_date DESC LIMIT 1`,
-        [type, locationId, reportDate]
-      );
-      hiddenSource = prev?.hidden_items;
-    }
-    const hiddenSet = new Set(
-      (hiddenSource || '').split(',').filter(Boolean).map(Number)
-    );
+    // Hidden products: global per-product flag (stock_items.form_hidden), stored in the DB
+    // and shared by all users regardless of device.
+    const hiddenSet = new Set(items.filter(i => i.form_hidden).map(i => i.id));
 
     // Types that allow worker quick-add/hide
     const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
@@ -495,8 +482,14 @@ router.post('/save', async (req, res) => {
       `SELECT id FROM stock_reports WHERE report_date = ? AND report_type = ? AND location_id = ?`,
       [report_date, report_type, locationId]
     );
-    const hiddenItems = (req.body.hidden_items || '').trim();
-    const hiddenSaveSet = new Set(hiddenItems.split(',').filter(Boolean).map(Number));
+    // Hidden products come from the DB (global form_hidden flag), not from the client;
+    // the report row keeps a snapshot of what was hidden on that day.
+    const hiddenRows = await db.all(
+      `SELECT id FROM stock_items WHERE report_type = ? AND location_id = ? AND form_hidden = 1`,
+      [report_type, locationId]
+    );
+    const hiddenSaveSet = new Set(hiddenRows.map(r => r.id));
+    const hiddenItems = [...hiddenSaveSet].join(',');
 
     const wasNew = !report;
     if (report) {
@@ -796,6 +789,32 @@ router.post('/quick-add-item', async (req, res) => {
     console.error(e);
     req.flash('error', 'Błąd przy dodawaniu produktu.');
     res.redirect(`/stock/form/${req.body.report_type || ''}?date=${req.body.report_date || ''}`);
+  }
+});
+
+// ── Toggle global product visibility from the report form (AJAX) ────────────
+// Flips stock_items.form_hidden, so the hide/unhide is saved in the DB and
+// applies to every user on every device immediately.
+router.post('/toggle-item-hidden', async (req, res) => {
+  try {
+    const { report_type, item_id } = req.body;
+    const QUICK_MANAGE_TYPES = ['cakes_noon', 'products_shift'];
+    if (!QUICK_MANAGE_TYPES.includes(report_type) || !item_id) {
+      return res.status(400).json({ ok: false });
+    }
+    const locationId = getLocationId(req);
+    const item = await db.get(
+      `SELECT id, name, form_hidden FROM stock_items WHERE id=? AND report_type=? AND location_id=?`,
+      [item_id, report_type, locationId]
+    );
+    if (!item) return res.status(404).json({ ok: false });
+    const newVal = item.form_hidden ? 0 : 1;
+    await db.run(`UPDATE stock_items SET form_hidden=? WHERE id=? AND location_id=?`, [newVal, item.id, locationId]);
+    await log(sessionUser(req), `Raport Stanów – produkt ${newVal ? 'ukryty' : 'przywrócony'} na liście`, `${item.name} | Typ: ${report_type}`);
+    res.json({ ok: true, hidden: newVal });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false });
   }
 });
 
