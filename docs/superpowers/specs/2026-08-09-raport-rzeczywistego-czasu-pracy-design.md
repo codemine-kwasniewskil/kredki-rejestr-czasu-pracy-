@@ -126,9 +126,13 @@ WHERE id=?
 gdzie wartości to `HH:MM` wycięte z `work_started_at` / `work_ended_at` — dokładnie ta
 sama operacja co dzisiejsza ręczna edycja godzin w Karcie.
 
-Odpowiedź: `{ ok: true, applied, skipped }`. Jeden wpis w logach na wywołanie:
-`log(user, 'Przepisanie odbić do grafiku', 'Jan Kowalski, 08-2026: 7 dni')`.
-Po sukcesie strona się przeładowuje.
+Odpowiedź: `{ ok: true, applied, skipped }`. Po sukcesie strona się przeładowuje.
+
+Wpis w logach powstaje **na każdy przepisany dzień** (nie zbiorczy), w formacie
+`describeTimeChange`: `Zmiana #123 (2026-07-03) Jan Kowalski: 07:30–14:30 → 07:29–14:36`.
+Karta czasu pracy wyszukuje po prefiksie `Zmiana #<id>` historię dla swoich dni —
+zbiorczy wpis nie dałby się przypisać do konkretnego dnia. Tym samym formatem loguje
+się edycja godzin w Karcie (`PUT /schedule/entry/:id/times`, wcześniej nielogowana).
 
 Pusta lista `ids` → `{ ok: true, applied: 0, skipped: 0 }`, bez wpisu w logach.
 

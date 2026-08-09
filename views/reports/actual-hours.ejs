@@ -182,7 +182,7 @@ applyBtn.addEventListener('click', async () => {
   const r = await fetch('/api/schedule/entries/apply-work-time', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids, label: '<%= employee.name %>, <%= month %>' }),
+    body: JSON.stringify({ ids }),
   });
   const data = await r.json();
   if (data.ok) {

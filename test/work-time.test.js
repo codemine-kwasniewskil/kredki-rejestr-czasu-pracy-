@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { buildDay, summarize } = require('../utils/workTime');
+const { buildDay, summarize, describeTimeChange } = require('../utils/workTime');
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -122,6 +122,29 @@ test('różnica razem nie jest liczona jako faktycznie razem minus plan razem', 
   ]);
   assert.strictEqual(s.totalDiff, 0);
   assert.strictEqual(s.totalActual - s.totalPlanned, -8);
+});
+
+// ── Opis zmiany godzin w logu ────────────────────────────────────────────────
+
+// 8. Wpis musi nieść stare I nowe godziny — inaczej audyt jest bezużyteczny
+test('opis zmiany zawiera godziny przed i po', () => {
+  const s = describeTimeChange({ id: 12, date: '2026-07-03', name: 'Jan Kowalski',
+    from: ['08:00', '16:00'], to: ['07:30', '16:00'] });
+  assert.strictEqual(s, 'Zmiana #12 (2026-07-03) Jan Kowalski: 08:00–16:00 → 07:30–16:00');
+});
+
+// 9. Zmiana bez godzin w grafiku (brak szablonu i custom) nie może dać "undefined–undefined"
+test('brak poprzednich godzin pokazuje się jako myślnik', () => {
+  const s = describeTimeChange({ id: 5, date: '2026-07-04', name: 'Anna',
+    from: [null, null], to: ['08:00', '16:00'] });
+  assert.strictEqual(s, 'Zmiana #5 (2026-07-04) Anna: — → 08:00–16:00');
+});
+
+// 10. Data przychodzi z bazy jako DATETIME — w opisie ma zostać sam dzień
+test('data DATETIME jest skracana do dnia', () => {
+  const s = describeTimeChange({ id: 7, date: '2026-07-05 00:00:00', name: 'Ola',
+    from: ['08:00', '16:00'], to: ['08:00', '17:00'] });
+  assert.ok(s.startsWith('Zmiana #7 (2026-07-05) Ola:'), s);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────

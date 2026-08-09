@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireAuth, requireRole, getLocationId } = require('../middleware/auth');
 const { calcHours } = require('../utils/helpers');
-const { workHM } = require('../utils/workTime');
+const { workHM, describeTimeChange } = require('../utils/workTime');
 const { log } = require('../utils/logger');
 
 router.post('/schedule/entry', requireRole('admin', 'location_manager'), async (req, res) => {
@@ -609,10 +609,25 @@ router.put('/schedule/entry/:id/times', requireRole('admin'), async (req, res) =
   try {
     const { start_time, end_time } = req.body;
     if (!start_time || !end_time) return res.status(400).json({ error: 'Podaj godziny.' });
+    // Stan sprzed zmiany — bez niego wpis w logu nie pozwoliłby odtworzyć, co było.
+    const before = await db.get(`
+      SELECT se.id, se.date, u.name,
+             COALESCE(se.custom_start, st.start_time) AS start_time,
+             COALESCE(se.custom_end, st.end_time) AS end_time
+      FROM schedule_entries se
+      LEFT JOIN shift_templates st ON st.id=se.shift_template_id
+      JOIN users u ON u.id=se.user_id
+      WHERE se.id=?`, [req.params.id]);
     await db.run(
       'UPDATE schedule_entries SET custom_start=?, custom_end=?, shift_template_id=NULL WHERE id=?',
       [start_time, end_time, req.params.id]
     );
+    if (before) {
+      log(res.locals.user, 'Edycja godzin w Karcie czasu pracy', describeTimeChange({
+        id: before.id, date: before.date, name: before.name,
+        from: [before.start_time, before.end_time], to: [start_time, end_time],
+      }));
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -747,8 +762,13 @@ router.post('/schedule/entries/apply-work-time', requireRole('admin'), async (re
     if (!ids.length) return res.json({ ok: true, applied: 0, skipped: 0 });
 
     const entries = await db.all(
-      `SELECT se.id, se.date, se.work_started_at, se.work_ended_at, s.status
-       FROM schedule_entries se JOIN schedules s ON s.id=se.schedule_id
+      `SELECT se.id, se.date, se.work_started_at, se.work_ended_at, s.status, u.name,
+              COALESCE(se.custom_start, st.start_time) AS start_time,
+              COALESCE(se.custom_end, st.end_time) AS end_time
+       FROM schedule_entries se
+       JOIN schedules s ON s.id=se.schedule_id
+       JOIN users u ON u.id=se.user_id
+       LEFT JOIN shift_templates st ON st.id=se.shift_template_id
        WHERE se.id IN (?)`,
       [ids]
     );
@@ -756,17 +776,20 @@ router.post('/schedule/entries/apply-work-time', requireRole('admin'), async (re
     let applied = 0;
     for (const e of entries) {
       if (e.status !== 'approved' || !e.work_started_at || !e.work_ended_at) continue;
+      const start = workHM(e.work_started_at);
+      const end = workHM(e.work_ended_at);
       await db.run(
         'UPDATE schedule_entries SET custom_start=?, custom_end=?, shift_template_id=NULL WHERE id=?',
-        [workHM(e.work_started_at), workHM(e.work_ended_at), e.id]
+        [start, end, e.id]
       );
+      // Wpis na każdy dzień, nie zbiorczy — Karta czasu pracy pokazuje historię per dzień.
+      log(res.locals.user, 'Przepisanie odbicia do grafiku', describeTimeChange({
+        id: e.id, date: e.date, name: e.name,
+        from: [e.start_time, e.end_time], to: [start, end],
+      }));
       applied++;
     }
 
-    if (applied) {
-      const label = req.body.label ? String(req.body.label).slice(0, 100) : '';
-      log(res.locals.user, 'Przepisanie odbić do grafiku', `${label} — ${applied} dni`);
-    }
     res.json({ ok: true, applied, skipped: ids.length - applied });
   } catch (err) {
     console.error(err);

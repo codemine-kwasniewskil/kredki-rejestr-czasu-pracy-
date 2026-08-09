@@ -87,4 +87,14 @@ function summarize(days) {
   return { totalPlanned, totalActual, totalDiff, scheduledDays, matchedDays, toCheckDays };
 }
 
-module.exports = { buildDay, summarize, actualHours, parseWorkDt, workHM, TOLERANCE_HOURS };
+// Jednolity opis zmiany godzin do activity_logs. Prefiks "Zmiana #<id>" jest
+// jednocześnie kluczem, po którym Karta czasu pracy wyszukuje wpisy dla swoich dni,
+// więc format musi być wspólny dla wszystkich miejsc, które ruszają godziny.
+function describeTimeChange({ id, date, name, from, to }) {
+  const span = ([start, end]) => (start && end ? `${start}–${end}` : '—');
+  return `Zmiana #${id} (${String(date).slice(0, 10)}) ${name}: ${span(from)} → ${span(to)}`;
+}
+
+module.exports = {
+  buildDay, summarize, actualHours, parseWorkDt, workHM, describeTimeChange, TOLERANCE_HOURS,
+};

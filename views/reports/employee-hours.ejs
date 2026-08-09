@@ -193,6 +193,43 @@
       </div>
 
     </div><!-- /reportContent -->
+
+    <!-- Historia zmian godzin — poza dokumentem, nigdy na wydruku -->
+    <div class="no-print mt-4 bg-white rounded-xl border border-slate-200 p-4">
+      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+        <h2 class="text-sm font-bold text-slate-700">Historia zmian godzin</h2>
+        <span class="text-xs text-slate-400">Tylko do podglądu — nie drukuje się z kartą</span>
+      </div>
+
+      <% if (!changeLog || !changeLog.length) { %>
+      <p class="text-xs text-slate-400">Godzin w tym miesiącu nikt nie korygował.</p>
+      <% } else { %>
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="border-b border-slate-200 text-slate-400">
+            <th class="text-left font-semibold py-1.5 w-32">Kiedy</th>
+            <th class="text-left font-semibold py-1.5 w-40">Kto</th>
+            <th class="text-left font-semibold py-1.5 w-56">Co</th>
+            <th class="text-left font-semibold py-1.5">Szczegóły</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% changeLog.forEach(l => { %>
+          <tr class="border-b border-slate-50">
+            <td class="py-1.5 text-slate-500 font-mono"><%= String(l.created_at).slice(0, 16).replace('T', ' ') %></td>
+            <td class="py-1.5 text-slate-700">
+              <%= l.user_name %>
+              <span class="text-slate-400">(<%= l.user_role === 'super_admin' ? 'Super Admin' : l.user_role === 'admin' ? 'Admin' : l.user_role === 'location_manager' ? 'Kierownik' : 'Pracownik' %>)</span>
+            </td>
+            <td class="py-1.5 text-slate-600"><%= l.action %></td>
+            <td class="py-1.5 text-slate-500 font-mono"><%= l.details %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% } %>
+    </div>
+
   </div>
 </main>
 

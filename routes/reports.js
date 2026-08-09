@@ -186,6 +186,26 @@ function buildMonthDays(entries, month) {
   return days;
 }
 
+// Historia zmian godzin dla konkretnych dni raportu. Wpisy nie mają kolumny z id
+// zmiany — wiąże je prefiks "Zmiana #<id>" w details (patrz describeTimeChange).
+const TIME_LOG_ACTIONS = [
+  'Edycja godzin w Karcie czasu pracy',
+  'Przepisanie odbicia do grafiku',
+  'Korekta czasu pracy',
+];
+
+async function loadEntryLogs(entryIds) {
+  const ids = entryIds.map(Number).filter(Boolean);
+  if (!ids.length) return [];
+  return db.all(`
+    SELECT created_at, user_name, user_role, action, details
+    FROM activity_logs
+    WHERE action IN (?) AND details REGEXP ?
+    ORDER BY created_at DESC
+    LIMIT 200
+  `, [TIME_LOG_ACTIONS, `#(${ids.join('|')})([^0-9]|$)`]);
+}
+
 function listEmployees(locationId) {
   return db.all(`
     SELECT id, name FROM users
@@ -265,8 +285,9 @@ router.get('/employee/:userId/:month', requireRole('admin', 'location_manager'),
     if (!data) return res.status(404).render('error', { message: 'Pracownik nie znaleziony.' });
     const employees = await listEmployees(getLocationId(req));
     const monthOptions = buildMonthOptions();
+    const changeLog = await loadEntryLogs(data.days.filter(d => d.entry).map(d => d.entry.id));
 
-    res.render('reports/employee-hours', { ...data, employees, monthOptions, formatHours });
+    res.render('reports/employee-hours', { ...data, employees, monthOptions, changeLog, formatHours });
   } catch (err) {
     console.error(err);
     res.status(500).render('error', { message: 'Błąd serwera.' });
