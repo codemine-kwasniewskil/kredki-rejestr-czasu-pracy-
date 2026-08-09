@@ -20,7 +20,10 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 flex-wrap">
       <div>
         <h1 class="text-xl font-bold text-slate-800">Rzeczywisty czas pracy</h1>
-        <p class="text-xs text-slate-500 mt-0.5">Godziny z przycisków „Start pracy" / „Koniec pracy" zestawione z grafikiem</p>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Godziny z przycisków „Start pracy" / „Koniec pracy" zestawione z grafikiem<% if (isAdmin) { %>
+          — kliknij godzinę w kolumnie <span class="font-semibold">Faktycznie</span>, aby poprawić odbicie<% } %>
+        </p>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         <a href="/reports/employee/<%= employee.id %>/<%= month %>" class="btn btn-secondary text-xs">📄 Karta czasu pracy</a>
@@ -107,7 +110,22 @@
             <td class="text-center font-mono text-xs"><%= d.entry ? d.entry.start_time + '–' + d.entry.end_time : '' %></td>
             <td class="text-right <%= d.entry ? 'text-slate-700' : 'text-slate-300' %>"><%= d.entry ? formatHours(d.plannedHours) : '' %></td>
             <td class="text-center font-mono text-xs <%= d.actualStart ? 'text-slate-800 font-semibold' : 'text-slate-300' %>">
+              <% if (d.entry && isAdmin) { %>
+              <span class="work-display cursor-pointer hover:text-blue-600 hover:underline"
+                    data-entry-id="<%= d.entry.id %>" onclick="editWork(this)"
+                    title="Kliknij, aby poprawić godziny odbicia">
+                <%= d.actualStart ? d.actualStart + '–' + (d.actualEnd || '?') : 'wpisz…' %>
+              </span>
+              <div class="work-edit hidden items-center justify-center gap-1">
+                <input type="time" class="work-start h-7 px-1 border border-blue-400 rounded w-[4.6rem] text-center" value="<%= d.actualStart %>">
+                <span class="text-slate-400">–</span>
+                <input type="time" class="work-end h-7 px-1 border border-blue-400 rounded w-[4.6rem] text-center" value="<%= d.actualEnd %>">
+                <button onclick="saveWork(this)" class="px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">✓</button>
+                <button onclick="cancelWork(this)" class="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200">✕</button>
+              </div>
+              <% } else { %>
               <%= d.actualStart ? d.actualStart + '–' + (d.actualEnd || '?') : (d.entry ? '—' : '') %>
+              <% } %>
             </td>
             <td class="text-right font-semibold <%= d.actualHours !== null ? 'text-slate-800' : 'text-slate-300' %>">
               <%= d.actualHours !== null ? formatHours(d.actualHours) : '' %>
@@ -168,6 +186,48 @@ document.getElementById('checkAll').addEventListener('change', e => {
   refreshCount();
 });
 refreshCount();
+
+// ── Korekta odbić wprost w raporcie (admin, bez limitu dat) ──
+// Ten sam endpoint co ołówek na dashboardzie: HH:MM kotwiczone do daty zmiany,
+// koniec wcześniejszy od startu przewija się na następny dzień (zmiany nocne).
+function editWork(span) {
+  const cell = span.closest('td');
+  span.classList.add('hidden');
+  const box = cell.querySelector('.work-edit');
+  box.classList.remove('hidden');
+  box.classList.add('flex');
+  box.querySelector('.work-start').focus();
+}
+
+function cancelWork(btn) {
+  const cell = btn.closest('td');
+  const box = cell.querySelector('.work-edit');
+  box.classList.add('hidden');
+  box.classList.remove('flex');
+  cell.querySelector('.work-display').classList.remove('hidden');
+}
+
+async function saveWork(btn) {
+  const cell = btn.closest('td');
+  const span = cell.querySelector('.work-display');
+  const start = cell.querySelector('.work-start').value;
+  const end = cell.querySelector('.work-end').value;
+  if (end && !start) { alert('Podaj godzinę rozpoczęcia.'); return; }
+
+  btn.disabled = true;
+  const r = await fetch(`/api/schedule/entry/${span.dataset.entryId}/work-time`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start, end }),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    window.location.reload();   // przelicza różnicę, status i kafelki podsumowania
+  } else {
+    alert(data.error || 'Nie udało się zapisać godzin.');
+    btn.disabled = false;
+  }
+}
 
 applyBtn.addEventListener('click', async () => {
   const ids = boxes().filter(b => b.checked).map(b => Number(b.value));
