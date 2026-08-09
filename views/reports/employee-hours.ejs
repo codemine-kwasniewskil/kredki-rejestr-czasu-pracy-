@@ -10,6 +10,8 @@
       <h1 class="text-xl font-bold text-slate-800">Karta czasu pracy</h1>
       <div class="flex items-center gap-3 flex-wrap">
         <span class="text-xs text-slate-400">Przed drukiem wyłącz <em>Nagłówki i stopki</em> w oknie drukowania</span>
+        <a href="/reports/actual/<%= employee.id %>/<%= month %>"
+           class="btn btn-secondary text-xs">🕒 Odbicia (plan vs. faktycznie)</a>
         <a href="/reports/employee/<%= employee.id %>/<%= month %>/csv"
            class="btn btn-secondary text-xs">⬇ Pobierz CSV (Excel)</a>
         <button onclick="window.print()" class="btn btn-primary text-xs">🖨 Drukuj / PDF</button>

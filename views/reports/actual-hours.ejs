@@ -1,0 +1,195 @@
+<% locals.currentPath = '/reports/actual'; %>
+<%- include('../partials/head', { title: 'Rzeczywisty czas pracy – ' + employee.name }) %>
+<%- include('../partials/nav') %>
+
+<%
+  const isAdmin = user && user.role === 'admin';
+  // Przepisanie identycznych godzin niczego nie zmienia — zaznaczamy tylko realne różnice.
+  const changed = d => d.diff !== null && Math.abs(d.diff) >= 1 / 120;
+  const ROW_CLASS = {
+    do_sprawdzenia: 'bg-amber-50',
+    roznica: 'bg-orange-50',
+    zgodne: '',
+    brak_zmiany: '',
+  };
+%>
+
+<main class="md:ml-60 min-h-screen p-4 sm:p-6 pt-20 md:pt-6 pb-28">
+  <div class="max-w-5xl mx-auto">
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 flex-wrap">
+      <div>
+        <h1 class="text-xl font-bold text-slate-800">Rzeczywisty czas pracy</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Godziny z przycisków „Start pracy" / „Koniec pracy" zestawione z grafikiem</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <a href="/reports/employee/<%= employee.id %>/<%= month %>" class="btn btn-secondary text-xs">📄 Karta czasu pracy</a>
+        <a href="/reports/actual/<%= employee.id %>/<%= month %>/csv" class="btn btn-secondary text-xs">⬇ Pobierz CSV (Excel)</a>
+      </div>
+    </div>
+
+    <!-- Selektory -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+      <div class="flex gap-3 flex-wrap items-end">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Pracownik</label>
+          <select id="selEmployee" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <% employees.forEach(e => { %>
+            <option value="/reports/actual/<%= e.id %>/<%= month %>" <%= e.id === employee.id ? 'selected' : '' %>><%= e.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Miesiąc</label>
+          <select id="selMonth" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <% monthOptions.forEach(o => { %>
+            <option value="/reports/actual/<%= employee.id %>/<%= o.val %>" <%= o.val === month ? 'selected' : '' %>><%= o.label %></option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Podsumowanie -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Plan razem</div>
+        <div class="text-2xl font-black text-slate-900"><%= formatHours(summary.totalPlanned) %></div>
+        <div class="text-xs text-slate-400 mt-0.5"><%= summary.scheduledDays %> dni w grafiku</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Faktycznie razem</div>
+        <div class="text-2xl font-black text-slate-900"><%= formatHours(summary.totalActual) %></div>
+        <div class="text-xs text-slate-400 mt-0.5">z <%= summary.matchedDays %> z <%= summary.scheduledDays %> dni</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Różnica razem</div>
+        <div class="text-2xl font-black <%= summary.totalDiff >= 0 ? 'text-emerald-600' : 'text-red-600' %>"><%= formatDiff(summary.totalDiff) %></div>
+        <div class="text-xs text-slate-400 mt-0.5">tylko dni z pełnym odbiciem</div>
+      </div>
+      <div class="bg-white rounded-xl border <%= summary.toCheckDays ? 'border-amber-300 bg-amber-50' : 'border-slate-200' %> p-4">
+        <div class="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Do sprawdzenia</div>
+        <div class="text-2xl font-black <%= summary.toCheckDays ? 'text-amber-700' : 'text-slate-900' %>"><%= summary.toCheckDays %></div>
+        <div class="text-xs text-slate-400 mt-0.5">dni bez pełnego odbicia</div>
+      </div>
+    </div>
+
+    <!-- Tabela dni -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <table class="w-full text-sm doc-table">
+        <thead>
+          <tr>
+            <% if (isAdmin) { %><th class="w-8 text-center"><input type="checkbox" id="checkAll" title="Zaznacz wszystkie z odbiciem"></th><% } %>
+            <th class="text-left w-24">Data</th>
+            <th class="text-left w-10">Dzień</th>
+            <th class="text-left">Zmiana</th>
+            <th class="text-center w-28">Plan</th>
+            <th class="text-right w-16">Godz.</th>
+            <th class="text-center w-28">Faktycznie</th>
+            <th class="text-right w-16">Godz.</th>
+            <th class="text-right w-20">Różnica</th>
+            <th class="text-left w-44">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% days.forEach(d => { %>
+          <tr class="<%= ROW_CLASS[d.status] %> <%= d.entry ? '' : 'empty-row' %>">
+            <% if (isAdmin) { %>
+            <td class="text-center">
+              <% if (d.diff !== null) { %>
+              <input type="checkbox" class="apply-cb" value="<%= d.entry.id %>" <%= changed(d) ? 'checked' : '' %>>
+              <% } %>
+            </td>
+            <% } %>
+            <td class="text-xs font-medium text-slate-600"><%= d.date %></td>
+            <td class="text-xs <%= d.isWeekend ? 'text-slate-400' : 'text-slate-600' %>"><%= d.dayLabel %></td>
+            <td class="text-xs text-slate-500"><%= d.entry ? d.entry.shift_name : '' %></td>
+            <td class="text-center font-mono text-xs"><%= d.entry ? d.entry.start_time + '–' + d.entry.end_time : '' %></td>
+            <td class="text-right <%= d.entry ? 'text-slate-700' : 'text-slate-300' %>"><%= d.entry ? formatHours(d.plannedHours) : '' %></td>
+            <td class="text-center font-mono text-xs <%= d.actualStart ? 'text-slate-800 font-semibold' : 'text-slate-300' %>">
+              <%= d.actualStart ? d.actualStart + '–' + (d.actualEnd || '?') : (d.entry ? '—' : '') %>
+            </td>
+            <td class="text-right font-semibold <%= d.actualHours !== null ? 'text-slate-800' : 'text-slate-300' %>">
+              <%= d.actualHours !== null ? formatHours(d.actualHours) : '' %>
+            </td>
+            <td class="text-right font-bold <%= d.diff === null ? 'text-slate-300' : (d.diff >= 0 ? 'text-emerald-600' : 'text-red-600') %>">
+              <%= d.entry ? formatDiff(d.diff) : '' %>
+            </td>
+            <td class="text-xs <%= d.status === 'do_sprawdzenia' ? 'text-amber-700 font-semibold' : 'text-slate-400' %>">
+              <%= STATUS_LABELS[d.status] %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<% if (isAdmin) { %>
+<!-- Pasek przepisania -->
+<div class="fixed bottom-0 left-0 right-0 md:left-60 bg-white border-t border-slate-200 px-4 py-3 flex items-center justify-between gap-3 flex-wrap z-20">
+  <div class="text-sm text-slate-600">
+    Zaznaczono <span id="selCount" class="font-bold text-slate-900">0</span> dni —
+    <span class="text-xs text-slate-400">godziny z odbić zastąpią plan w Karcie czasu pracy</span>
+  </div>
+  <button id="applyBtn" class="btn btn-primary text-sm" disabled>Przepisz do Karty czasu pracy</button>
+</div>
+<% } %>
+
+<style>
+.doc-table { border-collapse: collapse; width: 100%; }
+.doc-table thead tr { border-bottom: 2px solid #1e293b; }
+.doc-table thead th { padding: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; white-space: nowrap; }
+.doc-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+.doc-table tbody td { padding: 6px 8px; font-size: 12px; color: #374151; white-space: nowrap; }
+.empty-row td { color: #cbd5e1 !important; }
+</style>
+
+<script>
+document.getElementById('selEmployee').addEventListener('change', e => { window.location.href = e.target.value; });
+document.getElementById('selMonth').addEventListener('change', e => { window.location.href = e.target.value; });
+
+<% if (isAdmin) { %>
+const boxes = () => Array.from(document.querySelectorAll('.apply-cb'));
+const applyBtn = document.getElementById('applyBtn');
+const selCount = document.getElementById('selCount');
+
+function refreshCount() {
+  const n = boxes().filter(b => b.checked).length;
+  selCount.textContent = n;
+  applyBtn.disabled = n === 0;
+}
+
+boxes().forEach(b => b.addEventListener('change', refreshCount));
+document.getElementById('checkAll').addEventListener('change', e => {
+  boxes().forEach(b => { b.checked = e.target.checked; });
+  refreshCount();
+});
+refreshCount();
+
+applyBtn.addEventListener('click', async () => {
+  const ids = boxes().filter(b => b.checked).map(b => Number(b.value));
+  if (!ids.length) return;
+  if (!confirm(`Przepisać odbicia z ${ids.length} dni do Karty czasu pracy? Godziny z grafiku zostaną nadpisane.`)) return;
+
+  applyBtn.disabled = true;
+  const r = await fetch('/api/schedule/entries/apply-work-time', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, label: '<%= employee.name %>, <%= month %>' }),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    alert(`Przepisano ${data.applied} dni.` + (data.skipped ? ` Pominięto: ${data.skipped}.` : ''));
+    window.location.reload();
+  } else {
+    alert(data.error || 'Nie udało się przepisać godzin.');
+    applyBtn.disabled = false;
+  }
+});
+<% } %>
+</script>
+
+<%- include('../partials/footer') %>

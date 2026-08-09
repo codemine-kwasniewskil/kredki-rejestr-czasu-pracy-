@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { calcHours, formatHours } = require('../utils/helpers');
+const { buildDay, summarize } = require('../utils/workTime');
 
 router.get('/', requireRole('admin', 'location_manager'), requireFeature('reports'), async (req, res) => {
   try {
@@ -140,16 +141,19 @@ function timeToMin(t) {
 const MONTHS_PL_FULL = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
 const DAYS_PL = ['Nd','Pon','Wt','Śr','Czw','Pt','Sob'];
 
-async function buildEmployeeReport(userId, month) {
-  const [mYear, mMonth] = month.split('-').map(Number);
-  const employee = await db.get(`
+function loadEmployee(userId) {
+  return db.get(`
     SELECT u.id, u.name, u.role, c.min_hours_per_month, c.hourly_rate
     FROM users u LEFT JOIN contracts c ON c.user_id=u.id AND c.active=1
     WHERE u.id=?`, [userId]);
-  if (!employee) return null;
+}
 
-  const entries = await db.all(`
+// Wspólne źródło dla Karty czasu pracy i raportu rzeczywistego czasu pracy —
+// oba muszą obejmować dokładnie ten sam zakres dni.
+function loadMonthEntries(userId, month) {
+  return db.all(`
     SELECT se.id, se.date, se.notes, se.confirmed_by_employee,
+           se.work_started_at, se.work_ended_at,
            COALESCE(st.name,'Własna') as shift_name,
            COALESCE(se.custom_start, st.start_time) as start_time,
            COALESCE(se.custom_end, st.end_time) as end_time
@@ -159,7 +163,10 @@ async function buildEmployeeReport(userId, month) {
     WHERE se.user_id=? AND se.date LIKE ? AND s.status='approved'
     ORDER BY se.date
   `, [userId, month + '%']);
+}
 
+function buildMonthDays(entries, month) {
+  const [mYear, mMonth] = month.split('-').map(Number);
   const entryByDate = {};
   for (const e of entries) entryByDate[e.date] = e;
 
@@ -168,22 +175,67 @@ async function buildEmployeeReport(userId, month) {
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${month}-${String(d).padStart(2, '0')}`;
     const dow = new Date(dateStr + 'T00:00:00').getDay();
-    const entry = entryByDate[dateStr] || null;
     days.push({
       date: dateStr,
       day: d,
       dayLabel: DAYS_PL[dow],
       isWeekend: dow === 0 || dow === 6,
-      entry,
-      hours: entry ? calcHours(entry.start_time, entry.end_time) : 0,
+      entry: entryByDate[dateStr] || null,
     });
   }
+  return days;
+}
+
+function listEmployees(locationId) {
+  return db.all(`
+    SELECT id, name FROM users
+    WHERE active=1 AND role IN ('worker','location_manager') AND location_id=?
+    ORDER BY name
+  `, [locationId]);
+}
+
+function buildMonthOptions() {
+  const today = new Date();
+  const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const options = [];
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    options.push({ val, label: MONTHS_PL_FULL[d.getMonth()] + ' ' + d.getFullYear() });
+  }
+  return options;
+}
+
+async function buildEmployeeReport(userId, month) {
+  const [mYear, mMonth] = month.split('-').map(Number);
+  const employee = await loadEmployee(userId);
+  if (!employee) return null;
+
+  const entries = await loadMonthEntries(userId, month);
+  const days = buildMonthDays(entries, month).map(d => ({
+    ...d,
+    hours: d.entry ? calcHours(d.entry.start_time, d.entry.end_time) : 0,
+  }));
 
   const totalHours = days.reduce((sum, d) => sum + d.hours, 0);
   const workedDays = days.filter(d => d.entry).length;
   const monthLabel = MONTHS_PL_FULL[mMonth - 1] + ' ' + mYear;
 
   return { employee, days, totalHours, workedDays, monthLabel, month, mYear, mMonth };
+}
+
+// Raport rzeczywistego czasu pracy: plan z grafiku vs. odbicia Start/Koniec pracy.
+async function buildActualReport(userId, month) {
+  const [mYear, mMonth] = month.split('-').map(Number);
+  const employee = await loadEmployee(userId);
+  if (!employee) return null;
+
+  const entries = await loadMonthEntries(userId, month);
+  const days = buildMonthDays(entries, month).map(d => ({ ...d, ...buildDay(d.entry) }));
+  const summary = summarize(days);
+  const monthLabel = MONTHS_PL_FULL[mMonth - 1] + ' ' + mYear;
+
+  return { employee, days, summary, monthLabel, month, mYear, mMonth };
 }
 
 router.get('/employee', requireRole('admin', 'location_manager'), async (req, res) => {
@@ -193,19 +245,8 @@ router.get('/employee', requireRole('admin', 'location_manager'), async (req, re
     const month = (req.query.month || defaultMonth).substring(0, 7);
     const locationId = getLocationId(req);
 
-    const employees = await db.all(`
-      SELECT id, name FROM users
-      WHERE active=1 AND role IN ('worker','location_manager') AND location_id=?
-      ORDER BY name
-    `, [locationId]);
-
-    const monthOptions = [];
-    const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
-    for (let i = 0; i < 18; i++) {
-      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      monthOptions.push({ val, label: MONTHS_PL_FULL[d.getMonth()] + ' ' + d.getFullYear() });
-    }
+    const employees = await listEmployees(locationId);
+    const monthOptions = buildMonthOptions();
 
     if (req.query.userId && req.query.userId !== '') {
       return res.redirect(`/reports/employee/${req.query.userId}/${month}`);
@@ -222,20 +263,8 @@ router.get('/employee/:userId/:month', requireRole('admin', 'location_manager'),
   try {
     const data = await buildEmployeeReport(req.params.userId, req.params.month);
     if (!data) return res.status(404).render('error', { message: 'Pracownik nie znaleziony.' });
-    const locationId = getLocationId(req);
-
-    const today = new Date();
-    const employees = await db.all(
-      `SELECT id, name FROM users WHERE active=1 AND role IN ('worker','location_manager') AND location_id=? ORDER BY name`,
-      [locationId]
-    );
-    const monthOptions = [];
-    const base = new Date(today.getFullYear(), today.getMonth() - 11, 1);
-    for (let i = 0; i < 18; i++) {
-      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      monthOptions.push({ val, label: MONTHS_PL_FULL[d.getMonth()] + ' ' + d.getFullYear() });
-    }
+    const employees = await listEmployees(getLocationId(req));
+    const monthOptions = buildMonthOptions();
 
     res.render('reports/employee-hours', { ...data, employees, monthOptions, formatHours });
   } catch (err) {
@@ -267,6 +296,102 @@ router.get('/employee/:userId/:month/csv', requireRole('admin', 'location_manage
     lines.push(['', '', '', '', esc('RAZEM'), esc(data.totalHours.toFixed(2).replace('.', ',')), ''].join(';'));
 
     const filename = `godziny_${data.employee.name.replace(/\s+/g, '_')}_${data.month}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send('﻿' + lines.join('\r\n'));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Błąd serwera.');
+  }
+});
+
+// ── Rzeczywisty czas pracy (odbicia Start/Koniec pracy) ─────────────────────
+
+const STATUS_LABELS = {
+  zgodne: 'zgodne',
+  roznica: 'różnica',
+  do_sprawdzenia: 'do sprawdzenia — niezgodne z grafikiem',
+  brak_zmiany: '',
+};
+
+function formatDiff(hours) {
+  if (hours === null) return '—';
+  if (Math.abs(hours) < 1 / 120) return '0';
+  return (hours > 0 ? '+' : '−') + formatHours(Math.abs(hours));
+}
+
+const currentMonth = () => {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+};
+
+router.get('/actual', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const month = (req.query.month || currentMonth()).substring(0, 7);
+    const employees = await listEmployees(getLocationId(req));
+    if (!employees.length) {
+      return res.status(404).render('error', { message: 'Brak aktywnych pracowników w tej lokalizacji.' });
+    }
+    const userId = req.query.userId || employees[0].id;
+    res.redirect(`/reports/actual/${userId}/${month}`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/actual/:userId/:month', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const data = await buildActualReport(req.params.userId, req.params.month);
+    if (!data) return res.status(404).render('error', { message: 'Pracownik nie znaleziony.' });
+
+    const employees = await listEmployees(getLocationId(req));
+    const monthOptions = buildMonthOptions();
+
+    res.render('reports/actual-hours', {
+      ...data, employees, monthOptions, formatHours, formatDiff, STATUS_LABELS,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).render('error', { message: 'Błąd serwera.' });
+  }
+});
+
+router.get('/actual/:userId/:month/csv', requireRole('admin', 'location_manager'), async (req, res) => {
+  try {
+    const data = await buildActualReport(req.params.userId, req.params.month);
+    if (!data) return res.status(404).send('Not found');
+
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const num = v => (v === null || v === undefined ? '' : v.toFixed(2).replace('.', ','));
+    const lines = [
+      ['Data', 'Dzień', 'Zmiana', 'Plan od', 'Plan do', 'Plan godz.',
+       'Faktycznie od', 'Faktycznie do', 'Faktycznie godz.', 'Różnica', 'Status'].map(esc).join(';'),
+    ];
+    for (const d of data.days) {
+      lines.push([
+        esc(d.date),
+        esc(d.dayLabel),
+        esc(d.entry ? d.entry.shift_name : ''),
+        esc(d.entry ? d.entry.start_time : ''),
+        esc(d.entry ? d.entry.end_time : ''),
+        esc(d.entry ? num(d.plannedHours) : ''),
+        esc(d.actualStart),
+        esc(d.actualEnd),
+        esc(num(d.actualHours)),
+        esc(num(d.diff)),
+        esc(STATUS_LABELS[d.status]),
+      ].join(';'));
+    }
+    lines.push([
+      esc('RAZEM'), '', '', '', '',
+      esc(num(data.summary.totalPlanned)), '', '',
+      esc(num(data.summary.totalActual)),
+      esc(num(data.summary.totalDiff)),
+      esc(`odbicia z ${data.summary.matchedDays} z ${data.summary.scheduledDays} dni`),
+    ].join(';'));
+
+    const filename = `odbicia_${data.employee.name.replace(/\s+/g, '_')}_${data.month}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send('﻿' + lines.join('\r\n'));

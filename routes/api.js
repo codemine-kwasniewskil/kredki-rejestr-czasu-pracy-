@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireAuth, requireRole, getLocationId } = require('../middleware/auth');
 const { calcHours } = require('../utils/helpers');
+const { workHM } = require('../utils/workTime');
 const { log } = require('../utils/logger');
 
 router.post('/schedule/entry', requireRole('admin', 'location_manager'), async (req, res) => {
@@ -732,6 +733,41 @@ router.post('/schedule/entry/:id/work-time', requireAuth, async (req, res) => {
     await db.run('UPDATE schedule_entries SET work_started_at=?, work_ended_at=? WHERE id=?', [startDt, endDt, req.params.id]);
     log(res.locals.user, 'Korekta czasu pracy', `Zmiana #${req.params.id} (${dateStr}): ${start || '—'} – ${end || '—'}`);
     res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera.' });
+  }
+});
+
+// Zbiorcze przepisanie odbić do grafiku (raport /reports/actual). Ustawia dokładnie
+// to samo co ręczna edycja godzin w Karcie czasu pracy — stąd, jak tam, tylko admin.
+router.post('/schedule/entries/apply-work-time', requireRole('admin'), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    if (!ids.length) return res.json({ ok: true, applied: 0, skipped: 0 });
+
+    const entries = await db.all(
+      `SELECT se.id, se.date, se.work_started_at, se.work_ended_at, s.status
+       FROM schedule_entries se JOIN schedules s ON s.id=se.schedule_id
+       WHERE se.id IN (?)`,
+      [ids]
+    );
+
+    let applied = 0;
+    for (const e of entries) {
+      if (e.status !== 'approved' || !e.work_started_at || !e.work_ended_at) continue;
+      await db.run(
+        'UPDATE schedule_entries SET custom_start=?, custom_end=?, shift_template_id=NULL WHERE id=?',
+        [workHM(e.work_started_at), workHM(e.work_ended_at), e.id]
+      );
+      applied++;
+    }
+
+    if (applied) {
+      const label = req.body.label ? String(req.body.label).slice(0, 100) : '';
+      log(res.locals.user, 'Przepisanie odbić do grafiku', `${label} — ${applied} dni`);
+    }
+    res.json({ ok: true, applied, skipped: ids.length - applied });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Błąd serwera.' });
