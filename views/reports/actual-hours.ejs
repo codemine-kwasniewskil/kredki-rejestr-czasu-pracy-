@@ -3,7 +3,7 @@
 <%- include('../partials/nav') %>
 
 <%
-  const isAdmin = user && user.role === 'admin';
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
   // Przepisanie identycznych godzin niczego nie zmienia — zaznaczamy tylko realne różnice.
   const changed = d => d.diff !== null && Math.abs(d.diff) >= 1 / 120;
   const ROW_CLASS = {

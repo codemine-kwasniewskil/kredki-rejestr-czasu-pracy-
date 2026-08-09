@@ -319,7 +319,7 @@ async function saveNote(btn) {
 }
 
 // ── Time editing (admin only) ──
-<% if (user && user.role === 'admin') { %>
+<% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
 function editTime(span) {
   const cell = span.closest('td');
   const input = cell.querySelector('.time-input');
