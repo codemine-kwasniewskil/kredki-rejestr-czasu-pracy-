@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireRole, getLocationId, requireFeature } = require('../middleware/auth');
 const { calcHours, formatHours } = require('../utils/helpers');
-const { buildDay, summarize } = require('../utils/workTime');
+const { buildDay, summarize, parseTimeChange } = require('../utils/workTime');
 
 router.get('/', requireRole('admin', 'location_manager'), requireFeature('reports'), async (req, res) => {
   try {
@@ -197,13 +197,24 @@ const TIME_LOG_ACTIONS = [
 async function loadEntryLogs(entryIds) {
   const ids = entryIds.map(Number).filter(Boolean);
   if (!ids.length) return [];
-  return db.all(`
+  const rows = await db.all(`
     SELECT created_at, user_name, user_role, action, details
     FROM activity_logs
     WHERE action IN (?) AND details REGEXP ?
     ORDER BY created_at DESC
     LIMIT 200
   `, [TIME_LOG_ACTIONS, `#(${ids.join('|')})([^0-9]|$)`]);
+
+  // Cofnąć da się tylko najświeższą zmianę danego dnia i tylko taką, która niesie
+  // poprzednie godziny. Starsze wpisy zostają jako sama historia — przywracanie
+  // ich „przez głowę" nowszych zmian dawałoby stan, którego nigdy nie było.
+  const newestSeen = new Set();
+  return rows.map(row => {
+    const change = parseTimeChange(row.details);
+    const isNewest = change && !newestSeen.has(change.id);
+    if (change) newestSeen.add(change.id);
+    return { ...row, change, undoable: Boolean(isNewest && change.from) };
+  });
 }
 
 function listEmployees(locationId) {
@@ -289,6 +300,9 @@ router.get('/employee/:userId/:month', requireRole('admin', 'location_manager'),
     const monthOptions = buildMonthOptions();
     const changeLog = await loadEntryLogs(data.days.filter(d => d.entry).map(d => d.entry.id));
 
+    // Karta bywa drukowana zaraz po zmianie godzin — żadna warstwa nie może
+    // podać wersji sprzed edycji.
+    res.set('Cache-Control', 'no-store');
     res.render('reports/employee-hours', { ...data, employees, monthOptions, changeLog, formatHours });
   } catch (err) {
     console.error(err);

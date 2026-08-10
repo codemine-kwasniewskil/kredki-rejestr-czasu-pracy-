@@ -235,6 +235,7 @@
             <th class="text-left font-semibold py-1.5 w-40">Kto</th>
             <th class="text-left font-semibold py-1.5 w-56">Co</th>
             <th class="text-left font-semibold py-1.5">Szczegóły</th>
+            <% if (canEdit) { %><th class="text-right font-semibold py-1.5 w-20"></th><% } %>
           </tr>
         </thead>
         <tbody>
@@ -247,6 +248,17 @@
             </td>
             <td class="py-1.5 text-slate-600"><%= l.action %></td>
             <td class="py-1.5 text-slate-500 font-mono"><%= l.details %></td>
+            <% if (canEdit) { %>
+            <td class="py-1.5 text-right">
+              <% if (l.undoable) { %>
+              <button onclick="undoChange(this, <%= l.change.id %>, '<%= l.change.from[0] %>', '<%= l.change.from[1] %>')"
+                      title="Przywróć godziny <%= l.change.from[0] %>–<%= l.change.from[1] %>"
+                      class="text-xs px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 whitespace-nowrap">
+                ↩ cofnij
+              </button>
+              <% } %>
+            </td>
+            <% } %>
           </tr>
           <% }) %>
         </tbody>
@@ -433,20 +445,35 @@ async function commitTime(input, span) {
     body: JSON.stringify({ start_time, end_time }),
   });
   if ((await r.json()).ok) {
-    span.textContent = newVal;
-    // Recalc hours display
-    const [sh, sm] = start_time.split(':').map(Number);
-    const [eh, em] = end_time.split(':').map(Number);
-    let mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins < 0) mins += 24 * 60;
-    const hrs = mins / 60;
-    const hoursCell = row.querySelector('.hours-cell');
-    if (hoursCell) {
-      hoursCell.textContent = hrs > 0 ? (Number.isInteger(hrs) ? hrs + 'h' : hrs.toFixed(1).replace('.', ',') + 'h') : '—';
-    }
+    // Przeładowanie zamiast łatania DOM-u: każda godzina siedzi w dwóch miejscach
+    // (wersja ekranowa i .print-only), a suma miesiąca w trzecim. Podmiana samej
+    // wersji ekranowej zostawiała stare dane na wydruku i w sumie.
+    window.location.reload();
+    return;
   }
+  alert('Nie udało się zapisać godzin.');
   input.classList.add('hidden');
   span.classList.remove('hidden');
+}
+
+// Przywraca godziny sprzed zmiany. Sam też jest zmianą, więc zostawia wpis
+// w historii — cofnięcie jest widoczne, nie kasuje śladu po poprzedniej edycji.
+async function undoChange(btn, entryId, start, end) {
+  if (!confirm(`Przywrócić godziny ${start}–${end}?`)) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  const r = await fetch(`/api/schedule/entry/${entryId}/times`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start_time: start, end_time: end }),
+  });
+  if ((await r.json()).ok) {
+    window.location.reload();
+  } else {
+    alert('Nie udało się cofnąć zmiany.');
+    btn.disabled = false;
+    btn.textContent = '↩ cofnij';
+  }
 }
 <% } %>
 </script>

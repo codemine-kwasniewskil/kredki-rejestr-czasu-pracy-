@@ -95,6 +95,24 @@ function describeTimeChange({ id, date, name, from, to }) {
   return `Zmiana #${id} (${String(date).slice(0, 10)}) ${name}: ${span(from)} → ${span(to)}`;
 }
 
+// Odwrotność describeTimeChange: wyciąga z wpisu id zmiany oraz godziny przed i po,
+// żeby Karta czasu pracy mogła zaproponować cofnięcie. Zwraca null dla wpisów,
+// które nie są zmianą godzin. `from`/`to` są null, gdy wpis nie niesie danej pary
+// (np. starsze korekty odbić z dashboardu, zapisywane w innym formacie).
+function parseTimeChange(details) {
+  const m = /^Zmiana #(\d+)\s*\(/.exec(String(details || ''));
+  if (!m) return null;
+  const pair = (text) => {
+    const t = /^(\d{2}:\d{2})–(\d{2}:\d{2})$/.exec((text || '').trim());
+    return t ? [t[1], t[2]] : null;
+  };
+  const arrow = String(details).split(' → ');
+  const from = arrow.length === 2 ? pair(arrow[0].slice(arrow[0].lastIndexOf(': ') + 2)) : null;
+  const to = arrow.length === 2 ? pair(arrow[1]) : null;
+  return { id: Number(m[1]), from, to };
+}
+
 module.exports = {
-  buildDay, summarize, actualHours, parseWorkDt, workHM, describeTimeChange, TOLERANCE_HOURS,
+  buildDay, summarize, actualHours, parseWorkDt, workHM,
+  describeTimeChange, parseTimeChange, TOLERANCE_HOURS,
 };

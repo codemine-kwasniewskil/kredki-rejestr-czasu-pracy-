@@ -136,9 +136,31 @@ się edycja godzin w Karcie (`PUT /schedule/entry/:id/times`, wcześniej nielogo
 
 Pusta lista `ids` → `{ ok: true, applied: 0, skipped: 0 }`, bez wpisu w logach.
 
+## Dołożone po wdrożeniu (2026-08-10)
+
+Karta czasu pracy dostała warstwę ekranową, której nie ma na wydruku — wszystko
+z klasą `no-print`, dokument do podpisu bez zmian:
+
+- kolumna **Odbite** z godzinami z przycisków pracownika,
+- przycisk **⇦ zaciągnij** w wierszu (tylko gdy odbicie jest pełne i różni się od
+  godzin w karcie),
+- panel **Historia zmian godzin** pod dokumentem, budowany z `activity_logs` po
+  prefiksie `Zmiana #<id>`,
+- przycisk **↩ cofnij** przy najświeższej zmianie danego dnia, przywracający
+  godziny sprzed niej (`parseTimeChange`). Cofnięcie samo jest zmianą, więc
+  zostawia własny wpis.
+
+Zapis godzin przeładowuje stronę zamiast łatać DOM: godzina występuje w wersji
+ekranowej i `.print-only`, a suma miesiąca w trzecim miejscu — podmiana samej
+wersji ekranowej zostawiała stare dane na wydruku. Trasa Karty odpowiada
+z `Cache-Control: no-store`.
+
+Odbicia (`work_started_at` / `work_ended_at`) pozostają w Karcie tylko do odczytu.
+
 ## Poza zakresem
 
-- Zmiany w Karcie czasu pracy poza dodaniem przycisku przełączającego.
+- Edycja odbić z poziomu raportów (świadomie cofnięta w `ce2e80c`).
+- Przywracanie `shift_template_id` przy cofaniu — wraca godzina, nie szablon zmiany.
 - Widok tygodniowy i zbiorczy dla wszystkich pracowników.
 - Konfigurowalny próg tolerancji.
 - Zaokrąglanie odbić przy przepisywaniu (przenoszone jest surowe `HH:MM`).

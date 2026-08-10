@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { buildDay, summarize, describeTimeChange } = require('../utils/workTime');
+const { buildDay, summarize, describeTimeChange, parseTimeChange } = require('../utils/workTime');
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -145,6 +145,35 @@ test('data DATETIME jest skracana do dnia', () => {
   const s = describeTimeChange({ id: 7, date: '2026-07-05 00:00:00', name: 'Ola',
     from: ['08:00', '16:00'], to: ['08:00', '17:00'] });
   assert.ok(s.startsWith('Zmiana #7 (2026-07-05) Ola:'), s);
+});
+
+// ── Odczyt wpisu z historii (cofanie zmiany) ─────────────────────────────────
+
+// 11. Z wpisu musi dać się odzyskać poprzednie godziny — na tym stoi „cofnij"
+test('wpis o zmianie daje się odczytać z powrotem', () => {
+  const c = parseTimeChange('Zmiana #794 (2026-07-21) Julianna: 07:30–14:30 → 07:29–14:36');
+  assert.strictEqual(c.id, 794);
+  assert.deepStrictEqual(c.from, ['07:30', '14:30']);
+  assert.deepStrictEqual(c.to, ['07:29', '14:36']);
+});
+
+// 12. Stare wpisy z dashboardu mają inny format — id tak, godzin poprzednich nie
+test('korekta odbicia z dashboardu nie daje poprzednich godzin', () => {
+  const c = parseTimeChange('Zmiana #806 (2026-07-30): 07:30 – —');
+  assert.strictEqual(c.id, 806);
+  assert.strictEqual(c.from, null);
+});
+
+// 13. Dzień bez godzin w grafiku nie ma czego przywracać
+test('myślnik zamiast poprzednich godzin oznacza brak cofania', () => {
+  const c = parseTimeChange('Zmiana #5 (2026-07-04) Anna: — → 08:00–16:00');
+  assert.strictEqual(c.from, null);
+  assert.deepStrictEqual(c.to, ['08:00', '16:00']);
+});
+
+// 14. Obcy wpis nie może udawać zmiany godzin
+test('wpis w innym formacie zwraca null', () => {
+  assert.strictEqual(parseTimeChange('Usunięcie zmiany z grafiku | 2026-07-04'), null);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
