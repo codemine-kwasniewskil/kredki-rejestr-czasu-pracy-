@@ -1,4 +1,5 @@
 <% locals.currentPath = '/reports/employee'; %>
+<% const canEdit = user && (user.role === 'admin' || user.role === 'super_admin'); %>
 <%- include('../partials/head', { title: 'Karta czasu pracy – ' + employee.name }) %>
 <%- include('../partials/nav') %>
 
@@ -110,6 +111,9 @@
               <th class="text-center w-20">Od</th>
               <th class="text-center w-20">Do</th>
               <th class="text-right w-16">Godz.</th>
+              <!-- Odbicia pracownika — tylko na ekranie, poza dokumentem do podpisu -->
+              <th class="no-print text-center w-28 text-emerald-600">Odbite</th>
+              <th class="no-print w-24"></th>
               <th class="text-left">Uwagi</th>
             </tr>
           </thead>
@@ -148,6 +152,24 @@
                   <%= d.hours > 0 ? formatHours(d.hours) : '0' %>
                 </span>
               </td>
+              <td class="no-print text-center font-mono text-xs <%= d.work.actualStart ? 'text-emerald-700 font-semibold' : 'text-slate-300' %>">
+                <%= d.work.actualStart ? d.work.actualStart + '–' + (d.work.actualEnd || '?') : (d.entry ? '—' : '') %>
+              </td>
+              <td class="no-print text-center">
+                <%
+                  // Przycisk tylko gdy jest co zaciągnąć i coś to zmieni — inaczej
+                  // klik tworzyłby pusty wpis w historii zmian.
+                  const pullable = canEdit && d.entry && d.work.actualStart && d.work.actualEnd
+                    && (d.work.actualStart !== d.entry.start_time || d.work.actualEnd !== d.entry.end_time);
+                %>
+                <% if (pullable) { %>
+                <button onclick="pullWorkTime(this, <%= d.entry.id %>, '<%= d.work.actualStart %>', '<%= d.work.actualEnd %>')"
+                        title="Wpisz odbite godziny (<%= d.work.actualStart %>–<%= d.work.actualEnd %>) do karty"
+                        class="text-xs px-2 py-0.5 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50 whitespace-nowrap">
+                  ⇦ zaciągnij
+                </button>
+                <% } %>
+              </td>
               <td>
                 <% if (d.entry) { %>
                 <span
@@ -172,6 +194,8 @@
               <td colspan="4" class="text-right text-xs font-bold text-slate-700 uppercase tracking-wider">Razem</td>
               <td></td>
               <td class="text-right font-black text-slate-900" id="totalHoursCell"><%= formatHours(totalHours) %></td>
+              <td class="no-print"></td>
+              <td class="no-print"></td>
               <td></td>
             </tr>
           </tfoot>
@@ -356,7 +380,26 @@ async function saveNote(btn) {
 }
 
 // ── Time editing (admin only) ──
-<% if (user && (user.role === 'admin' || user.role === 'super_admin')) { %>
+<% if (canEdit) { %>
+// Wpisuje odbite godziny do karty. Ten sam endpoint co ręczna edycja, więc
+// zmiana trafia do historii na dole strony (ze stanem przed i po).
+async function pullWorkTime(btn, entryId, start, end) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  const r = await fetch(`/api/schedule/entry/${entryId}/times`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start_time: start, end_time: end }),
+  });
+  if ((await r.json()).ok) {
+    window.location.reload();   // przelicza sumę i odświeża historię zmian
+  } else {
+    alert('Nie udało się zaciągnąć godzin.');
+    btn.disabled = false;
+    btn.textContent = '⇦ zaciągnij';
+  }
+}
+
 function editTime(span) {
   const cell = span.closest('td');
   const input = cell.querySelector('.time-input');

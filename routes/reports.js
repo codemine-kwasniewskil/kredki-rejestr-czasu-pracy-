@@ -235,6 +235,8 @@ async function buildEmployeeReport(userId, month) {
   const days = buildMonthDays(entries, month).map(d => ({
     ...d,
     hours: d.entry ? calcHours(d.entry.start_time, d.entry.end_time) : 0,
+    // Odbicia pokazywane w Karcie wyłącznie informacyjnie (kolumny no-print).
+    work: buildDay(d.entry),
   }));
 
   const totalHours = days.reduce((sum, d) => sum + d.hours, 0);
