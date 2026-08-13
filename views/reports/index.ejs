@@ -29,11 +29,13 @@
                 <%= tab === 'availability' ? 'border-blue-600 text-blue-700 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' %>">
         Dostępność vs godziny
       </a>
+      <% if (canViewCosts) { %>
       <a href="/reports?tab=costs&month=<%= month %>"
          class="px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors
                 <%= tab === 'costs' ? 'border-blue-600 text-blue-700 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' %>">
         Koszty pracowników
       </a>
+      <% } %>
     </div>
 
     <!-- ══════════════════════════════════════════════
@@ -189,7 +191,7 @@
     <!-- ══════════════════════════════════════════════
          TAB 2 — Cost report
     ══════════════════════════════════════════════ -->
-    <% if (tab === 'costs') { %>
+    <% if (tab === 'costs' && canViewCosts) { %>
 
     <%
       const grandTotalHours = workerStats.reduce((s, w) => s + w.scheduledHours, 0);

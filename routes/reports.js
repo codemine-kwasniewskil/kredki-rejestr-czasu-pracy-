@@ -13,6 +13,10 @@ router.get('/', requireRole('admin', 'location_manager'), requireFeature('report
     const [mYear, mMonth] = month.split('-').map(Number);
     const locationId = getLocationId(req);
 
+    // Stawki godzinowe i koszty widzi wyłącznie admin/super_admin —
+    // kierownik dostaje raport bez danych finansowych.
+    const canViewCosts = req.session.userRole === 'admin' || req.session.userRole === 'super_admin';
+
     const daysInMonth = new Date(mYear, mMonth, 0).getDate();
     const allDates = Array.from({ length: daysInMonth }, (_, i) =>
       `${month}-${String(i + 1).padStart(2, '0')}`
@@ -94,11 +98,12 @@ router.get('/', requireRole('admin', 'location_manager'), requireFeature('report
         }
       }
 
-      const hourlyRate = w.hourly_rate || 0;
+      const hourlyRate = canViewCosts ? (w.hourly_rate || 0) : 0;
       const totalCost = scheduledHours * hourlyRate;
 
       return {
         ...w,
+        hourly_rate: canViewCosts ? w.hourly_rate : null,
         availDays,
         unavailDays,
         availHoursWithTime,
@@ -121,10 +126,10 @@ router.get('/', requireRole('admin', 'location_manager'), requireFeature('report
     }
 
     const monthLabel = MONTHS_PL[mMonth - 1] + ' ' + mYear;
-    const tab = req.query.tab === 'costs' ? 'costs' : 'availability';
+    const tab = (req.query.tab === 'costs' && canViewCosts) ? 'costs' : 'availability';
 
     res.render('reports/index', {
-      month, monthLabel, monthOptions, workerStats, formatHours, tab,
+      month, monthLabel, monthOptions, workerStats, formatHours, tab, canViewCosts,
     });
   } catch (err) {
     console.error(err);
